@@ -240,6 +240,7 @@ Driver Windows "Brother QL-1100" 1.11.0d (2025-07-18, INF `bsq17av.inf`) install
 - Sequenza del driver per un'etichetta su 62 mm continuo: 350 NUL, `ESC @`, `ESC i a 01`, `ESC i ! 01` (notifiche automatiche **spente**: il driver interroga lo stato da solo), `ESC i U J` + 14 byte (identificativo job interno, "non necessario" da manuale), `ESC i z` n1=`86` (tipo, larghezza, recovery) larghezza 62, `ESC i M 40`, `ESC i A 01`, `ESC i K 08`, `ESC i d` 59 dot (**5 mm** di margine), `M 02`, linee raster (dichiara l'intera lunghezza pagina e riempie con `Z`), `1A`. **Identica alla nostra** salvo notifiche, job ID e margine.
 - Con "Priorità alla qualità di stampa" cambiano **due soli byte**: n1 diventa `C6` (aggiunto il bit `0x40`) e un byte nel blocco `ESC i U J` passa da `02` a `03`. Linee raster e `ESC i K` invariati: nessuna modalità 600 dpi.
 - Con il driver installato l'accesso raw via usbprint continua a funzionare (verificato): la coda Windows apre la porta solo durante un job.
+- Dopo il test il driver è stato **rimosso completamente** (coda, driver di stampa, pacchetto nel driver store): il PC è tornato allo stato iniziale, solo "Supporto stampa USB" di Microsoft, e l'accesso raw è stato riverificato. Il nodo figlio "Stampante generica" ricompare al prossimo ricollegamento del cavo; non serve al nostro software.
 
 ## 10. Riferimenti
 
