@@ -87,12 +87,12 @@ Riferimento: *Software Developer's Manual — Raster Command Reference QL-1100/1
 
 ### 4.2 Linea raster e supporti che usiamo
 
-Ogni linea è **162 byte = 1296 bit**, primo byte = pin 0, MSB = pin più basso; bit 1 = punto nero. Il nastro non copre tutta la testina: i pin utili dipendono dalla larghezza.
+Ogni linea è **162 byte = 1296 bit**, bit 1 = punto nero. **Ordine dei bit, verificato con la prima stampa di prova (uscita specchiata e per 3/4 fuori dal nastro):** il primo bit trasmesso (MSB del primo byte) corrisponde al **pin 1295**, l'ultimo bit al pin 0. Regola pratica: costruire la linea in ordine di pin (immagine ai pin indicati sotto) e poi **invertire l'intera linea** prima di impaccarla. Il nastro non copre tutta la testina: i pin utili dipendono dalla larghezza.
 
-| Rotolo | Larghezza nastro | Area stampabile | Offset bordo | Pin utili (0-based) | Byte nella linea | Note |
+| Rotolo | Larghezza nastro | Area stampabile | Offset bordo | Pin utili (0-based) | Posizione nella linea trasmessa (dopo l'inversione) | Note |
 |---|---|---|---|---|---|---|
-| **62 mm continuo** (DK-22205, 62 mm × 30,48 m — quello caricato oggi) | 62,0 mm / 732 dot | **58,9 mm / 696 dot** | 1,5 mm / 18 dot | 544 → 1239 | byte 68 → 154 (87 byte, allineato) | Il manuale raster riporta "sx 544 / dx 44" (somma ≠ 1296); il manuale ESC/P indica pin 545–1240, quindi **destro = 56**. Da confermare a occhio sulla prova stampata. |
-| **102 mm continuo** (DK-22243, 102 mm × 30,48 m) | 101,6 mm / 1200 dot | **98,6 mm / 1164 dot** | 1,5 mm / 18 dot | 76 → 1239 | inizia a byte 9 bit 3 (**non allineato al byte**) | Non testato oggi (rotolo non caricato). |
+| **62 mm continuo** (DK-22205, 62 mm × 30,48 m — quello caricato oggi) | 62,0 mm / 732 dot | **58,9 mm / 696 dot** | 1,5 mm / 18 dot | 544 → 1239 | bit 56 → 751 = byte 7 → 93 (allineato al byte) | Il manuale raster riporta "sx 544 / dx 44" (somma ≠ 1296); il manuale ESC/P indica pin 545–1240, quindi **destro = 56**. Coerente con la stampa di prova. |
+| **102 mm continuo** (DK-22243, 102 mm × 30,48 m) | 101,6 mm / 1200 dot | **98,6 mm / 1164 dot** | 1,5 mm / 18 dot | 76 → 1239 | bit 56 → 1219 (**non allineato al byte** in coda) | Non testato oggi (rotolo non caricato). |
 
 Nota sui formati indicati dal cliente: "62 mm × 8 m" corrisponde al DK-22205 da 30,48 m o a un rotolo compatibile; per il protocollo conta solo la larghezza, che la stampante rileva da sola (byte 10 dello stato).
 
@@ -136,7 +136,7 @@ t=0        invio job (15,7 KB) — completato in 16 ms
 +2854 ms   stato 06 / fase 00   → "in attesa di ricezione"
 ```
 
-Nessun errore, nessuna notifica di raffreddamento. La stampa fisica (contenuto, orientamento, centratura, taglio) è **da verificare a occhio** sull'etichetta uscita: contiene righelli in mm sui due bordi, un triangolo pieno in alto a sinistra e le scritte "<- SX" / "DX ->" per capire se il raster va specchiato o spostato.
+Nessun errore, nessuna notifica di raffreddamento. Esito fisico della **prima** prova (linea costruita con il primo bit = pin 0): testo specchiato e solo i primi ~18 mm dell'immagine sul nastro, il resto fuori dal bordo. Ha dimostrato che il primo bit trasmesso è il pin 1295 (§4.2); lunghezza etichetta (45 mm) e taglio corretti. La **seconda** prova, con la linea invertita, è descritta in §7.
 
 ## 5. Comportamento reale della comunicazione (quirk importanti per il driver)
 
@@ -177,11 +177,11 @@ Testato oggi:
 - Lettura ID 1284, stato porta, stato completo (`ESC i S`) ×10+ con polling corretto.
 - Commutazione fra le tre modalità e lettura di 26 impostazioni.
 - Stampa raster su nastro continuo 62 mm con compressione TIFF, margine 3 mm, taglio automatico; ricezione degli stati di avanzamento.
+- Orientamento e ordine dei bit: prima prova specchiata e fuori nastro → linea invertita → seconda prova stampata (stati identici, "completata" a 2,4 s); esito visivo della seconda prova da confermare (centratura attesa: 1,5 mm di bordo per lato).
 
 Non testato:
 
 - Rotolo 102 mm (pin non allineati al byte: il codice di impaccamento è già generico, ma va provato).
-- Orientamento/specchiatura e offset reali: da confermare guardando l'etichetta stampata.
 - Stampe multipagina (FF fra pagine), taglio ogni N, modalità 600 dpi, priorità qualità, gestione errori a rotolo finito e coperchio aperto, raffreddamento su stampe lunghe.
 - Riconnessione a caldo (scollega/ricollega USB, spegni/accendi) e comportamento quando l'app è aperta.
 

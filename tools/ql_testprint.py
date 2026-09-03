@@ -149,9 +149,13 @@ def build_job(label_im, media_mm, autocut=True, margin_dots=35, mirror=False):
     left = spec["left"]
     zero_lines = 0
     for y in range(rows):
-        line = Image.new("1", (TOTAL_PINS, 1), 1)          # 1 = bianco
+        line = Image.new("1", (TOTAL_PINS, 1), 1)          # 1 = bianco, indice x = numero pin
         line.paste(bw.crop((0, y, bw.size[0], y + 1)), (left, 0))
-        packed = line.tobytes()                             # 162 byte, MSB = pin piu' basso
+        # Verificato sul campo (2026-09-03): nella linea raster il PRIMO bit (MSB del primo byte)
+        # corrisponde al pin 1295 e l'ultimo al pin 0. Senza questa inversione il testo esce
+        # specchiato e l'immagine finisce per 3/4 fuori dal nastro.
+        line = line.transpose(Image.FLIP_LEFT_RIGHT)
+        packed = line.tobytes()                             # 162 byte
         # in Pillow mode "1": bit 1 = bianco; la stampante vuole bit 1 = nero -> inverti
         packed = bytes(b ^ 0xFF for b in packed)
         if not any(packed):
