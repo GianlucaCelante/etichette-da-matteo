@@ -197,9 +197,37 @@ App (UI)  →  Renderer etichetta (modello + dati → bitmap 1-bit a 300 dpi, ro
 - **Interfaccia astratta** `LabelPrinter`: `discover()`, `status()` (supporto, larghezza, errori in linguaggio umano), `print(bitmap, opzioni)` con avanzamento/esito. L'implementazione Brother raster copre tutta la famiglia QL/PT con una tabella per modello (PID, pin testina, tabelle supporti, comandi supportati); altre marche = altre implementazioni.
 - **Rilevamento automatico del rotolo** dallo stato: l'app sceglie da sola il layout 62/102 e avvisa se il rotolo non è quello previsto dal modello di etichetta.
 - **Stato in chiaro** per l'utente: "Pronta · rotolo 62 mm", "Coperchio aperto", "Rotolo finito", "Stampante spenta o scollegata".
+- **Copie multiple una pagina alla volta**: inviare la pagina, aspettare "stampa completata", poi la successiva. Solo così il tasto Annulla ferma davvero la serie (§9). Un errore a metà serie (coperchio, rotolo) si gestisce aspettando che lo stato torni pulito e ripartendo dalla pagina interrotta.
+- **Ricerca della stampante** con SetupAPI (interfaccia usbprint, VID `04F9`), non con un percorso fisso: il seriale è nel percorso e cambia da esemplare a esemplare (`tools/ql_usb.py`).
 - Gli script Python in `tools/` sono l'implementazione di riferimento del protocollo (sonda, lettura impostazioni, stampa di prova); vanno bene per prototipare, la scelta dello stack dell'app finale è aperta (sul PC sono disponibili .NET 8, Node 24, Python 3.14).
 
-## 9. Riferimenti
+## 9. Scenari secondari verificati (rotolo 102 mm continuo)
+
+| Scenario | Come | Risultato |
+|---|---|---|
+| Multipagina | 3 pagine in un job, `FF` fra le pagine, `1A` sull'ultima, taglio automatico ogni etichetta | 3 etichette separate. Per ogni pagina la stampante manda: fase "in stampa" → "stampa completata" → fase "in ricezione". Circa 2,4 s per etichetta da 28 mm, taglio compreso. |
+| Taglio ogni N | `ESC i A 02` con auto cut, 4 pagine | 2 strisce da 2 etichette. Stati identici al caso precedente: la stampante non segnala dove taglia. |
+| Annullamento di un job intero | 4 pagine da 90 mm inviate in un colpo (80 KB in 50 ms), poi invalidate + `ESC @` dopo 1 s | **Non ferma nulla**: tutte e 4 le etichette stampate. Le pagine già ricevute vengono stampate comunque. |
+| Annullamento pagina per pagina | Pagine inviate una alla volta con `FF`, attesa di "completata", poi invalidate + `ESC @` al posto della successiva | 2 etichette intere e tagliate, stampante subito in ricezione senza errori. **È il pattern da usare nell'app**: copie multiple = una pagina alla volta. |
+| Coperchio aperto (a riposo) | Monitor dello stato | Stato di tipo "errore" (`02`) con bit coperchio aperto, anche in risposta a `ESC i S`; rientra da solo alla chiusura, senza comandi. |
+| Rotolo tolto | Monitor dello stato, coperchio aperto | Larghezza 0 e tipo supporto `00`; il bit "no media" resta a 0. Il rotolo reinserito è riconosciuto subito, a coperchio ancora aperto. |
+| Coperchio aperto durante la stampa | 3 pagine da 80 mm, apertura dopo circa 1,5 s | Stato spontaneo `02` "coperchio aperto" in fase di stampa; il resto del job viene scartato; alla chiusura l'errore rientra da solo. Ristampa = nuovo job da capo (la stampante non riprende dal punto interrotto). |
+| 600 dpi | `ESC i K` bit 6 e linee raddoppiate | Con il solo bit di `ESC i K` la stampante ha stampato a passo 300 dpi (etichetta lunga il doppio, testo stirato). Con in più il flag "priorità qualità" (`ESC i z` n1 bit `0x40`) il tempo sale da 2,8 a 4,1 s: esito visivo da confermare. |
+| Dati non compressi | `M 00`, 162 byte per linea | Funziona; job 6,7 volte più grande (102 KB contro 15 KB) e nessun vantaggio di tempo su USB. Restare su TIFF. |
+| Scollegamento USB / spegnimento | Ricerca via SetupAPI ogni secondo, riapertura automatica | Vedi §9.1. |
+
+### 9.1 Riconnessione
+
+Prova con `tools/ql_scenarios.py riconnessione`: stato letto ogni secondo, ricerca via SetupAPI quando il canale cade.
+
+| Evento | Cosa succede sul PC | Tempo di ripristino |
+|---|---|---|
+| Cavo USB scollegato | La prima scrittura/lettura fallisce con **errore Windows 5 "Accesso negato"**; entro 1 s l'enumerazione non trova più nessuna stampante Brother | Al ricollegamento la stampante ricompare con lo **stesso percorso** (stesso seriale) e risponde allo stato subito dopo l'apertura |
+| Stampante spenta col tasto | Identico allo scollegamento: errore 5, dispositivo sparito | Alla riaccensione ricompare e risponde subito, rotolo già riconosciuto |
+
+Regole per l'app: trattare l'errore 5 (e in generale qualsiasi errore di I/O) come "stampante scollegata", chiudere l'handle, e ripetere la ricerca via SetupAPI ogni secondo finché non ricompare; poi riaprire e rileggere lo stato. Non serve alcuna reinizializzazione particolare. Un job interrotto dallo scollegamento va rimandato da capo.
+
+## 10. Riferimenti
 
 - Raster Command Reference QL-1100/1110NWB/1115NWB v1.00 — https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
 - ESC/P Command Reference QL-1100/1110NWB v1.00 — https://download.brother.com/welcome/docp100367/cv_ql1100_1110_eng_escp_100.pdf
