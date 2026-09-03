@@ -38,6 +38,8 @@ Da chiarire con chi gestisce la rete: prenotazione dell'indirizzo del PC sul rou
 3. **Aperto il / Scade il** — contenitori di ingredienti: poche righe, caratteri molto grandi.
 4. **Libero** — l'utente compone il modello come vuole, gli dà un nome e **da quel momento è un tipo di etichetta come gli altri**, selezionabile per ogni prodotto.
 
+**Duplicazione dei modelli**: da qualsiasi modello si può fare una copia con un tasto, rinominarla e cambiare solo ciò che serve. La stessa scelta è disponibile alla creazione di un modello nuovo, con "Parti da". È la via più rapida per avere varianti simili, per esempio una Cucina con e una senza lotto.
+
 Il modello libero si costruisce **a blocchi, non a mano libera**: si scelgono i blocchi da un elenco (quelli dei dati del prodotto e quelli liberi come testo, testo grande, riga, spazio, QR del lotto, logo), si ordinano trascinando, si sceglie la dimensione. Anteprima a grandezza reale sui due rotoli mentre si compone. Un editor grafico libero darebbe più libertà ma sposterebbe il lavoro sull'utente, che è il contrario di ciò che il cliente ha chiesto.
 
 ## Fuori dalla prima versione (scartate ora)
