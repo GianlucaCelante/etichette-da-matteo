@@ -27,8 +27,6 @@ Da chiarire con chi gestisce la rete: prenotazione dell'indirizzo del PC sul rou
 | **Prodotti più usati in cima** e ricerca istantanea | Dopo una settimana pochi prodotti coprono quasi tutto: si arriva a "tocca e stampa" |
 | **Storico stampe** (data, prodotto, modello, lotto, quantità, scadenza, dispositivo) con esportazione | Tracciabilità da mostrare a un controllo, prodotta dal programma senza lavoro dell'utente |
 | **Quattro tipi di etichetta** (sotto) | In cucina si stampa più l'etichetta interna che quella da vendita |
-| **Controllo della data del PC** | Tutte le scadenze dipendono da lì: se la data è sbagliata, avviso prima di stampare |
-| **Qualità alta facoltativa** | Flag verificato sulla stampante: tratti fini più puliti, stampa un po' più lenta |
 | **Stati della stampante in chiaro** | "Pronta · rotolo 62 mm", "Coperchio aperto", "Stampante spenta o scollegata" |
 | **Stampa in corso con annullamento** | Le copie partono una alla volta, quindi fermare la serie funziona davvero. Mostra a che copia è arrivata |
 | **Conferma dopo la stampa** | Chi stampa dal telefono non vede la stampante: senza conferma non sa se l'etichetta è uscita |
@@ -52,6 +50,8 @@ Il modello libero si costruisce **a blocchi, non a mano libera**: si scelgono i 
 | Dizionario allergeni con sinonimi e controllo automatico del grassetto | Scartata |
 | Stima del rotolo residuo | Scartata |
 | Importazione ed esportazione prodotti da Excel e backup automatico | Scartata |
+| Scelta della qualità di stampa | Scartata: si stampa sempre in qualità alta, senza opzione da mostrare |
+| Controllo della data del computer | Scartata: si assume che la data del computer sia sempre corretta |
 
 ## Da discutere col cliente più avanti
 
@@ -69,5 +69,6 @@ Il modello libero si costruisce **a blocchi, non a mano libera**: si scelgono i 
 ## Scelte tecniche che ne derivano
 
 - **La resa dell'etichetta avviene sul PC**, mai sul dispositivo che la richiede: così la stessa etichetta esce identica da qualsiasi telefono, e l'allineamento del testo alla griglia dei punti resta sotto il nostro controllo. È la vera leva per la leggibilità sul rotolo da 62 mm, dato che la stampante non ha una modalità 600 dpi (vedi `mappatura-brother-ql-1100c.md`, §9).
+- **Ogni stampa usa la priorità qualità** (il flag `0x40` in `ESC i z`, verificato sulla stampante): tratti fini più puliti, circa un secondo in più per etichetta. Non è un'opzione e non compare da nessuna parte nell'interfaccia, è sempre attiva.
 - **Copie multiple una pagina alla volta**, come verificato sulla stampante: è l'unico modo perché il tasto Annulla fermi davvero la serie.
 - Dati in un file locale (prodotti, modelli, impostazioni, storico stampe).
