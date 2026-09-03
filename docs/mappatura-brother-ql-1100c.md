@@ -180,9 +180,13 @@ Testato oggi:
 - Orientamento e ordine dei bit: prima prova specchiata e fuori nastro → linea invertita → seconda prova **corretta a vista** (testo dritto, cornice intera, bordi bianchi uguali sui due lati, "completata" a 2,4 s). Pin 544–1239 confermati per il 62 mm.
 - Rotolo 102 mm continuo: rilevato dallo stato (larghezza 102, tipo continuo) al cambio rotolo; stampa di prova da 45 mm **corretta a vista** (pin 76–1239 confermati, righello a 90 mm esatto, "completata" a 2,9 s). Il cambio rotolo a caldo non richiede riavvii né comandi.
 
+- Scenari secondari (§9): multipagina, taglio ogni N, annullamento, coperchio aperto a riposo e durante la stampa, rotolo tolto e rimesso, scollegamento USB e spegnimento, priorità qualità, dati non compressi.
+
 Non testato:
-- Stampe multipagina (FF fra pagine), taglio ogni N, modalità 600 dpi, priorità qualità, gestione errori a rotolo finito e coperchio aperto, raffreddamento su stampe lunghe.
-- Riconnessione a caldo (scollega/ricollega USB, spegni/accendi) e comportamento quando l'app è aperta.
+
+- Fine rotolo vero (bit "media cannot be fed" / "no media" durante la stampa) e raffreddamento su stampe molto lunghe.
+- Ristampa automatica dopo un errore a metà serie (la logica c'è in `ql_scenarios.py errore`, la prova è stata interrotta dal timeout di attesa).
+- Modalità 600 dpi con dati a 600 dpi: ignorata (§9).
 
 ## 8. Implicazioni per il software
 
