@@ -9,7 +9,7 @@ Tutto ciò che segue è stato **verificato sul dispositivo** salvo dove indicato
 - Su questo PC **non è installato alcun driver Brother** e non esiste una coda di stampa: Windows la vede come "Supporto stampa USB" (usbprint.sys) + "Stampante generica". Questo è sufficiente: possiamo parlarle **direttamente in raw** aprendo l'interfaccia USB, senza driver Brother né SDK b-PAC.
 - Ha **tre modalità comando** (Raster, ESC/P, P-touch Template), commutabili al volo. All'accensione parte in **P-touch Template** (impostazione statica letta dalla stampante, diversa dal "default ESC/P" dichiarato dal manuale).
 - Per la nostra app la modalità giusta è **Raster**: mandiamo noi la bitmap dell'etichetta (300 dpi), quindi font, layout e grassetti sono liberi. È la stessa modalità usata dal driver Windows di Brother.
-- Stato, supporto caricato, errori, avanzamento e fine stampa sono leggibili in tempo reale (32 byte di stato). Stampa di prova su nastro 62 mm **riuscita** con taglio automatico.
+- Stato, supporto caricato, errori, avanzamento e fine stampa sono leggibili in tempo reale (32 byte di stato). Stampe di prova su **entrambi i rotoli** (62 mm e 102 mm continuo) riuscite e verificate a vista: orientamento, centratura, scala e taglio automatico corretti.
 - Il protocollo raster è comune a tutta la famiglia QL (e in gran parte PT): astrarre un "driver Brother raster" con tabelle per modello è realistico. Altre marche (Zebra, Dymo, Epson TM) usano linguaggi diversi e richiedono adattatori separati.
 
 ## 2. Hardware e collegamento
