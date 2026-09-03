@@ -216,8 +216,8 @@ App (UI)  →  Renderer etichetta (modello + dati → bitmap 1-bit a 300 dpi, ro
 | Coperchio aperto (a riposo) | Monitor dello stato | Stato di tipo "errore" (`02`) con bit coperchio aperto, anche in risposta a `ESC i S`; rientra da solo alla chiusura, senza comandi. |
 | Rotolo tolto | Monitor dello stato, coperchio aperto | Larghezza 0 e tipo supporto `00`; il bit "no media" resta a 0. Il rotolo reinserito è riconosciuto subito, a coperchio ancora aperto. |
 | Coperchio aperto durante la stampa | 3 pagine da 80 mm, apertura dopo circa 1,5 s | Stato spontaneo `02` "coperchio aperto" in fase di stampa; il resto del job viene scartato; alla chiusura l'errore rientra da solo. Ristampa = nuovo job da capo (la stampante non riprende dal punto interrotto). |
-| 600 dpi (dati a 600 dpi) | `ESC i K` bit 6 e linee raddoppiate, in 7 varianti (bit da solo, con flag qualità, `ESC i K` prima di `ESC i z`, non compresso, bit `0x80`, senza cut-at-end, conteggio linee dimezzato) | **Ignorato dal firmware V2.17**: in tutte le varianti la stampante fa un passo da 300 dpi per ogni linea ricevuta (etichetta lunga il doppio, cerchio ovale). Limite noto, senza impatto sulle etichette del cliente. Unica strada rimasta: catturare i byte del driver Brother in modalità "300 × 600 dpi" (porta FILE:) e confrontarli. |
-| Priorità qualità | `ESC i z` n1 bit `0x40`, dati a 300 dpi | Funziona: stampa più lenta (3,4 s contro 2,8 s per 32 mm) con tratti fini leggermente più puliti; sui testi la differenza è quasi impercettibile. Da esporre nell'app come opzione "qualità alta" facoltativa, non come predefinita. |
+| 600 dpi (dati a 600 dpi) | `ESC i K` bit 6 e linee raddoppiate, in 7 varianti (bit da solo, con flag qualità, `ESC i K` prima di `ESC i z`, non compresso, bit `0x80`, senza cut-at-end, conteggio linee dimezzato) | **Ignorato dal firmware V2.17**: in tutte le varianti la stampante fa un passo da 300 dpi per ogni linea ricevuta (etichetta lunga il doppio, cerchio ovale). **Confermato dal driver Brother** (§9.2): per la QL-1100 offre una sola risoluzione, 300 × 300, e non invia mai il bit 600 dpi. La QL-1100 non ha questa modalità; il manuale, condiviso con altri modelli, la documenta genericamente. |
+| Priorità qualità | `ESC i z` n1 bit `0x40`, dati a 300 dpi | Funziona: stampa più lenta (3,4 s contro 2,8 s per 32 mm) con tratti fini leggermente più puliti; sui testi la differenza è quasi impercettibile. **È esattamente ciò che fa il driver Brother con "Priorità alla qualità di stampa"** (§9.2). Da esporre nell'app come opzione "qualità alta" facoltativa. |
 | Dati non compressi | `M 00`, 162 byte per linea | Funziona; job 6,7 volte più grande (102 KB contro 15 KB) e nessun vantaggio di tempo su USB. Restare su TIFF. |
 | Scollegamento USB / spegnimento | Ricerca via SetupAPI ogni secondo, riapertura automatica | Vedi §9.1. |
 
@@ -232,9 +232,18 @@ Prova con `tools/ql_scenarios.py riconnessione`: stato letto ogni secondo, ricer
 
 Regole per l'app: trattare l'errore 5 (e in generale qualsiasi errore di I/O) come "stampante scollegata", chiudere l'handle, e ripetere la ricerca via SetupAPI ogni secondo finché non ricompare; poi riaprire e rileggere lo stato. Non serve alcuna reinizializzazione particolare. Un job interrotto dallo scollegamento va rimandato da capo.
 
+### 9.2 Confronto con il driver Brother ufficiale
+
+Driver Windows "Brother QL-1100" 1.11.0d (2025-07-18, INF `bsq17av.inf`) installato con `pnputil`, coda aggiuntiva su porta file per catturare i byte (`tools/ql_parse_job.py` li decodifica). Catture in `docs/catture-driver/`.
+
+- Il driver espone **una sola risoluzione: 300 × 300 dpi** (enumerazione `PrinterResolutions`). Le stringhe "300 × 600 dpi" nelle risorse del driver appartengono ad altri modelli della famiglia.
+- Sequenza del driver per un'etichetta su 62 mm continuo: 350 NUL, `ESC @`, `ESC i a 01`, `ESC i ! 01` (notifiche automatiche **spente**: il driver interroga lo stato da solo), `ESC i U J` + 14 byte (identificativo job interno, "non necessario" da manuale), `ESC i z` n1=`86` (tipo, larghezza, recovery) larghezza 62, `ESC i M 40`, `ESC i A 01`, `ESC i K 08`, `ESC i d` 59 dot (**5 mm** di margine), `M 02`, linee raster (dichiara l'intera lunghezza pagina e riempie con `Z`), `1A`. **Identica alla nostra** salvo notifiche, job ID e margine.
+- Con "Priorità alla qualità di stampa" cambiano **due soli byte**: n1 diventa `C6` (aggiunto il bit `0x40`) e un byte nel blocco `ESC i U J` passa da `02` a `03`. Linee raster e `ESC i K` invariati: nessuna modalità 600 dpi.
+- Con il driver installato l'accesso raw via usbprint continua a funzionare (verificato): la coda Windows apre la porta solo durante un job.
+
 ## 10. Riferimenti
 
 - Raster Command Reference QL-1100/1110NWB/1115NWB v1.00 — https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
 - ESC/P Command Reference QL-1100/1110NWB v1.00 — https://download.brother.com/welcome/docp100367/cv_ql1100_1110_eng_escp_100.pdf
 - P-touch Template Command Reference QL-1100/1110NWB v1.00 — https://download.brother.com/welcome/docp100368/cv_ql1100_1110_eng_ptemp_100.pdf
-- Strumenti in questo repository: `tools/ql_probe.py` (apertura raw, ID, stato), `tools/ql_settings_readout.py` (lettura impostazioni nelle tre modalità), `tools/ql_testprint.py` (stampa di prova raster con anteprima PNG), `tools/ql_status_experiments*.py` (esperimenti che hanno portato alle regole del §5).
+- Strumenti in questo repository: `tools/ql_probe.py` (apertura raw, ID, stato), `tools/ql_settings_readout.py` (lettura impostazioni nelle tre modalità), `tools/ql_testprint.py` (stampa di prova raster con anteprima PNG), `tools/ql_raster.py` (modulo di protocollo riutilizzabile), `tools/ql_usb.py` (enumerazione SetupAPI), `tools/ql_scenarios.py` (scenari del §9), `tools/ql_parse_job.py` (decodifica di un job raster catturato), `tools/ql_status_experiments*.py` (esperimenti che hanno portato alle regole del §5).
