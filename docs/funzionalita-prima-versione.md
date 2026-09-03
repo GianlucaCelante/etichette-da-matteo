@@ -30,6 +30,9 @@ Da chiarire con chi gestisce la rete: prenotazione dell'indirizzo del PC sul rou
 | **Controllo della data del PC** | Tutte le scadenze dipendono da lì: se la data è sbagliata, avviso prima di stampare |
 | **Qualità alta facoltativa** | Flag verificato sulla stampante: tratti fini più puliti, stampa un po' più lenta |
 | **Stati della stampante in chiaro** | "Pronta · rotolo 62 mm", "Coperchio aperto", "Stampante spenta o scollegata" |
+| **Stampa in corso con annullamento** | Le copie partono una alla volta, quindi fermare la serie funziona davvero. Mostra a che copia è arrivata |
+| **Conferma dopo la stampa** | Chi stampa dal telefono non vede la stampante: senza conferma non sa se l'etichetta è uscita |
+| **Ripresa dopo un errore** | Coperchio aperto a metà serie: alla chiusura riprende dalla copia interrotta, senza rifare le precedenti |
 
 ### I quattro tipi di etichetta
 
