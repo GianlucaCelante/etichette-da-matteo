@@ -92,7 +92,7 @@ Ogni linea è **162 byte = 1296 bit**, bit 1 = punto nero. **Ordine dei bit, ver
 | Rotolo | Larghezza nastro | Area stampabile | Offset bordo | Pin utili (0-based) | Posizione nella linea trasmessa (dopo l'inversione) | Note |
 |---|---|---|---|---|---|---|
 | **62 mm continuo** (DK-22205, 62 mm × 30,48 m — quello caricato oggi) | 62,0 mm / 732 dot | **58,9 mm / 696 dot** | 1,5 mm / 18 dot | 544 → 1239 | bit 56 → 751 = byte 7 → 93 (allineato al byte) | Il manuale raster riporta "sx 544 / dx 44" (somma ≠ 1296); il manuale ESC/P indica pin 545–1240, quindi **destro = 56**. Coerente con la stampa di prova. |
-| **102 mm continuo** (DK-22243, 102 mm × 30,48 m) | 101,6 mm / 1200 dot | **98,6 mm / 1164 dot** | 1,5 mm / 18 dot | 76 → 1239 | bit 56 → 1219 (**non allineato al byte** in coda) | Non testato oggi (rotolo non caricato). |
+| **102 mm continuo** (DK-22243, 102 mm × 30,48 m) | 101,6 mm / 1200 dot | **98,6 mm / 1164 dot** | 1,5 mm / 18 dot | 76 → 1239 | bit 56 → 1219 (**non allineato al byte** in coda) | **Verificato con stampa di prova**: cornice intera, bordi uguali, righello esatto. |
 
 Nota sui formati indicati dal cliente: "62 mm × 8 m" corrisponde al DK-22205 da 30,48 m o a un rotolo compatibile; per il protocollo conta solo la larghezza, che la stampante rileva da sola (byte 10 dello stato).
 
@@ -177,11 +177,10 @@ Testato oggi:
 - Lettura ID 1284, stato porta, stato completo (`ESC i S`) ×10+ con polling corretto.
 - Commutazione fra le tre modalità e lettura di 26 impostazioni.
 - Stampa raster su nastro continuo 62 mm con compressione TIFF, margine 3 mm, taglio automatico; ricezione degli stati di avanzamento.
-- Orientamento e ordine dei bit: prima prova specchiata e fuori nastro → linea invertita → seconda prova stampata (stati identici, "completata" a 2,4 s); esito visivo della seconda prova da confermare (centratura attesa: 1,5 mm di bordo per lato).
+- Orientamento e ordine dei bit: prima prova specchiata e fuori nastro → linea invertita → seconda prova **corretta a vista** (testo dritto, cornice intera, bordi bianchi uguali sui due lati, "completata" a 2,4 s). Pin 544–1239 confermati per il 62 mm.
+- Rotolo 102 mm continuo: rilevato dallo stato (larghezza 102, tipo continuo) al cambio rotolo; stampa di prova da 45 mm **corretta a vista** (pin 76–1239 confermati, righello a 90 mm esatto, "completata" a 2,9 s). Il cambio rotolo a caldo non richiede riavvii né comandi.
 
 Non testato:
-
-- Rotolo 102 mm (pin non allineati al byte: il codice di impaccamento è già generico, ma va provato).
 - Stampe multipagina (FF fra pagine), taglio ogni N, modalità 600 dpi, priorità qualità, gestione errori a rotolo finito e coperchio aperto, raffreddamento su stampe lunghe.
 - Riconnessione a caldo (scollega/ricollega USB, spegni/accendi) e comportamento quando l'app è aperta.
 

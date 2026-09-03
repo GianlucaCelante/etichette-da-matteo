@@ -181,31 +181,49 @@ def main():
     ap.add_argument("--no-cut", action="store_true")
     ap.add_argument("--mirror", action="store_true", help="specchia orizzontalmente il raster")
     ap.add_argument("--length-mm", type=float, default=45)
+    ap.add_argument("--wait-for", type=int, default=0,
+                    help="aspetta (fino a --wait-timeout s) che sia caricato un nastro continuo di questa larghezza in mm")
+    ap.add_argument("--wait-timeout", type=int, default=300)
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "testprint_preview.png"))
     args = ap.parse_args()
 
     media_mm = 62
     if not args.render_only:
         p = UsbPrinter()
-        drain(p)
-        p.write(b"\x1biS")
-        d = poll_read(p)
-        if len(d) < 32:
-            print("Nessuna risposta di stato: interrompo.")
-            return 1
-        s = decode_status(d[:32])
-        print("Stato iniziale:", fmt_status(d))
-        if s["error1"] or s["error2"]:
-            print("Errori presenti, interrompo.")
-            return 1
-        if not s["media_type"].startswith("0x0A"):
-            print("Non e' caricato un nastro continuo: interrompo.")
-            return 1
+        deadline = time.time() + args.wait_timeout
+        last_msg = None
+        while True:
+            drain(p)
+            p.write(b"\x1biS")
+            d = poll_read(p)
+            if len(d) < 32:
+                msg = "nessuna risposta di stato"
+                s = None
+            else:
+                s = decode_status(d[:32])
+                msg = fmt_status(d)
+            if msg != last_msg:
+                print("Stato:", msg, flush=True)
+                last_msg = msg
+            ok = (s is not None and not s["error1"] and not s["error2"]
+                  and s["media_type"].startswith("0x0A")
+                  and (args.wait_for == 0 or s["media_width_mm"] == args.wait_for))
+            if ok:
+                break
+            if args.wait_for == 0 or time.time() > deadline:
+                print("Condizioni non soddisfatte (serve nastro continuo%s senza errori): interrompo." % (
+                    " da %d mm" % args.wait_for if args.wait_for else ""))
+                p.close()
+                return 1
+            time.sleep(1.0)
         media_mm = s["media_width_mm"]
         if media_mm not in CONTINUOUS:
             print("Larghezza nastro %d non gestita" % media_mm)
+            p.close()
             return 1
         p.close()
+        if args.wait_for:
+            time.sleep(2.0)  # lascia chiudere bene il coperchio / assestare il rotolo
 
     im = render_label(CONTINUOUS[media_mm]["print"], args.length_mm, media_mm)
     im.save(args.out)
