@@ -5,7 +5,7 @@
   ],
   "artboards": [
     { "file": "Main.dc.html", "title": "Stampa", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "StampaInCorso.dc.html", "title": "Stampa in corso · con Annulla", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "StampaInCorso.dc.html", "title": "Stampa in corso · si può fermare", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
     { "file": "StampaErrore.dc.html", "title": "Errore · coperchio aperto", "x": 2720, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
 
     { "file": "Prodotti.dc.html", "title": "Prodotti", "x": 0, "y": 980, "w": 1280, "h": 800, "page": "page-1" },
