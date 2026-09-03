@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #f7f4ef; color: #221f1b; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #d5482a; } a:hover { color: #b23a20; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .row { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-radius: 14px; background: #ffffff; border: 1px solid #e4dfd6; font-size: 17px; font-weight: 700; }
+    .row .c { font-size: 13px; font-weight: 400; color: #6b655c; }
+    .row.sel { border: 2px solid #d5482a; padding: 0 15px; box-shadow: 0 0 0 4px #fbe9e3; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .lab { font-size: 12px; font-weight: 700; color: #6b655c; letter-spacing: 0.02em; text-transform: uppercase; }
+    .in { height: 52px; border: 1px solid #d9d3c8; border-radius: 12px; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 20px; font-weight: 700; box-sizing: border-box; }
+    .tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 700; color: #6b655c; }
+    .tab.on { color: #b23a20; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; overflow: hidden; background: #f7f4ef; box-sizing: border-box; padding-top: 54px;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 20px 12px 20px;">
+    <div class="h" style="font-size: 24px; font-weight: 700;">Stampa</div>
+    <div style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 10px; border-radius: 18px; background: #e6f4ea; color: #1c6b3f; font-weight: 700; font-size: 13px;">
+      <span style="width: 9px; height: 9px; border-radius: 50%; background: #2a9a5f;"></span>
+      <span>62 mm · pronta</span>
+    </div>
+  </div>
+
+  <div style="padding: 0 20px 12px 20px;">
+    <div style="height: 52px; border: 1px solid #d9d3c8; border-radius: 14px; background: #ffffff; display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box; color: #8a837a; font-size: 16px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+      <span>Cerca prodotto…</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 20px;">
+    <div class="row sel"><span>Base pizza low carb</span><span class="c">7 gg</span></div>
+    <div class="row"><span>Impasto classico 24h</span><span class="c">3 gg</span></div>
+    <div class="row"><span>Salsa di pomodoro</span><span class="c">4 gg</span></div>
+  </div>
+
+  <div style="margin-top: 14px; flex: 1; background: #ffffff; border-top-left-radius: 24px; border-top-right-radius: 24px; border: 1px solid #e4dfd6; border-bottom: none; padding: 14px 20px 0 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 -8px 24px rgba(34,31,27,0.08);">
+    <div style="width: 44px; height: 5px; border-radius: 3px; background: #d9d3c8; align-self: center; margin-top: -4px;"></div>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div class="h" style="font-size: 19px; font-weight: 600;">Base pizza low carb</div>
+      <a href="#" style="font-size: 13px; font-weight: 700; text-decoration: none;">Anteprima</a>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+      <div class="field"><div class="lab">Quantità</div><div class="in"><span>2148</span><span style="margin-left: auto; color: #8a837a; font-size: 15px; font-weight: 400;">g</span></div></div>
+      <div class="field"><div class="lab">Scadenza</div><div class="in" style="font-size: 17px;"><span>10/09/2026</span></div></div>
+      <div class="field"><div class="lab">Lotto</div><div class="in" style="font-size: 15px;"><span>L 20260903-001</span></div></div>
+      <div class="field"><div class="lab">Copie</div><div style="display: flex; gap: 6px; height: 52px;"><div style="width: 48px; border: 1px solid #d9d3c8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">−</div><div class="in" style="flex: 1; justify-content: center;">1</div><div style="width: 48px; border: 1px solid #d9d3c8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">+</div></div></div>
+    </div>
+    <div style="height: 60px; border-radius: 14px; background: #d5482a; color: #ffffff; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 19px; font-weight: 700;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg>
+      <span>Stampa 1 etichetta</span>
+    </div>
+  </div>
+
+  <div style="display: flex; background: #fffdf9; border-top: 1px solid #e4dfd6; padding-bottom: 18px;">
+    <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Prodotti</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg><span>Modelli</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

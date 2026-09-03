@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #ffffff; color: #222222; font-family: "Kalam", "Segoe Print", "Comic Sans MS", cursive; }
+    a { color: #d5482a; } a:hover { color: #b23a20; }
+    .tile { border: 2px solid #222222; border-radius: 10px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 26px; font-weight: 700; background: #ffffff; padding: 12px; box-sizing: border-box; }
+    .box { border: 2px dashed #777777; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #444444; box-sizing: border-box; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; position: relative; overflow: hidden; background: #2a2a2a; box-sizing: border-box; padding: 28px 36px; display: flex; flex-direction: column; gap: 18px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; color: #ffffff;">
+    <div style="font-size: 34px; font-weight: 700;">Cosa stai etichettando?</div>
+    <div style="font-size: 18px; border: 2px solid #ffffff; border-radius: 20px; padding: 4px 16px;">rotolo 62 mm · pronta</div>
+  </div>
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 16px;">
+    <div class="tile" style="background: #fbe9e3; border-color: #d5482a;">Base pizza low carb</div>
+    <div class="tile">Impasto classico 24h</div>
+    <div class="tile">Impasto integrale</div>
+    <div class="tile">Salsa di pomodoro</div>
+    <div class="tile">Crema di zucca</div>
+    <div class="tile">Mozzarella tagliata</div>
+    <div class="tile">Pesto di basilico</div>
+    <div class="tile" style="border-style: dashed; color: #777777;">altri prodotti…</div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 300px; background: #ffffff; border-top-left-radius: 26px; border-top-right-radius: 26px; padding: 22px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 -10px 30px rgba(0,0,0,0.35);">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-size: 30px; font-weight: 700;">Base pizza low carb</div>
+      <div style="font-size: 18px; color: #666666;">tocca fuori per annullare</div>
+    </div>
+    <div style="display: flex; gap: 16px; flex: 1;">
+      <div class="box" style="flex: 1;">Quantità: 2148 g (tastierino grande)</div>
+      <div class="box" style="flex: 1;">Scadenza: 10/09/2026 (+7 gg)</div>
+      <div class="box" style="flex: 1;">Copie: − 1 +</div>
+    </div>
+    <div style="height: 84px; border-radius: 14px; background: #d5482a; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700;">STAMPA</div>
+  </div>
+
+  <div style="position: absolute; left: 36px; top: 250px; width: 360px; background: #fff7c2; border: 2px solid #e2c94a; border-radius: 8px; padding: 12px 14px; font-size: 17px; line-height: 1.35; transform: rotate(-2deg); box-shadow: 4px 6px 0 rgba(0,0,0,0.25);">
+    <strong>Direzione B — "Schermo cucina".</strong> Un solo gesto: tocchi il prodotto, confermi, stampi. Niente menu: prodotti e impostazioni si aprono con una pressione lunga sul titolo.<br><strong>Pro:</strong> perfetta per touch e mani sporche, zero apprendimento.<br><strong>Contro:</strong> con più di 20 prodotti servono pagine; la gestione prodotti resta "nascosta".
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

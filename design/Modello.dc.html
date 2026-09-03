@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #f7f4ef; color: #221f1b; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #d5482a; } a:hover { color: #b23a20; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .nav { width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6b655c; font-size: 12px; font-weight: 700; }
+    .nav.active { background: #fbe9e3; color: #b23a20; }
+    .row { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-radius: 12px; font-size: 17px; font-weight: 700; }
+    .row span.c { font-size: 13px; font-weight: 400; color: #6b655c; }
+    .row.sel { background: #fbe9e3; color: #b23a20; }
+    .blk { height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: 1px solid #e4dfd6; border-radius: 12px; background: #ffffff; font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .blk.off { color: #8a837a; background: #faf8f4; }
+    .sw { width: 48px; height: 28px; border-radius: 14px; background: #2a9a5f; position: relative; flex-shrink: 0; }
+    .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; }
+    .sw.off { background: #cfc9be; }
+    .sw.off::after { right: auto; left: 3px; }
+    .seg { display: flex; border: 1px solid #d9d3c8; border-radius: 8px; overflow: hidden; height: 32px; margin-left: auto; }
+    .seg span { width: 34px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #6b655c; }
+    .seg span.on { background: #221f1b; color: #ffffff; }
+    .lbl { background: #ffffff; border: 1px solid #cfc9be; box-shadow: 0 6px 18px rgba(34,31,27,0.10); font-family: "Segoe UI", Arial, sans-serif; color: #111; }
+    .grip { color: #b5ada1; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; overflow: hidden; background: #f7f4ef; box-sizing: border-box;">
+
+  <div style="width: 88px; background: #fffdf9; border-right: 1px solid #e4dfd6; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; box-sizing: border-box; flex-shrink: 0;">
+    <div style="width: 44px; height: 44px; border-radius: 12px; background: #d5482a; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8L3 12z"></path><circle cx="8" cy="9" r="1.5"></circle></svg>
+    </div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Prodotti</span></div>
+    <div class="nav active"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg><span>Modelli</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; box-sizing: border-box;">
+      <div class="h" style="font-size: 28px; font-weight: 700; letter-spacing: -0.01em;">Modelli di etichetta</div>
+      <div style="height: 48px; padding: 0 20px; border-radius: 12px; background: #221f1b; color: #ffffff; display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+        <span>Nuovo modello</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; gap: 24px; padding: 0 32px 28px 32px; box-sizing: border-box; min-height: 0;">
+
+      <div style="width: 230px; flex-shrink: 0; background: #ffffff; border: 1px solid #e4dfd6; border-radius: 18px; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px;">
+        <div class="row sel"><span>Completa</span><span class="c">vendita</span></div>
+        <div class="row"><span>Cucina</span><span class="c">interna</span></div>
+        <div class="row"><span>Ingrediente sfuso</span><span class="c">solo data</span></div>
+        <div style="margin-top: auto; font-size: 13px; color: #6b655c; line-height: 1.4; padding: 8px 6px 2px 6px;">Ogni prodotto usa un modello. I blocchi accesi qui decidono cosa finisce sull'etichetta.</div>
+      </div>
+
+      <div style="width: 440px; flex-shrink: 0; background: #ffffff; border: 1px solid #e4dfd6; border-radius: 18px; padding: 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <div class="h" style="font-size: 19px; font-weight: 600;">Blocchi di "Completa"</div>
+          <div style="font-size: 13px; color: #6b655c;">trascina per ordinare</div>
+        </div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Titolo prodotto</span><div class="seg"><span>S</span><span>M</span><span class="on">L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Ingredienti</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Può contenere</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div class="blk off"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw off"></div><span>Modo d'uso</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Scadenza + conservazione</span><div class="seg"><span>S</span><span class="on">M</span><span>L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Lotto</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Quantità</span><div class="seg"><span>S</span><span>M</span><span class="on">L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Valori nutrizionali</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div class="blk"><svg class="grip" width="12" height="20" viewBox="0 0 12 20" fill="currentColor"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg><div class="sw"></div><span>Produttore</span><div class="seg"><span class="on">S</span><span>M</span><span>L</span></div></div>
+        <div style="margin-top: auto; display: flex; gap: 10px;">
+          <div style="flex: 1; height: 48px; border-radius: 12px; border: 1px solid #d9d3c8; background: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700;">Stampa di prova</div>
+          <div style="flex: 1; height: 48px; border-radius: 12px; background: #d5482a; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700;">Salva modello</div>
+        </div>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="h" style="font-size: 19px; font-weight: 600;">Anteprima sui due rotoli</div>
+          <div style="font-size: 13px; color: #6b655c;">Il layout si adatta da solo al rotolo caricato</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 13px; font-weight: 700; color: #6b655c; text-transform: uppercase; letter-spacing: 0.02em;">Rotolo 62 mm · testo lungo il nastro · 108 × 59 mm</div>
+          <div class="lbl" style="width: 352px; height: 192px; padding: 8px 10px; box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; font-size: 6.4px; line-height: 1.25;">
+            <div style="font-size: 11.5px; font-weight: 700; border-bottom: 1px solid #111; padding-bottom: 2px;">BASE PIZZA LOW CARB ARTIGIANALE</div>
+            <div style="font-size: 6.2px; line-height: 1.3;"><strong>INGREDIENTI:</strong> Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di <strong>FRUMENTO</strong>, Fibra di <strong>FRUMENTO</strong>, Lievito madre di farina di <strong>FRUMENTO</strong> in polvere, Lievito disattivato, Proteina di <strong>AVENA</strong>], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante per panificazione [Farina di <strong>GRANO</strong> tenero tipo 0, Enzimi], Miscela per spolvero [<strong>SEMOLA</strong> rimacinata di <strong>GRANO</strong> duro, Farina di riso, Farina di mais].</div>
+            <div><u>Può contenere</u>: <strong>Latte</strong>, Lupini, <strong>Senape</strong>, <strong>Sesamo</strong>, <strong>Soia</strong>, <strong>Uova</strong></div>
+            <div style="display: flex; gap: 10px; margin-top: 2px; flex: 1;">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                <div>da consumare entro <strong>10/09/2026</strong> · CONSERVAZIONE FUORI DAL FRIGO</div>
+                <div>L 20260903-001</div>
+                <div style="font-size: 7px; font-weight: 700; margin-top: 3px;">Quantità</div>
+                <div style="font-size: 15px; font-weight: 700; line-height: 1;">2148 g</div>
+                <div style="font-size: 5.4px; margin-top: auto; line-height: 1.3;">Michi s.n.c. di Michele Alberto Crivellari · Via Brigata Marche 257 - 31030 Carbonera (TV)</div>
+              </div>
+              <div style="width: 112px; border-left: 1px solid #111; padding-left: 6px; font-size: 5.6px; display: flex; flex-direction: column; gap: 1px;">
+                <div style="display: flex; justify-content: space-between; font-weight: 700; border-bottom: 1px solid #111;"><span>VALORI NUTRIZIONALI</span><span>(100 g)</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>ENERGIA</span><span>385 kJ / 91 kcal</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>GRASSI</span><span>2,6 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>di cui saturi</span><span>0,5 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>CARBOIDRATI</span><span>2 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>di cui zuccheri</span><span>0,7 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>PROTEINE</span><span>15 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>SALE</span><span>1,5 g</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 13px; font-weight: 700; color: #6b655c; text-transform: uppercase; letter-spacing: 0.02em;">Rotolo 102 mm · testo attraverso il nastro · 99 × 90 mm</div>
+          <div class="lbl" style="width: 322px; height: 293px; padding: 10px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; font-size: 7.6px; line-height: 1.3;">
+            <div style="font-size: 15px; font-weight: 700; line-height: 1.05;">BASE PIZZA LOW CARB ARTIGIANALE</div>
+            <div style="border-top: 1px solid #111; padding-top: 3px;"><strong>INGREDIENTI:</strong> Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di <strong>FRUMENTO</strong>, Fibra di <strong>FRUMENTO</strong>, Lievito madre di farina di <strong>FRUMENTO</strong> in polvere, Lievito disattivato, Proteina di <strong>AVENA</strong>], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante per panificazione [Farina di <strong>GRANO</strong> tenero tipo 0, Enzimi], Miscela per spolvero [<strong>SEMOLA</strong> rimacinata di <strong>GRANO</strong> duro, Farina di riso, Farina di mais].</div>
+            <div style="border-bottom: 1px solid #111; padding-bottom: 3px;"><u>Può contenere</u>: <strong>Latte</strong>, Lupini, <strong>Senape</strong>, <strong>Sesamo</strong>, <strong>Soia</strong>, <strong>Uova</strong></div>
+            <div style="display: flex; gap: 12px; flex: 1;">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 3px;">
+                <div>da consumarsi preferibilmente entro il <strong>10/09/2026</strong></div>
+                <div style="font-weight: 700;">CONSERVAZIONE FACILE FUORI DAL FRIGO</div>
+                <div>L 20260903-001</div>
+                <div style="font-size: 9px; font-weight: 700; margin-top: 6px;">Quantità</div>
+                <div style="font-size: 20px; font-weight: 700; line-height: 1;">2148 g</div>
+                <div style="font-size: 6.4px; margin-top: auto; line-height: 1.3;">Prodotto e confezionato da: Michi s.n.c. di Michele Alberto Crivellari · Via Brigata Marche 257 - 31030 Carbonera (TV)</div>
+              </div>
+              <div style="width: 128px; border-left: 1px solid #111; padding-left: 8px; font-size: 6.8px; display: flex; flex-direction: column; gap: 2px;">
+                <div style="display: flex; justify-content: space-between; font-weight: 700; border-bottom: 1px solid #111;"><span>VALORI NUTRIZIONALI</span><span>(100 g)</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>ENERGIA</span><span>385 kJ / 91 kcal</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>GRASSI</span><span>2,6 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>di cui saturi</span><span>0,5 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>CARBOIDRATI</span><span>2 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>di cui zuccheri</span><span>0,7 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>PROTEINE</span><span>15 g</span></div>
+                <div style="display: flex; justify-content: space-between;"><span>SALE</span><span>1,5 g</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
