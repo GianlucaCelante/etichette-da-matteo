@@ -162,6 +162,46 @@ def sc_hires2(p, media):
         R.drain(p)
 
 
+def sc_hires3(p, media):
+    """Ultime ipotesi sul bit di alta risoluzione: 0x80, 0x40 senza cut-at-end, conteggio linee dichiarato a 300 dpi."""
+    from PIL import Image, ImageDraw, ImageFont
+    w = R.CONTINUOUS[media]["print"]
+    spec = R.CONTINUOUS[media]
+
+    def label(title):
+        H2 = R.mm(26, 600)
+        im = Image.new("L", (w * 2, H2), 255)
+        d = ImageDraw.Draw(im)
+        d.rectangle([0, 0, w * 2 - 1, H2 - 1], outline=0, width=4)
+        d.text((24, 16), title, font=ImageFont.truetype(R.FONT_BOLD, 60), fill=0)
+        cx, cy, r = w * 2 - 300, H2 // 2, H2 // 2 - 40
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=0, width=6)
+        return im.resize((w, H2), Image.LANCZOS).point(lambda v: 255 if v > 140 else 0).convert("1")
+
+    def job_variant(bw, k_byte, rcount, quality):
+        n1 = 0x80 | 0x04 | 0x02 | (0x40 if quality else 0)
+        j = bytearray(b"\x00" * 400 + b"\x1b@" + b"\x1bia\x01" + b"\x1bi!\x00")
+        j += b"\x1biz" + bytes([n1, 0x0A, media, 0]) + rcount.to_bytes(4, "little") + b"\x00\x00"
+        j += b"\x1biM\x40" + b"\x1biA\x01" + b"\x1biK" + bytes([k_byte]) + b"\x1bid\x23\x00" + b"M\x02"
+        for y in range(bw.size[1]):
+            j += R.line_bytes(bw, y, spec["left"])
+        j += b"\x1a"
+        return bytes(j)
+
+    variants = [
+        ("V5 K=0x88", dict(k_byte=0x88, quality=False, half=False)),
+        ("V6 K=0x40 senza cut-at-end", dict(k_byte=0x40, quality=True, half=False)),
+        ("V7 K=0x48 linee dichiarate /2", dict(k_byte=0x48, quality=True, half=True)),
+    ]
+    for name, kw in variants:
+        bw = label(name)
+        rcount = bw.size[1] // 2 if kw["half"] else bw.size[1]
+        job = job_variant(bw, kw["k_byte"], rcount, kw["quality"])
+        run_job(p, job, 1, "hires %s (%d linee, dichiarate %d)" % (name, bw.size[1], rcount))
+        time.sleep(1.0)
+        R.drain(p)
+
+
 def sc_annulla2(p, media):
     """Pattern per l'app: una pagina alla volta (FF), attesa di 'completata', annullamento = non inviare la successiva."""
     w = R.CONTINUOUS[media]["print"]
@@ -295,7 +335,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", choices=["auto", "monitor", "errore", "riconnessione"])
     ap.add_argument("arg", nargs="?", type=int, default=60)
-    ap.add_argument("--only", choices=["multipagina", "taglio", "hires", "annulla", "annulla2", "hires2"])
+    ap.add_argument("--only", choices=["multipagina", "taglio", "hires", "annulla", "annulla2", "hires2", "hires3"])
     a = ap.parse_args()
 
     if a.scenario == "riconnessione":
@@ -313,7 +353,7 @@ def main():
             sc_errore(p, media)
             return
         steps = {"multipagina": sc_multipagina, "taglio": sc_taglio, "hires": sc_hires, "annulla": sc_annulla,
-                 "annulla2": sc_annulla2, "hires2": sc_hires2}
+                 "annulla2": sc_annulla2, "hires2": sc_hires2, "hires3": sc_hires3}
         for name, fn in steps.items():
             if a.only and a.only != name:
                 continue

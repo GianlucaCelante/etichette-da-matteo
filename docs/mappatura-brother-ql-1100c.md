@@ -24,7 +24,7 @@ Tutto ciò che segue è stato **verificato sul dispositivo** salvo dove indicato
 | Altri collegamenti | Nessuno (solo USB-B e alimentazione) |
 | IEEE 1284 Device ID | `MFG:Brother;CMD:PT-CBP;MDL:QL-1100;CLS:PRINTER;CID:Brother QL Type1;` |
 | Firmware | `QL-1100    V2.17` (comando `^VR`) |
-| Risoluzione | 300 × 300 dpi (11,81 punti/mm); 600 dpi nel senso di avanzamento attivabile (`ESC i K` bit 6) |
+| Risoluzione | 300 × 300 dpi (11,81 punti/mm). La modalità 600 dpi nel senso di avanzamento (`ESC i K` bit 6) è documentata ma **ignorata da questo firmware** (§9); esiste invece una modalità "priorità qualità" a 300 dpi, più lenta e leggermente più nitida |
 | Testina | 1296 pin → 162 byte per linea raster |
 
 ### 2.1 Come la vede Windows
@@ -212,7 +212,8 @@ App (UI)  →  Renderer etichetta (modello + dati → bitmap 1-bit a 300 dpi, ro
 | Coperchio aperto (a riposo) | Monitor dello stato | Stato di tipo "errore" (`02`) con bit coperchio aperto, anche in risposta a `ESC i S`; rientra da solo alla chiusura, senza comandi. |
 | Rotolo tolto | Monitor dello stato, coperchio aperto | Larghezza 0 e tipo supporto `00`; il bit "no media" resta a 0. Il rotolo reinserito è riconosciuto subito, a coperchio ancora aperto. |
 | Coperchio aperto durante la stampa | 3 pagine da 80 mm, apertura dopo circa 1,5 s | Stato spontaneo `02` "coperchio aperto" in fase di stampa; il resto del job viene scartato; alla chiusura l'errore rientra da solo. Ristampa = nuovo job da capo (la stampante non riprende dal punto interrotto). |
-| 600 dpi | `ESC i K` bit 6 e linee raddoppiate | Con il solo bit di `ESC i K` la stampante ha stampato a passo 300 dpi (etichetta lunga il doppio, testo stirato). Con in più il flag "priorità qualità" (`ESC i z` n1 bit `0x40`) il tempo sale da 2,8 a 4,1 s: esito visivo da confermare. |
+| 600 dpi (dati a 600 dpi) | `ESC i K` bit 6 e linee raddoppiate, in 7 varianti (bit da solo, con flag qualità, `ESC i K` prima di `ESC i z`, non compresso, bit `0x80`, senza cut-at-end, conteggio linee dimezzato) | **Ignorato dal firmware V2.17**: in tutte le varianti la stampante fa un passo da 300 dpi per ogni linea ricevuta (etichetta lunga il doppio, cerchio ovale). Limite noto, senza impatto sulle etichette del cliente. Unica strada rimasta: catturare i byte del driver Brother in modalità "300 × 600 dpi" (porta FILE:) e confrontarli. |
+| Priorità qualità | `ESC i z` n1 bit `0x40`, dati a 300 dpi | Funziona: stampa più lenta (3,4 s contro 2,8 s per 32 mm) con tratti fini leggermente più puliti; sui testi la differenza è quasi impercettibile. Da esporre nell'app come opzione "qualità alta" facoltativa, non come predefinita. |
 | Dati non compressi | `M 00`, 162 byte per linea | Funziona; job 6,7 volte più grande (102 KB contro 15 KB) e nessun vantaggio di tempo su USB. Restare su TIFF. |
 | Scollegamento USB / spegnimento | Ricerca via SetupAPI ogni secondo, riapertura automatica | Vedi §9.1. |
 
