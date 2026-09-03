@@ -5,8 +5,9 @@ Piccola applicazione per stampare etichette alimentari (preparazioni e ingredien
 ## Stato del progetto (2026-09-03)
 
 - **Stampante mappata e verificata**: comunicazione raw via USB senza driver Brother, lettura stato e impostazioni, stampe di prova in modalità raster riuscite su entrambi i rotoli (62 e 102 mm). Tutto in [`docs/mappatura-brother-ql-1100c.md`](docs/mappatura-brother-ql-1100c.md).
-- **Interfaccia disegnata**: [canvas di design](https://claude.ai/code/artifact/cc8ac916-9882-434b-955a-bd521db09cac) con le schermate Stampa, Prodotti, Modelli di etichetta, Impostazioni, la vista da telefono e due direzioni alternative. Sorgenti degli artboard in [`design/`](design/).
-- **Da decidere**: forma dell'app (desktop Windows, oppure web app locale con il PC come ponte USB) e stack tecnologico.
+- **Interfaccia disegnata**: [canvas di design](https://claude.ai/code/artifact/e8537537-bab9-4cce-a2f3-0dec57fc9bd2) con le schermate Stampa, Prodotti, Modelli di etichetta, Modello libero, Storico, Impostazioni, la vista da telefono e due direzioni alternative. Sorgenti degli artboard in [`design/`](design/).
+- **Forma dell'app e funzioni decise**: un unico programma sul PC collegato via USB, che pubblica l'interfaccia sulla rete locale e la mostra anche in una finestra sul PC. Elenco delle funzioni della prima versione in [`docs/funzionalita-prima-versione.md`](docs/funzionalita-prima-versione.md).
+- **Da decidere**: stack tecnologico (sul PC ci sono .NET 8, Node 24, Python 3.14).
 
 ## Struttura
 

@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #f7f4ef; color: #221f1b; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #d5482a; } a:hover { color: #b23a20; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .nav { width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6b655c; font-size: 12px; font-weight: 700; }
+    .nav.active { background: #fbe9e3; color: #b23a20; }
+    .pal { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid #e4dfd6; border-radius: 10px; background: #ffffff; font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .pal.used { background: #faf8f4; color: #a9a297; border-style: dashed; }
+    .pal .plus { margin-left: auto; color: #d5482a; font-size: 19px; font-weight: 700; }
+    .grp { font-size: 12px; font-weight: 700; color: #6b655c; text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 2px 2px; }
+    .blk { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e4dfd6; border-radius: 12px; background: #ffffff; font-size: 15px; font-weight: 700; }
+    .blk.free { border-color: #d5482a; background: #fffaf8; }
+    .blk.drag { border-style: dashed; border-color: #b5ada1; background: #f2efe9; color: #6b655c; }
+    .seg { display: flex; border: 1px solid #d9d3c8; border-radius: 8px; overflow: hidden; height: 30px; margin-left: auto; flex-shrink: 0; }
+    .seg span { width: 32px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #6b655c; }
+    .seg span.on { background: #221f1b; color: #ffffff; }
+    .x { color: #b5ada1; font-size: 17px; flex-shrink: 0; }
+    .lbl { background: #ffffff; border: 1px solid #cfc9be; box-shadow: 0 6px 18px rgba(34,31,27,0.10); font-family: "Segoe UI", Arial, sans-serif; color: #111; }
+    .in { height: 48px; border: 1px solid #d9d3c8; border-radius: 12px; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 17px; box-sizing: border-box; }
+    .tabr { display: flex; border: 1px solid #d9d3c8; border-radius: 10px; overflow: hidden; height: 36px; }
+    .tabr span { padding: 0 16px; display: flex; align-items: center; font-size: 14px; font-weight: 700; color: #6b655c; }
+    .tabr span.on { background: #221f1b; color: #ffffff; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; overflow: hidden; background: #f7f4ef; box-sizing: border-box;">
+
+  <div style="width: 88px; background: #fffdf9; border-right: 1px solid #e4dfd6; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; box-sizing: border-box; flex-shrink: 0;">
+    <div style="width: 44px; height: 44px; border-radius: 12px; background: #d5482a; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8L3 12z"></path><circle cx="8" cy="9" r="1.5"></circle></svg>
+    </div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Prodotti</span></div>
+    <div class="nav active"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg><span>Modelli</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Storico</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div style="height: 76px; display: flex; align-items: center; gap: 16px; padding: 0 32px; box-sizing: border-box;">
+      <div class="h" style="font-size: 26px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap;">Nuovo modello libero</div>
+      <div class="in" style="width: 300px; font-weight: 700;">Menu del giorno</div>
+      <div style="font-size: 13px; color: #6b655c; max-width: 260px; line-height: 1.35;">Dopo il salvataggio diventa un tipo di etichetta, come Completa o Cucina.</div>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <div style="height: 48px; padding: 0 20px; border-radius: 12px; border: 1px solid #d9d3c8; background: #ffffff; display: flex; align-items: center; font-size: 15px; font-weight: 700;">Stampa di prova</div>
+        <div style="height: 48px; padding: 0 24px; border-radius: 12px; background: #d5482a; color: #ffffff; display: flex; align-items: center; font-size: 16px; font-weight: 700;">Salva modello</div>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; gap: 20px; padding: 0 32px 28px 32px; box-sizing: border-box; min-height: 0;">
+
+      <div style="width: 262px; flex-shrink: 0; background: #ffffff; border: 1px solid #e4dfd6; border-radius: 18px; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; overflow: hidden;">
+        <div class="h" style="font-size: 17px; font-weight: 600;">Aggiungi un blocco</div>
+        <div class="grp">Dati del prodotto</div>
+        <div class="pal used"><span>Titolo prodotto</span><span class="plus" style="color: #b5ada1;">✓</span></div>
+        <div class="pal"><span>Ingredienti</span><span class="plus">+</span></div>
+        <div class="pal"><span>Può contenere</span><span class="plus">+</span></div>
+        <div class="pal used"><span>Scadenza</span><span class="plus" style="color: #b5ada1;">✓</span></div>
+        <div class="pal"><span>Lotto</span><span class="plus">+</span></div>
+        <div class="pal used"><span>Quantità</span><span class="plus" style="color: #b5ada1;">✓</span></div>
+        <div class="pal"><span>Valori nutrizionali</span><span class="plus">+</span></div>
+        <div class="pal"><span>Produttore</span><span class="plus">+</span></div>
+        <div class="grp">Blocchi liberi</div>
+        <div class="pal used"><span>Testo libero</span><span class="plus" style="color: #b5ada1;">✓</span></div>
+        <div class="pal"><span>Testo grande</span><span class="plus">+</span></div>
+        <div class="pal used"><span>Riga separatrice</span><span class="plus" style="color: #b5ada1;">✓</span></div>
+        <div class="pal"><span>Spazio vuoto</span><span class="plus">+</span></div>
+        <div class="pal"><span>QR del lotto</span><span class="plus">+</span></div>
+        <div class="pal"><span>Logo</span><span class="plus">+</span></div>
+      </div>
+
+      <div style="width: 424px; flex-shrink: 0; background: #ffffff; border: 1px solid #e4dfd6; border-radius: 18px; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="h" style="font-size: 17px; font-weight: 600;">Come è composta</div>
+          <div style="font-size: 13px; color: #6b655c;">trascina per ordinare</div>
+        </div>
+
+        <div class="blk">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="#b5ada1"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+          <span>Titolo prodotto</span>
+          <div class="seg"><span>S</span><span>M</span><span class="on">L</span></div>
+          <span class="x">✕</span>
+        </div>
+
+        <div class="blk free" style="flex-direction: column; align-items: stretch; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="12" height="20" viewBox="0 0 12 20" fill="#d5482a"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+            <span>Testo libero</span>
+            <div class="seg"><span class="on">S</span><span>M</span><span>L</span></div>
+            <span class="x">✕</span>
+          </div>
+          <div style="border: 1px solid #e6ddd6; border-radius: 8px; background: #ffffff; padding: 8px 10px; font-size: 14px; font-weight: 400; line-height: 1.4;">Servire caldo. Da consumare in giornata.</div>
+        </div>
+
+        <div class="blk">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="#b5ada1"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+          <span>Riga separatrice</span>
+          <div class="seg"><span class="on">S</span><span>M</span><span>L</span></div>
+          <span class="x">✕</span>
+        </div>
+
+        <div class="blk">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="#b5ada1"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+          <span>Quantità</span>
+          <div class="seg"><span>S</span><span>M</span><span class="on">L</span></div>
+          <span class="x">✕</span>
+        </div>
+
+        <div class="blk">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="#b5ada1"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+          <span>Scadenza</span>
+          <div class="seg"><span>S</span><span class="on">M</span><span>L</span></div>
+          <span class="x">✕</span>
+        </div>
+
+        <div class="blk drag">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="#b5ada1"><circle cx="3" cy="4" r="1.6"></circle><circle cx="9" cy="4" r="1.6"></circle><circle cx="3" cy="10" r="1.6"></circle><circle cx="9" cy="10" r="1.6"></circle><circle cx="3" cy="16" r="1.6"></circle><circle cx="9" cy="16" r="1.6"></circle></svg>
+          <span style="font-weight: 400;">Trascina qui un blocco dall'elenco a sinistra</span>
+        </div>
+
+        <div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid #eee9e0;">
+          <span style="font-size: 13px; font-weight: 700; color: #6b655c; text-transform: uppercase; letter-spacing: 0.02em;">Rotolo</span>
+          <div class="tabr"><span class="on">62 mm</span><span>102 mm</span></div>
+          <span style="margin-left: auto; font-size: 13px; color: #6b655c;">Lunghezza: automatica</span>
+        </div>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div class="h" style="font-size: 17px; font-weight: 600;">Anteprima a grandezza reale</div>
+          <div style="font-size: 13px; color: #6b655c;">si aggiorna mentre componi</div>
+        </div>
+
+        <div class="lbl" style="width: 100%; height: 232px; padding: 12px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 7px;">
+          <div style="font-size: 21px; font-weight: 700; line-height: 1.1;">FOCACCIA AL ROSMARINO</div>
+          <div style="font-size: 10px;">Servire caldo. Da consumare in giornata.</div>
+          <div style="border-top: 1px solid #111;"></div>
+          <div style="font-size: 11px; font-weight: 700;">Quantità</div>
+          <div style="font-size: 30px; font-weight: 700; line-height: 1;">400 g</div>
+          <div style="margin-top: auto; font-size: 12px;">da consumare entro <strong>05/09/2026</strong></div>
+        </div>
+
+        <div style="display: flex; gap: 18px; font-size: 13px; color: #6b655c;">
+          <span>62 mm continuo · 58,9 × 52 mm</span>
+          <span>5 blocchi</span>
+          <span>Qualità alta attiva</span>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #e4dfd6; border-radius: 14px; padding: 14px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 14px; font-weight: 700;">Usa questo modello per</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <div style="height: 34px; padding: 0 12px; border-radius: 17px; background: #221f1b; color: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700;">Focaccia al rosmarino</div>
+            <div style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #d9d3c8; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #4a453d;">Pane in cassetta</div>
+            <div style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px dashed #b5ada1; display: flex; align-items: center; font-size: 13px; color: #6b655c;">+ altro prodotto</div>
+          </div>
+          <div style="font-size: 12px; color: #6b655c;">Si può anche scegliere prodotto per prodotto dalla scheda del prodotto.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
