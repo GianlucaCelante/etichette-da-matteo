@@ -18,7 +18,7 @@
     .field { display: flex; flex-direction: column; gap: 6px; }
     .lab { font-size: 12px; font-weight: 700; color: #6b655c; letter-spacing: 0.02em; text-transform: uppercase; }
     .in { height: 52px; border: 1px solid #d9d3c8; border-radius: 12px; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 20px; font-weight: 700; box-sizing: border-box; }
-    .tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 700; color: #6b655c; }
+    .tab { flex: 1; min-width: 0; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: #6b655c; white-space: nowrap; }
     .tab.on { color: #b23a20; }
   </style>
 </helmet>
@@ -54,7 +54,7 @@
     <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
       <div class="field"><div class="lab">Quantità</div><div class="in"><span>2148</span><span style="margin-left: auto; color: #8a837a; font-size: 15px; font-weight: 400;">g</span></div></div>
       <div class="field"><div class="lab">Scadenza</div><div class="in" style="font-size: 17px;"><span>10/09/2026</span></div></div>
-      <div class="field"><div class="lab">Lotto</div><div class="in" style="font-size: 15px;"><span>L 20260903-001</span></div></div>
+      <div class="field"><div class="lab">Lotto</div><div class="in" style="font-size: 15px;"><span>L 20260903-005</span></div></div>
       <div class="field"><div class="lab">Copie</div><div style="display: flex; gap: 6px; height: 52px;"><div style="width: 48px; border: 1px solid #d9d3c8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">−</div><div class="in" style="flex: 1; justify-content: center;">1</div><div style="width: 48px; border: 1px solid #d9d3c8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">+</div></div></div>
     </div>
     <div style="height: 60px; border-radius: 14px; background: #d5482a; color: #ffffff; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 19px; font-weight: 700;">
@@ -67,6 +67,7 @@
     <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
     <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Prodotti</span></div>
     <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg><span>Modelli</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Storico</span></div>
     <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
   </div>
 </div>

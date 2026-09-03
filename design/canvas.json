@@ -7,16 +7,16 @@
     { "file": "Main.dc.html", "title": "Stampa", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
     { "file": "Prodotti.dc.html", "title": "Prodotti", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
     { "file": "StampaMobile.dc.html", "title": "Stampa · telefono", "x": 2720, "y": 0, "w": 390, "h": 844, "page": "page-1" },
-    { "file": "Modello.dc.html", "title": "Modelli di etichetta", "x": 0, "y": 940, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "ModelloLibero.dc.html", "title": "Modello libero · nuovo tipo", "x": 1360, "y": 940, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "Storico.dc.html", "title": "Storico stampe", "x": 2760, "y": 940, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "Impostazioni.dc.html", "title": "Impostazioni", "x": 0, "y": 1880, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "Modello.dc.html", "title": "Modelli di etichetta", "x": 0, "y": 1000, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "ModelloLibero.dc.html", "title": "Modello libero · nuovo tipo", "x": 1360, "y": 1000, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "Storico.dc.html", "title": "Storico stampe", "x": 2760, "y": 1000, "w": 1280, "h": 800, "page": "page-1" },
+    { "file": "Impostazioni.dc.html", "title": "Impostazioni", "x": 0, "y": 1960, "w": 1280, "h": 800, "page": "page-1" },
     { "file": "DirezioneB.dc.html", "title": "Direzione B · Schermo cucina", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-2" },
     { "file": "DirezioneC.dc.html", "title": "Direzione C · Elenco compatto", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-2" }
   ],
   "annotations": [
     { "id": "nota-direzione", "x": 0, "y": -240, "w": 660, "page": "page-1", "text": "Direzione: \"Banco da cucina\" — pochi passi, testo grande, bersagli da 52-64 px, un solo colore d'azione, stato stampante sempre visibile in linguaggio umano.\n\nFunzioni della prima versione, decise il 3 settembre: ristampa dell'ultima etichetta, prodotti più usati in cima, storico delle stampe con esportazione, quattro tipi di etichetta (Completa, Cucina, Aperto il, Libero), controllo della data del PC, qualità alta facoltativa.\n\nFuori: dizionario allergeni con sinonimi, stima del rotolo residuo, import/export prodotti e backup automatico." },
-    { "id": "nota-libero", "x": 1360, "y": 700, "w": 620, "page": "page-1", "text": "Il quarto tipo di etichetta è libero: l'utente sceglie i blocchi, li ordina trascinando, salva con un nome e da quel momento è un tipo di etichetta come gli altri.\n\nSi compone a blocchi e non a mano libera: un editor grafico darebbe più libertà ma sposterebbe il lavoro sull'utente, contro la richiesta di facilità d'uso. Blocchi liberi previsti: testo, testo grande, riga, spazio, QR del lotto, logo." },
+    { "id": "nota-libero", "x": 1360, "y": 820, "w": 620, "page": "page-1", "text": "Il quarto tipo di etichetta è libero: l'utente sceglie i blocchi, li ordina trascinando, salva con un nome e da quel momento è un tipo di etichetta come gli altri.\n\nSi compone a blocchi e non a mano libera: un editor grafico darebbe più libertà ma sposterebbe il lavoro sull'utente, contro la richiesta di facilità d'uso. Blocchi liberi previsti: testo, testo grande, riga, spazio, QR del lotto, logo." },
     { "id": "nota-mobile", "x": 2720, "y": -240, "w": 390, "page": "page-1", "text": "Stessi contenuti sul telefono. Il PC collegato alla stampante pubblica l'interfaccia sulla rete locale del locale: i telefoni la aprono dal browser, senza installare nulla e senza PIN. Dal PC si stampa allo stesso modo, in una finestra dedicata." },
     { "id": "nota-alternative", "x": 0, "y": -180, "w": 640, "page": "page-2", "text": "Due direzioni alternative a bassa fedeltà per la sola schermata di stampa, da confrontare con la direzione scelta. Le altre schermate resterebbero uguali in tutti i casi." }
   ],
