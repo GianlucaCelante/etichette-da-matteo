@@ -12,9 +12,11 @@ Piccola applicazione per stampare etichette alimentari (preparazioni e ingredien
 ## Struttura
 
 ```
-docs/     mappatura della stampante (protocollo, stati, quirk, tabelle supporti)
+docs/     mappatura della stampante (protocollo, stati, quirk, tabelle supporti),
+          funzioni concordate e catture del driver Brother
 tools/    script Python di riferimento per parlare con la stampante (nessuna dipendenza oltre Pillow)
-design/   artboard del canvas di design (.dc.html) e layout (canvas.json)
+design/   artboard del canvas di design (.dc.html), layout (canvas.json)
+          e canvas-pubblicato.html, la versione assemblata da aprire nel browser
 ```
 
 ## Strumenti per la stampante
