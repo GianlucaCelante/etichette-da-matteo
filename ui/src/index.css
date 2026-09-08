@@ -1,0 +1,255 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Font incorporati: Bricolage Grotesque (titoli) e Atkinson
+   Hyperlegible (testo), entrambi con licenza SIL OFL, serviti
+   dal servizio stesso in ui/public/font/. Mai da Google: il
+   servizio risponde solo sulla rete locale e il PC del cliente
+   puo' non avere internet. Licenze accanto ai file dei font.
+   ============================================================ */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/font/bricolage/BricolageGrotesque-Variabile.ttf") format("truetype-variations"),
+       url("/font/bricolage/BricolageGrotesque-Variabile.ttf") format("truetype");
+  font-weight: 200 800;
+  font-stretch: 75% 100%;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/font/atkinson/AtkinsonHyperlegible-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/font/atkinson/AtkinsonHyperlegible-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/font/atkinson/AtkinsonHyperlegible-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ============================================================
+   Variabili del tema, identiche al prototipo
+   artefatti-claude/banco-etichette-2026-09-08.html
+   ============================================================ */
+:root {
+  --fondo: #EADECE;
+  --testo: #58443C;
+  --tenue: #7A6A5E;
+  --spento: #9C8C7C;
+  --carta: #ffffff;
+  --crema: #FBF5EC;
+  --sabbia: #F7F0E4;
+  --riga: #EDE3D5;
+  --bordo: #DCCFBB;
+  --bordo2: #CFC0AA;
+  --tratteggio: #C0AF9B;
+  --verde: #5E7B18;
+  --verdescuro: #4B6313;
+  --verdechiaro: #E3EAD1;
+  --verdebordo: #B9C89A;
+  --ambra: #A97514;
+  --ambrachiaro: #F7EBD3;
+  --rosso: #a3301a;
+  --rossocupo: #8c3520;
+  --rossochiaro: #fbe4e0;
+  --rossobordo: #f0b5a8;
+  --barra: #E4DACA;
+  --ombra: 0 8px 24px rgba(88, 68, 60, 0.10);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--testo);
+  font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .h {
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  margin: 0;
+  font-weight: 600;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--verde); outline-offset: 2px; border-radius: 8px; }
+input { font: inherit; color: inherit; background: none; border: 0; width: 100%; }
+input:focus { outline: none; }
+svg { display: block; flex-shrink: 0; }
+
+/* ---------- impianto ---------- */
+.app { display: flex; height: 100dvh; }
+.rail {
+  width: 88px; flex-shrink: 0; background: var(--crema); border-right: 1px solid var(--bordo);
+  display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px;
+}
+.marchio {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--verde); color: #fff;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+}
+.voce {
+  width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 4px; color: var(--tenue); font-size: 12px; font-weight: 700;
+}
+.voce.on { background: var(--verdechiaro); color: var(--verdescuro); }
+.corpo { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.testata {
+  height: 76px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 0 32px;
+}
+.titolo { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.schermo { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 0 32px 28px; }
+.colonna {
+  background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 16px;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.scorre { overflow-y: auto; overscroll-behavior: contain; }
+.scorre::-webkit-scrollbar { width: 8px; }
+.scorre::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
+.barrasotto { display: none; }
+
+/* Impostazioni: due colonne uguali dai 1024px in su (Stampante e Stampa
+   nella prima riga, Telefoni e tablet sotto a sinistra, per l'ordine in cui
+   le schede compaiono nel markup), una colonna sotto. La combinazione di due
+   classi (.schermo.grigliaImpostazioni) ha piu' specificita' di .schermo da
+   sola, quindi vince in modo pulito senza !important e senza dipendere
+   dall'ordine delle regole nel file. */
+.schermo.grigliaImpostazioni { display: flex; flex-direction: column; }
+.schermo.grigliaImpostazioni > .sezione { align-self: stretch; }
+@media (min-width: 1024px) {
+  .schermo.grigliaImpostazioni { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+  .schermo.grigliaImpostazioni > .sezione { align-self: start; }
+}
+
+/* ---------- pezzi ---------- */
+.btn {
+  height: 48px; padding: 0 22px; border-radius: 12px; display: inline-flex; align-items: center;
+  justify-content: center; gap: 9px; font-size: 16px; font-weight: 700; white-space: nowrap;
+  border: 1px solid var(--bordo2); background: var(--carta);
+}
+.btn.primario { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.primario:disabled, .btn:disabled { opacity: .55; cursor: default; }
+.btn.grande { height: 60px; font-size: 19px; border-radius: 14px; }
+.pastiglia {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 12px;
+  border-radius: 18px; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.punto { width: 9px; height: 9px; border-radius: 50%; }
+.pronta { background: var(--verdechiaro); color: var(--verdescuro); }
+.pronta .punto { background: var(--verde); }
+.incorso { background: var(--ambrachiaro); color: var(--ambra); }
+.incorso .punto { background: var(--ambra); }
+.guasta { background: var(--rossochiaro); color: var(--rosso); }
+.guasta .punto { background: var(--rosso); }
+/* "scollegata" non esiste nel prototipo (la demo non modella la stampante
+   spenta): grigio spento sul fondo sabbia, coerente col resto del tema */
+.spenta { background: var(--sabbia); color: var(--tenue); }
+.spenta .punto { background: var(--spento); }
+.cerca {
+  height: 52px; border: 1px solid var(--bordo2); border-radius: 14px; background: var(--carta);
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; color: var(--spento); font-size: 16px;
+}
+.cerca input { color: var(--testo); }
+.cerca input::placeholder { color: var(--spento); }
+.gettone {
+  height: 40px; padding: 0 18px; border-radius: 20px; border: 1px solid var(--bordo2);
+  background: var(--carta); font-size: 14px; font-weight: 700; color: #6B5A4E; white-space: nowrap;
+}
+.gettone.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+.etichettina { font-size: 12px; font-weight: 700; color: var(--tenue); letter-spacing: .04em; text-transform: uppercase; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.casella {
+  min-height: 52px; border: 1px solid var(--bordo2); border-radius: 12px; background: var(--carta);
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 17px;
+}
+.casella .unita { margin-left: auto; font-size: 14px; color: var(--spento); }
+.scheda { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.sep { height: 1px; background: var(--riga); }
+
+.riga {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px;
+  border-bottom: 1px solid var(--riga);
+}
+.riga:last-child { border-bottom: none; }
+.riga .t { font-size: 16px; font-weight: 700; }
+.riga .s { font-size: 13px; color: var(--tenue); }
+.riga .v { margin-left: auto; font-size: 15px; color: var(--tenue); white-space: nowrap; }
+
+.interruttore { width: 52px; height: 30px; border-radius: 15px; background: var(--verde); position: relative; flex-shrink: 0; }
+.interruttore::after {
+  content: ""; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff; transition: all .16s;
+}
+.interruttore.off { background: #C6B7A3; }
+.interruttore.off::after { right: calc(100% - 26px); }
+
+/* ---------- finestra ---------- */
+.velo {
+  position: fixed; inset: 0; background: rgba(58, 49, 40, .42); display: flex; align-items: center;
+  justify-content: center; padding: 24px; z-index: 20;
+}
+.finestra {
+  background: var(--carta); border-radius: 22px; box-shadow: 0 24px 60px rgba(58, 49, 40, .3);
+  width: min(1120px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+}
+.avviso {
+  border: 1px solid var(--rossobordo); background: var(--rossochiaro); border-radius: 16px;
+  padding: 14px 16px; display: flex; gap: 12px; color: var(--rosso);
+}
+.avvisino {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
+  padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
+  pointer-events: none;
+}
+.kv { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 14px; color: var(--tenue); }
+.kv b { font-size: 15px; color: var(--testo); }
+.mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------- placeholder "In arrivo" ---------- */
+.inArrivo {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--tenue); text-align: center; padding: 24px;
+}
+.inArrivo .h { font-size: 22px; color: var(--testo); }
+
+/* ---------- telefono: barra sotto e adattamenti ---------- */
+@media (max-width: 860px) {
+  .app { flex-direction: column; }
+  .rail { display: none; }
+  .testata { height: auto; padding: 14px 20px 10px; flex-wrap: wrap; row-gap: 10px; }
+  .titolo { font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .schermo { flex-direction: column; padding: 0 20px 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .schermo .scorre { overflow: visible; flex: none !important; }
+  input, select, textarea { font-size: max(16px, 1em); }
+  .avvisino { bottom: 84px; max-width: calc(100% - 32px); text-align: center; }
+  .colonna { border: 0; background: none; padding: 0; border-radius: 0; overflow: visible; }
+  .schermo > .colonna { width: auto !important; flex: none !important; }
+  .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 14px; }
+  .sezione { padding: 14px 16px !important; }
+  .riga { padding: 10px 2px; }
+  .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
+  .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
+  .riga.rotolo { flex-wrap: wrap; }
+  .barrasotto {
+    display: flex; background: var(--crema); border-top: 1px solid var(--bordo);
+    padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0;
+  }
+  .tab { flex: 1; height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--tenue); }
+  .tab.on { color: var(--verdescuro); }
+  .soloPC { display: none !important; }
+  .finestra { width: 100%; max-height: 100%; border-radius: 18px; }
+  .velo { padding: 12px; }
+}
+@media (min-width: 861px) { .soloTel { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

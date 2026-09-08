@@ -5,9 +5,11 @@ Piccola applicazione per stampare etichette alimentari (preparazioni e ingredien
 ## Stato del progetto (2026-09-03)
 
 - **Stampante mappata e verificata**: comunicazione raw via USB senza driver Brother, lettura stato e impostazioni, stampe di prova in modalità raster riuscite su entrambi i rotoli (62 e 102 mm). Tutto in [`docs/mappatura-brother-ql-1100c.md`](docs/mappatura-brother-ql-1100c.md).
-- **Interfaccia disegnata**: [canvas di design](https://claude.ai/code/artifact/e8537537-bab9-4cce-a2f3-0dec57fc9bd2) con le schermate Stampa, Prodotti, Modelli di etichetta, Modello libero, Storico, Impostazioni, la vista da telefono e due direzioni alternative. Sorgenti degli artboard in [`design/`](design/).
+- **Interfaccia disegnata**: [canvas di design](https://claude.ai/code/artifact/e8537537-bab9-4cce-a2f3-0dec57fc9bd2) con le nove schermate del PC — Stampa, stampa in corso, errore, Etichette (dati del prodotto ed etichetta insieme), scelta dell’etichetta, etichetta nuova a blocchi, Storico, Impostazioni, aggancio dei telefoni — e le nove del telefono, che ripetono le stesse quattro voci: stampa, in stampa, errore, stampata, scheda del prodotto, scelta dell’etichetta, etichetta nuova, storico, impostazioni. Sorgenti degli artboard in [`design/`](design/).
 - **Forma dell'app e funzioni decise**: un unico programma sul PC collegato via USB, che pubblica l'interfaccia sulla rete locale e la mostra anche in una finestra sul PC. Elenco delle funzioni della prima versione in [`docs/funzionalita-prima-versione.md`](docs/funzionalita-prima-versione.md).
-- **Da decidere**: stack tecnologico (sul PC ci sono .NET 8, Node 24, Python 3.14).
+- **Prova di stampa dei corpi fatta** (2026-09-05, rotolo 102 mm): la zona a due colonne esce come disegnata — in raster il layout e’ libero, non serviva nessuna capacita’ nuova. Ma i corpi dichiarati dal canvas non stanno nell’etichetta: **a 6 pt l’altezza della x e’ 1,1 mm, sotto il minimo di legge di 1,2 mm** (il primo corpo che lo supera e’ 7 pt, 1,3 mm), e ai corpi dichiarati l’etichetta viene alta **96,6 mm** se larga 58,9 (il canvas la disegna alta 32) oppure **66,8 mm** se larga 107,7 — in tutti e due i casi piu’ dei 58,9 mm che il rotolo da 62 concede sul lato corto. Serve l’etichetta originale del cliente per misurarla, e poi si rifa’ la scaletta. Dettagli in [`docs/prova-corpi.md`](docs/prova-corpi.md).
+- **Scheletro dell'applicazione costruito** (2026-09-08): progetto Maven con servizio, interfaccia e installatore; la fetta verticale Impostazioni funziona davvero (stato della stampante dal vivo via SSE, stampa di prova dal browser, MSI con JRE inclusa provato con il jar vero). Prodotti, etichette, storico e renderer a blocchi sono la fase successiva.
+- **Stack tecnologico deciso** (2026-09-08): Java 17 + Spring Boot come servizio Windows, JNA per la stampante, resa dell'etichetta in Java 2D, SQLite, interfaccia React come PWA. Motivazioni, alternative scartate e verifiche in [`docs/stack-tecnologico.md`](docs/stack-tecnologico.md); Tre spike già fatti sulla stampante reale: lettura dello stato via JNA e porting della stampa raster con job identico a quello Python ([`tools/spike-jna/`](tools/spike-jna/LEGGIMI.md)), resa del testo in Java 2D con la scaletta dei corpi confermata entro 0,04 mm ([`tools/spike-java2d/`](tools/spike-java2d/LEGGIMI.md)).
 
 ## Struttura
 
@@ -15,9 +17,32 @@ Piccola applicazione per stampare etichette alimentari (preparazioni e ingredien
 docs/     mappatura della stampante (protocollo, stati, quirk, tabelle supporti),
           funzioni concordate e catture del driver Brother
 tools/    script Python di riferimento per parlare con la stampante (nessuna dipendenza oltre Pillow)
+          e gli spike Java (spike-jna: stato e stampa via JNA; spike-java2d: resa del testo)
 design/   artboard del canvas di design (.dc.html), layout (canvas.json)
           e canvas-pubblicato.html, la versione assemblata da aprire nel browser
+artefatti-claude/  copie scaricate degli artefatti online (prototipo «Banco etichette» e canvas)
+pom.xml, src/      il servizio (Java 17, Spring Boot): stampante via JNA, resa, dati, API, mDNS
+ui/       l'interfaccia (React 19, Vite, TypeScript), incorporata nel jar dalla build Maven
+installer/  MSI con JRE inclusa e servizio Windows (jpackage, WinSW, script PowerShell)
 ```
+
+## L'applicazione: come si costruisce e si prova
+
+Prerequisiti sul PC di sviluppo: JDK 17 (con `jlink` e `jpackage`), Maven 3.9, WiX 3.14 per l'MSI. Node non serve: la build Maven scarica il suo.
+
+```
+mvn verify                         # servizio + interfaccia + test; jar in target/etichette-<v>.jar
+mvn -Dskip.ui=true verify          # solo il servizio (piu' rapido, senza interfaccia)
+java -jar target/etichette-0.1.0-SNAPSHOT.jar            # porta 8765, dati in ./data
+java -jar target/etichette-0.1.0-SNAPSHOT.jar --server.port=18080   # se la 8765 e' occupata
+
+cd ui && npm ci && npm run dev     # interfaccia in sviluppo su :5173, /api inoltrato al servizio su :8765
+cd ui && npm run mock -- 8099      # servizio finto per lavorare senza stampante
+
+powershell installer/Build-Setup.ps1 -Version 0.1.0      # MSI in target/installer/
+```
+
+Sul PC di sviluppo la porta 8080 e' occupata dall'agent RMP: per questo la porta di serie dell'app e' la 8765 (vedi `docs/stack-tecnologico.md`, rischio 8). Dati, log e database SQLite stanno in `ETICHETTE_DATA_DIR` (in produzione `C:\ProgramData\Etichette`). API in `/api` (stato stampante, eventi SSE, stampa di prova, impostazioni, rete, versione); il resto delle rotte serve l'interfaccia.
 
 ## Strumenti per la stampante
 

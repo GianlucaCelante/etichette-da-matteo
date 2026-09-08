@@ -3,3 +3,14 @@ __pycache__/
 tools/testprint_preview.png
 *.log
 .venv/
+*.class
+
+# Servizio Spring Boot (pom.xml alla radice)
+target/
+data/
+ui/node_modules/
+ui/dist/
+ui/node/
+*.db
+*.db-wal
+*.db-shm

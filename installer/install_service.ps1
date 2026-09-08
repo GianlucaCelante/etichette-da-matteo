@@ -1,0 +1,315 @@
+# =============================================================================
+# Etichette - installazione del servizio Windows
+# =============================================================================
+# Impacchettato nell'MSI da Build-Setup.ps1 e copiato in app\ accanto a
+# Etichette.exe (WinSW), Etichette.xml e agli altri script. L'MSI lo esegue
+# in automatico, elevato, come azione differita subito dopo aver copiato i
+# file (vedi installer\wix\main.install.wxs): un doppio clic sull'MSI basta.
+# E' anche eseguibile a mano, per esempio dopo un ripristino manuale del
+# servizio o per ricreare le scorciatoie.
+#
+# Cosa fa:
+#   1. Crea C:\ProgramData\Etichette (+ log\, backup\) con permessi per
+#      SYSTEM/Administratos in scrittura e Users in sola lettura.
+#   2. Apre la porta 8765 nel firewall di Windows (profili Privato e Dominio,
+#      mai Pubblico: il PC di un negozio/ristorante e' su rete privata).
+#   3. Registra il servizio "Etichette" con WinSW (o lo riavvia se e' gia'
+#      registrato), ripristina l'avvio automatico ritardato e lo fa partire.
+#   4. Crea il collegamento "Etichette" sul desktop pubblico e in
+#      "Esecuzione automatica" di tutti gli utenti: Edge in modalita' app
+#      su http://localhost:8765/.
+#   5. Se non e' -Silent, apre la pagina alla fine.
+#
+# Rieseguibile senza danni (idempotente): non duplica regole del firewall
+# ne' collegamenti, e riconosce un servizio gia' registrato.
+#
+# Uso:
+#   PS> .\install_service.ps1            # interattivo: apre la pagina alla fine
+#   PS> .\install_service.ps1 -Silent    # usato dall'azione MSI: nessuna UI
+#
+# Richiede: privilegi di amministratore.
+# =============================================================================
+
+[CmdletBinding()]
+param(
+    [switch]$Silent
+)
+
+$ErrorActionPreference = "Stop"
+
+$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$WinswExe   = Join-Path $ScriptDir "Etichette.exe"
+$WinswXml   = Join-Path $ScriptDir "Etichette.xml"
+$IconPath   = Join-Path $ScriptDir "etichette.ico"
+$DataDir    = "C:\ProgramData\Etichette"
+$LogDir     = Join-Path $DataDir "log"
+$BackupDir  = Join-Path $DataDir "backup"
+$FirewallRuleName = "Etichette"
+$FirewallPort = 8765
+$AppUrl     = "http://localhost:8765/"
+$ShortcutName = "Etichette.lnk"
+$ServiceStopTimeoutSeconds = 30
+
+$ServiceCommonScript = Join-Path $ScriptDir "service_common.ps1"
+if (-not (Test-Path $ServiceCommonScript)) {
+    throw "service_common.ps1 non trovato in $ServiceCommonScript - l'MSI e' stato creato da Build-Setup.ps1?"
+}
+. $ServiceCommonScript
+
+if (-not (Test-Path $WinswExe)) {
+    throw "Etichette.exe (WinSW) non trovato in $WinswExe - l'MSI si e' installato correttamente?"
+}
+if (-not (Test-Path $WinswXml)) {
+    throw "Etichette.xml non trovato in $WinswXml - l'MSI si e' installato correttamente?"
+}
+
+function New-DataDirectories {
+    Write-Host "[1/4] Preparo la cartella dati..." -ForegroundColor Green
+    foreach ($dir in @($DataDir, $LogDir, $BackupDir)) {
+        if (-not (Test-Path $dir)) {
+            Write-Host "  Creo $dir"
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+    }
+
+    # SYSTEM e Administrators in controllo pieno (il servizio gira come
+    # LocalSystem), Users in sola lettura/esecuzione: cosi' un utente non
+    # amministratore non puo' toccare il database ne' i backup dal PC
+    # condiviso con il gestionale di cassa. Eredita' disattivata per non
+    # farsi riscrivere i permessi dai default di ProgramData.
+    $icaclsExe = Join-Path $env:SystemRoot "System32\icacls.exe"
+    if (Test-Path $icaclsExe) {
+        Write-Host "  Imposto i permessi su $DataDir"
+        & $icaclsExe $DataDir /inheritance:r /grant:r `
+            "SYSTEM:(OI)(CI)F" `
+            "Administrators:(OI)(CI)F" `
+            "Users:(OI)(CI)RX" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "icacls su $DataDir ha restituito $LASTEXITCODE; i permessi potrebbero non essere completi."
+        }
+    } else {
+        Write-Warning "icacls.exe non trovato; permessi di $DataDir lasciati ai default di Windows."
+    }
+}
+
+function Set-EtichetteFirewallRule {
+    Write-Host "[2/4] Configuro il firewall di Windows (TCP $FirewallPort)..." -ForegroundColor Green
+
+    $newRuleCmd = Get-Command New-NetFirewallRule -ErrorAction SilentlyContinue
+    if ($null -eq $newRuleCmd) {
+        Write-Warning "New-NetFirewallRule non disponibile; la regola del firewall va creata a mano."
+        return
+    }
+
+    try {
+        $existing = Get-NetFirewallRule -DisplayName $FirewallRuleName -ErrorAction SilentlyContinue
+        if ($existing) {
+            $existing | Remove-NetFirewallRule -ErrorAction Stop
+        }
+
+        # Profilo Privato e Dominio, mai Pubblico: e' il PC di un negozio,
+        # non un portatile che gira in reti sconosciute. Mai la porta 80,
+        # che potrebbe servire al gestionale di cassa.
+        New-NetFirewallRule `
+            -DisplayName $FirewallRuleName `
+            -Direction Inbound `
+            -Action Allow `
+            -Protocol TCP `
+            -LocalPort $FirewallPort `
+            -Profile Private,Domain `
+            -Enabled True `
+            -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
+            | Out-Null
+    } catch {
+        Write-Warning "Impossibile configurare la regola firewall '$FirewallRuleName' per la porta ${FirewallPort}: $($_.Exception.Message)"
+        Write-Warning "L'installazione continua; i telefoni potrebbero non raggiungere il servizio finche' la regola non viene creata a mano."
+    }
+}
+
+function Get-EdgePath {
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
+        (Join-Path ${env:ProgramFiles} "Microsoft\Edge\Application\msedge.exe")
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function New-EtichetteShortcut {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ShortcutPath,
+        [Parameter(Mandatory = $true)]
+        [string]$EdgePath
+    )
+
+    $parent = Split-Path -Parent $ShortcutPath
+    if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($ShortcutPath)
+        $shortcut.TargetPath = $EdgePath
+        $shortcut.Arguments = "--app=$AppUrl"
+        $shortcut.Description = "Etichette - banco etichette"
+        if (Test-Path $IconPath) {
+            $shortcut.IconLocation = $IconPath
+        }
+        $shortcut.Save()
+    } catch {
+        Write-Warning "Impossibile creare il collegamento ${ShortcutPath}: $($_.Exception.Message)"
+    }
+}
+
+function Set-EtichetteShortcuts {
+    Write-Host "[3/4] Creo le scorciatoie (desktop e avvio automatico)..." -ForegroundColor Green
+
+    $edgePath = Get-EdgePath
+    if (-not $edgePath) {
+        Write-Warning "Microsoft Edge non trovato in Program Files; le scorciatoie non sono state create. Installa/verifica Edge e rilancia questo script."
+        return
+    }
+
+    $commonDesktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+    $commonStartup = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
+
+    $targets = @()
+    if (-not [string]::IsNullOrWhiteSpace($commonDesktop)) {
+        $targets += (Join-Path $commonDesktop $ShortcutName)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($commonStartup)) {
+        $targets += (Join-Path $commonStartup $ShortcutName)
+    }
+
+    if ($targets.Count -eq 0) {
+        Write-Warning "Nessuna cartella desktop/avvio automatico risolta; scorciatoie non create."
+        return
+    }
+
+    foreach ($target in $targets) {
+        New-EtichetteShortcut -ShortcutPath $target -EdgePath $edgePath
+    }
+}
+
+function Install-OrRestart-EtichetteService {
+    Write-Host "[4/4] Registro/avvio il servizio Windows..." -ForegroundColor Green
+
+    $existingService = Get-Service -Name "Etichette" -ErrorAction SilentlyContinue
+
+    if ($null -eq $existingService) {
+        Write-Host "  Registrazione nuova tramite WinSW..."
+        # Riprova per ERROR_SERVICE_MARKED_FOR_DELETE (1072): puo' capitare se
+        # un "uninstall" precedente non ha ancora rilasciato la registrazione
+        # nella SCM (per esempio durante un aggiornamento "installa sopra").
+        $maxAttempts = 3
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $installOutput = & $WinswExe install 2>&1
+            $installExit = $LASTEXITCODE
+            $installOutput | ForEach-Object { Write-Host $_ }
+            if ($installExit -eq 0) { break }
+            $installText = ($installOutput | Out-String)
+            $markedForDelete = Test-ServiceMarkedForDeleteError -Text $installText -Code $installExit
+            if ($markedForDelete -and $attempt -lt $maxAttempts) {
+                $backoff = 2 * $attempt
+                Write-Warning "winsw install: registrazione precedente ancora in rimozione (1072). Riprovo tra ${backoff}s ($attempt/$maxAttempts)..."
+                Start-Sleep -Seconds $backoff
+                continue
+            }
+            throw "winsw install ha fallito (codice $installExit)."
+        }
+    } else {
+        Write-Host "  Servizio gia' registrato: fermo e riavvio per applicare eventuali modifiche..."
+        if ($existingService.Status -eq "Running") {
+            Stop-Service -Name "Etichette" -Force -ErrorAction SilentlyContinue
+            if (-not (Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds $ServiceStopTimeoutSeconds)) {
+                Write-Warning "Il servizio non si e' fermato entro ${ServiceStopTimeoutSeconds}s; termino i processi rimasti."
+                Stop-ServiceProcessTree -Name "Etichette"
+                $installRoot = (Resolve-Path (Join-Path $ScriptDir "..") -ErrorAction SilentlyContinue)
+                if ($installRoot) {
+                    Stop-EtichetteProcessesInInstallDir -Root $installRoot.Path -GracefulCloseTimeoutMilliseconds 3000
+                }
+                [void](Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds 5)
+            }
+        }
+    }
+
+    # Ripristina l'avvio automatico ritardato e le azioni di ripristino: un
+    # "uninstall -StopOnly" precedente (fatto da update.ps1) potrebbe averle
+    # disattivate per evitare che la SCM riavviasse il servizio a meta'
+    # aggiornamento.
+    $sc = Join-Path $env:SystemRoot "System32\sc.exe"
+    if (Test-Path $sc) {
+        & $sc config "Etichette" start= delayed-auto 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "sc.exe config delayed-auto ha restituito $LASTEXITCODE; provo Set-Service."
+            try {
+                Set-Service -Name "Etichette" -StartupType AutomaticDelayedStart -ErrorAction Stop
+            } catch {
+                Write-Warning "Set-Service AutomaticDelayedStart ha fallito: $($_.Exception.Message)"
+            }
+        }
+    }
+    # Re-invocare "install" su un servizio gia' registrato e' idempotente in
+    # WinSW e riscrive le azioni di ripristino da <onfailure> in Etichette.xml.
+    & $WinswExe install 2>&1 | Out-Null
+
+    Write-Host "  Avvio il servizio..."
+    $maxStartAttempts = 3
+    for ($attempt = 1; $attempt -le $maxStartAttempts; $attempt++) {
+        try {
+            Start-Service -Name "Etichette" -ErrorAction Stop
+            break
+        } catch {
+            $markedForDelete = Test-ServiceMarkedForDeleteError -Text $_.Exception.Message
+            if ($markedForDelete -and $attempt -lt $maxStartAttempts) {
+                $backoff = 2 * $attempt
+                Write-Warning "Start-Service: registrazione ancora in rimozione (1072). Riprovo tra ${backoff}s ($attempt/$maxStartAttempts)..."
+                Start-Sleep -Seconds $backoff
+                continue
+            }
+            throw
+        }
+    }
+
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        $svc = Get-Service -Name "Etichette" -ErrorAction SilentlyContinue
+        if ($null -ne $svc -and $svc.Status -eq "Running") {
+            Write-Host "  Servizio avviato."
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $svc = Get-Service -Name "Etichette" -ErrorAction SilentlyContinue
+    if ($null -eq $svc -or $svc.Status -ne "Running") {
+        $state = if ($null -eq $svc) { "<non registrato>" } else { $svc.Status }
+        throw "Il servizio non e' arrivato allo stato Running entro 30s (stato: $state). Controlla $LogDir."
+    }
+}
+
+New-DataDirectories
+Set-EtichetteFirewallRule
+Set-EtichetteShortcuts
+Install-OrRestart-EtichetteService
+
+Write-Host ""
+Write-Host "Fatto. Il servizio Etichette e' installato e in esecuzione." -ForegroundColor Green
+Write-Host "Cartella dati : $DataDir"
+Write-Host "Log           : $LogDir"
+Write-Host "Indirizzo     : $AppUrl"
+
+if (-not $Silent) {
+    $edgePath = Get-EdgePath
+    if ($edgePath) {
+        Write-Host "Apro la pagina..."
+        Start-Process -FilePath $edgePath -ArgumentList "--app=$AppUrl"
+    } else {
+        Write-Warning "Microsoft Edge non trovato; apri manualmente $AppUrl."
+    }
+}

@@ -1,0 +1,96 @@
+<!--
+    Configurazione WinSW del servizio Windows "Etichette".
+    Riferimento: https://github.com/winsw/winsw/blob/master/docs/xml-config-file.md
+
+    Ridotta da agent-java/scripts/agent-java.xml: qui non c'e' scelta di
+    ambiente cloud (Local/Dev/Prod), non c'e' Configure-Environment.ps1 che
+    riscrive il file, e le variabili sono fisse. Un solo cliente, un solo PC.
+
+    Struttura prodotta da jpackage con l'opzione "runtime-image" (verificata
+    con la build di prova nello scratchpad):
+        C:\Program Files\Etichette\
+            Etichette.exe          <- lanciatore nativo di jpackage
+            app\
+                Etichette.exe      <- questo e' WinSW, rinominato da Build-Setup.ps1
+                Etichette.xml      <- questo file
+                etichette.jar
+                install_service.ps1, uninstall_service.ps1, update.ps1,
+                service_common.ps1
+            runtime\
+                bin\java.exe       <- JRE ridotta con jlink
+
+    WinSW espone %BASE% come variabile d'ambiente pari alla cartella di
+    questo file (qui: app\), sia nell'eseguibile sia negli argomenti.
+    "%BASE%\..\runtime\bin\java.exe" punta quindi a runtime\bin\java.exe;
+    "%BASE%\etichette.jar" punta al jar accanto a questo XML, anche se la
+    working directory del processo e' la cartella dati (sotto).
+    DA VERIFICARE nella prova in Windows Sandbox (vedi README): se
+    l'espansione di %BASE% dentro <arguments> non dovesse funzionare come
+    negli altri esempi WinSW, sostituire con il percorso assoluto fisso
+    "C:\Program Files\Etichette\app\etichette.jar" (la cartella di
+    installazione e' decisa e fissa, quindi il percorso assoluto è comunque
+    stabile).
+
+    java.awt.headless=true: il rendering Java 2D dell'etichetta (java.awt,
+    BufferedImage, TextLayout) funziona senza sessione grafica, ma il
+    servizio gira in Sessione 0 senza desktop: senza questo flag la JVM
+    potrebbe provare ad agganciare un toolkit grafico e fallire.
+-->
+<service>
+    <id>Etichette</id>
+    <name>Etichette</name>
+    <description>Banco etichette: stampa etichette alimentari su Brother QL-1100c</description>
+
+    <executable>%BASE%\..\runtime\bin\java.exe</executable>
+    <arguments>-Djava.awt.headless=true -Xmx256m -jar "%BASE%\etichette.jar"</arguments>
+
+    <!--
+        ETICHETTE_DATA_DIR: cartella dati (database SQLite, log, backup).
+        Fissa per decisione di progetto (docs/stack-tecnologico.md).
+    -->
+    <env name="ETICHETTE_DATA_DIR" value="C:\ProgramData\Etichette"/>
+
+    <!-- Orario italiano per lo storico e i timestamp mostrati in interfaccia. -->
+    <env name="TZ" value="Europe/Rome"/>
+
+    <!--
+        Working directory = cartella dati, non la cartella di installazione:
+        se qualche libreria scrivesse un percorso relativo (log, file
+        temporanei) finisce in ProgramData e non sotto Program Files, dove il
+        servizio potrebbe non avere permessi di scrittura una volta chiusa
+        l'installazione.
+    -->
+    <workingdirectory>C:\ProgramData\Etichette</workingdirectory>
+
+    <!-- Log di bootstrap di WinSW (prima che Spring Boot inizializzi il proprio logging). -->
+    <log mode="roll-by-time">
+        <pattern>yyyyMMdd</pattern>
+    </log>
+    <logpath>C:\ProgramData\Etichette\log</logpath>
+
+    <!-- Riavvio automatico se il servizio cade, con backoff. -->
+    <onfailure action="restart" delay="10 sec"/>
+    <onfailure action="restart" delay="30 sec"/>
+    <onfailure action="restart" delay="120 sec"/>
+    <resetfailure>1 hour</resetfailure>
+
+    <!--
+        Tempo per lo spegnimento pulito (Spring Boot, connessioni SSE aperte,
+        chiusura dell'handle della stampante) prima del kill forzato.
+    -->
+    <stoptimeout>30 sec</stoptimeout>
+
+    <!--
+        LocalSystem: il servizio deve aprire il dispositivo USB della
+        stampante (usbprint) e scrivere in ProgramData; LocalSystem evita
+        complicazioni di permessi. Non gira come utente interattivo, quindi
+        non ha bisogno di una sessione aperta ne' di un profilo utente.
+    -->
+    <serviceaccount>
+        <username>LocalSystem</username>
+        <allowservicelogon>true</allowservicelogon>
+    </serviceaccount>
+
+    <startmode>Automatic</startmode>
+    <delayedAutoStart>true</delayedAutoStart>
+</service>

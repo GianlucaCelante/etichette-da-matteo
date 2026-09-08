@@ -1,0 +1,326 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1-impostazioni
+      author: etichette
+      comment: "Impostazioni chiave/valore del servizio."
+      changes:
+        - createTable:
+            tableName: impostazioni
+            columns:
+              - column:
+                  name: chiave
+                  type: TEXT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: valore
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 2-etichette
+      author: etichette
+      comment: "Etichette (condivise fra i prodotti che le usano)."
+      changes:
+        - createTable:
+            tableName: etichette
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: blocchi
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dicitura_scadenza
+                  type: TEXT
+              - column:
+                  name: formato_data
+                  type: TEXT
+              - column:
+                  name: produttore_ragione_sociale
+                  type: TEXT
+              - column:
+                  name: produttore_sede_legale
+                  type: TEXT
+              - column:
+                  name: produttore_sede_produzione
+                  type: TEXT
+              - column:
+                  name: predefinita
+                  type: INTEGER
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: creata_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: modificata_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 3-prodotti
+      author: etichette
+      comment: "Prodotti, con i dati che riempiono i blocchi accesi dell'etichetta scelta."
+      changes:
+        - createTable:
+            tableName: prodotti
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etichetta_id
+                  type: INTEGER
+                  constraints:
+                    references: etichette(id)
+                    foreignKeyName: fk_prodotti_etichetta
+              - column:
+                  name: ingredienti
+                  type: TEXT
+              - column:
+                  name: puo_contenere
+                  type: TEXT
+              - column:
+                  name: modo_uso
+                  type: TEXT
+              - column:
+                  name: giorni_scadenza
+                  type: INTEGER
+              - column:
+                  name: conservazione
+                  type: TEXT
+              - column:
+                  name: quantita
+                  type: TEXT
+              - column:
+                  name: valori_nutrizionali
+                  type: TEXT
+              - column:
+                  name: sigla_operatore
+                  type: TEXT
+              - column:
+                  name: usi
+                  type: INTEGER
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ultimo_uso
+                  type: TEXT
+              - column:
+                  name: creato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: modificato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 4-dispositivi
+      author: etichette
+      comment: "Dispositivi collegati (PC/telefoni): solo un nome, nessun login (deciso il 3 settembre)."
+      changes:
+        - createTable:
+            tableName: dispositivi
+            columns:
+              - column:
+                  name: id
+                  type: TEXT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: collegato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ultimo_accesso
+                  type: TEXT
+
+  - changeSet:
+      id: 5-storico-stampe
+      author: etichette
+      comment: "Storico delle stampe, per la tracciabilita'."
+      changes:
+        - createTable:
+            tableName: storico_stampe
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: stampato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prodotto_id
+                  type: INTEGER
+              - column:
+                  name: prodotto_nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etichetta_nome
+                  type: TEXT
+              - column:
+                  name: lotto
+                  type: TEXT
+              - column:
+                  name: quantita
+                  type: TEXT
+              - column:
+                  name: scadenza
+                  type: TEXT
+              - column:
+                  name: copie
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dispositivo_nome
+                  type: TEXT
+              - column:
+                  name: esito
+                  type: TEXT
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_storico_stampato_il
+            tableName: storico_stampe
+            columns:
+              - column:
+                  name: stampato_il
+
+  - changeSet:
+      id: 6-lotti
+      author: etichette
+      comment: "Progressivo giornaliero del lotto (schema data e progressivo del giorno)."
+      changes:
+        - createTable:
+            tableName: lotti
+            columns:
+              - column:
+                  name: giorno
+                  type: TEXT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: progressivo
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 7-seed-impostazioni
+      author: etichette
+      comment: "Impostazioni predefinite (docs/funzionalita-prima-versione.md)."
+      changes:
+        - insert:
+            tableName: impostazioni
+            columns:
+              - column: {name: chiave, value: schema_lotto}
+              - column: {name: valore, value: data_progressivo}
+        - insert:
+            tableName: impostazioni
+            columns:
+              - column: {name: chiave, value: taglio_ogni_etichetta}
+              - column: {name: valore, value: "true"}
+        - insert:
+            tableName: impostazioni
+            columns:
+              - column: {name: chiave, value: margine_mm}
+              - column: {name: valore, value: "3"}
+
+  - changeSet:
+      id: 8-seed-etichette
+      author: etichette
+      comment: "Le quattro etichette pronte (docs/funzionalita-prima-versione.md)."
+      changes:
+        - insert:
+            tableName: etichette
+            columns:
+              - column: {name: nome, value: Completa}
+              - column: {name: blocchi, value: '["titolo","ingredienti","puo_contenere","modo_uso","scadenza","conservazione","lotto","quantita","valori_nutrizionali","produttore"]'}
+              - column: {name: dicitura_scadenza, value: "da consumare entro"}
+              - column: {name: formato_data, value: "gg/mm/aaaa"}
+              - column: {name: predefinita, valueNumeric: 1}
+              - column: {name: creata_il, valueDate: "2026-09-08T00:00:00"}
+              - column: {name: modificata_il, valueDate: "2026-09-08T00:00:00"}
+        - insert:
+            tableName: etichette
+            columns:
+              - column: {name: nome, value: Cucina}
+              - column: {name: blocchi, value: '["nome_grande","data_produzione","scadenza","sigla_operatore"]'}
+              - column: {name: dicitura_scadenza, value: "Scade il"}
+              - column: {name: formato_data, value: "gg/mm"}
+              - column: {name: predefinita, valueNumeric: 1}
+              - column: {name: creata_il, valueDate: "2026-09-08T00:00:00"}
+              - column: {name: modificata_il, valueDate: "2026-09-08T00:00:00"}
+        - insert:
+            tableName: etichette
+            columns:
+              - column: {name: nome, value: "Aperto il / Scade il"}
+              - column: {name: blocchi, value: '["nome_grande","aperto_il","scade_il"]'}
+              - column: {name: dicitura_scadenza, value: "Scade il"}
+              - column: {name: formato_data, value: "gg/mm"}
+              - column: {name: predefinita, valueNumeric: 1}
+              - column: {name: creata_il, valueDate: "2026-09-08T00:00:00"}
+              - column: {name: modificata_il, valueDate: "2026-09-08T00:00:00"}
+        - insert:
+            tableName: etichette
+            columns:
+              - column: {name: nome, value: Libera}
+              - column: {name: blocchi, value: "[]"}
+              - column: {name: predefinita, valueNumeric: 1}
+              - column: {name: creata_il, valueDate: "2026-09-08T00:00:00"}
+              - column: {name: modificata_il, valueDate: "2026-09-08T00:00:00"}
