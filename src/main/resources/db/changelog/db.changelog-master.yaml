@@ -2,3 +2,6 @@ databaseChangeLog:
   - include:
       file: v1-schema.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v2-semi.yaml
+      relativeToChangelogFile: true

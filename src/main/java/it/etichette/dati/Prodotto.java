@@ -22,6 +22,10 @@ public class Prodotto {
     @Column(name = "nome", nullable = false)
     private String nome;
 
+    /** Nome stampato in grassetto nel blocco "titolo"; se vuoto si usa il nome in maiuscolo. */
+    @Column(name = "nome_stampa")
+    private String nomeStampa;
+
     @Column(name = "etichetta_id")
     private Long etichettaId;
 
@@ -85,6 +89,14 @@ public class Prodotto {
 
     public void setNome(String nome) {
         this.nome = nome;
+    }
+
+    public String getNomeStampa() {
+        return nomeStampa;
+    }
+
+    public void setNomeStampa(String nomeStampa) {
+        this.nomeStampa = nomeStampa;
     }
 
     public Long getEtichettaId() {

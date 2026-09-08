@@ -27,7 +27,7 @@ public class Caratteri {
     private static final String LIBERATION_BOLD = "/font/LiberationSans-Bold.ttf";
 
     /** 1 punto tipografico = 300/72 pixel a 300 dpi (stesso fattore verificato in tools/spike-java2d). */
-    private static final float PX_PER_PT = 300f / 72f;
+    public static final float PX_PER_PT = 300f / 72f;
 
     private Font baseRegolare;
     private Font baseGrassetto;

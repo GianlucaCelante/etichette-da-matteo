@@ -55,8 +55,8 @@ public class EventiController {
         nuovo.onError(e -> emitter.remove(nuovo));
         try {
             nuovo.send(SseEmitter.event().name("stampante").data(monitor.statoCorrente()));
-        } catch (IOException e) {
-            emitter.remove(nuovo);
+        } catch (IOException | IllegalStateException e) {
+            concludiInSilenzio(nuovo);
         }
         return nuovo;
     }
@@ -75,8 +75,8 @@ public class EventiController {
         for (SseEmitter e : emitter) {
             try {
                 e.send(SseEmitter.event().name(nome).data(dati));
-            } catch (IOException ex) {
-                emitter.remove(e);
+            } catch (IOException | IllegalStateException ex) {
+                concludiInSilenzio(e);
             }
         }
     }
@@ -85,12 +85,26 @@ public class EventiController {
         for (SseEmitter e : emitter) {
             try {
                 e.send(SseEmitter.event().comment("keep-alive"));
-            } catch (IOException ex) {
-                emitter.remove(e);
+            } catch (IOException | IllegalStateException ex) {
+                concludiInSilenzio(e);
             } catch (Exception ex) {
                 log.debug("heartbeat SSE non inviato: {}", ex.getMessage());
-                emitter.remove(e);
+                concludiInSilenzio(e);
             }
+        }
+    }
+
+    /**
+     * Il browser ha chiuso la connessione (cambio pagina, refresh): non e' un errore da loggare,
+     * e' il comportamento normale di un client SSE. Toglie l'emitter dall'elenco e lo completa
+     * (senza tentare altri invii, che fallirebbero comunque).
+     */
+    private void concludiInSilenzio(SseEmitter e) {
+        emitter.remove(e);
+        try {
+            e.complete();
+        } catch (RuntimeException ignored) {
+            // gia' completato/in errore lato container: nulla da fare
         }
     }
 

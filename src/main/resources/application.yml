@@ -5,7 +5,13 @@ spring:
   application:
     name: etichette
   datasource:
-    url: jdbc:sqlite:${etichette.dati}/etichette.db?journal_mode=WAL
+    # date_class=TEXT: sqlite-jdbc scriverebbe di default un LocalDateTime come intero
+    # (epoch millis, date_class=integer), ma hibernate-community-dialects lo rilegge sempre
+    # come stringa formattata ("yyyy-MM-dd HH:mm:ss.SSS") - senza questo parametro la lettura
+    # di QUALSIASI colonna data scritta da Hibernate fallisce con "Error parsing time stamp"
+    # (scoperto in fase 2, mai esercitato in fase 1: nessun test rileggeva prima una colonna
+    # data attraverso JPA). Con date_class=TEXT scrittura e lettura usano lo stesso formato.
+    url: jdbc:sqlite:${etichette.dati}/etichette.db?journal_mode=WAL&date_class=TEXT&date_string_format=yyyy-MM-dd HH:mm:ss.SSS
     driver-class-name: org.sqlite.JDBC
   jpa:
     open-in-view: false

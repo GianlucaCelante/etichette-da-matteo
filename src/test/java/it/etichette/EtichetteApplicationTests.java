@@ -55,9 +55,11 @@ class EtichetteApplicationTests {
 
     @Test
     void leImpostazioniSeminateSonoLeggibili() throws Exception {
+        // "data" e non "data_progressivo": corretto in db/changelog/v2-semi.yaml per allinearsi
+        // al valore del contratto (docs/api.md, schema_lotto: data|giorno|continuo|mano).
         mockMvc.perform(get("/api/impostazioni"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.schema_lotto").value("data_progressivo"))
+                .andExpect(jsonPath("$.schema_lotto").value("data"))
                 .andExpect(jsonPath("$.margine_mm").value("3"));
     }
 }

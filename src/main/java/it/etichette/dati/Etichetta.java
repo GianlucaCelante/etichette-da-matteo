@@ -45,6 +45,10 @@ public class Etichetta {
     @Column(name = "produttore_sede_produzione")
     private String produttoreSedeProduzione;
 
+    /** Larghezza della colonna destra nella zona a due colonne: "1/4", "1/3", "1/2" o "2/3". */
+    @Column(name = "zona_larghezza_destra")
+    private String zonaLarghezzaDestra;
+
     @Column(name = "predefinita", nullable = false)
     private boolean predefinita;
 
@@ -124,6 +128,14 @@ public class Etichetta {
 
     public void setProduttoreSedeProduzione(String produttoreSedeProduzione) {
         this.produttoreSedeProduzione = produttoreSedeProduzione;
+    }
+
+    public String getZonaLarghezzaDestra() {
+        return zonaLarghezzaDestra;
+    }
+
+    public void setZonaLarghezzaDestra(String zonaLarghezzaDestra) {
+        this.zonaLarghezzaDestra = zonaLarghezzaDestra;
     }
 
     public boolean isPredefinita() {

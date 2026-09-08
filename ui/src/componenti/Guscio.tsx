@@ -7,6 +7,8 @@ import {
   IconaStampa,
   IconaStorico,
 } from "./Icone";
+import RichiediNomeDispositivo from "./RichiediNomeDispositivo";
+import StatoStampante from "./StatoStampante";
 
 const VOCI = [
   { percorso: "/stampa", etichetta: "Stampa", Icona: IconaStampa },
@@ -59,6 +61,8 @@ export default function Guscio() {
           <div className="flex items-center gap-2.5 min-w-0">
             <h1 className="h titolo">{titolo}</h1>
           </div>
+          {/* lo stato della stampante, in chiaro, mentre si stampa (funzionalita-prima-versione.md) */}
+          {posizione.pathname === "/stampa" && <StatoStampante />}
         </header>
 
         <Outlet />
@@ -72,6 +76,7 @@ export default function Guscio() {
           ))}
         </nav>
       </div>
+      <RichiediNomeDispositivo />
     </div>
   );
 }

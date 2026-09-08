@@ -30,6 +30,17 @@ public class CodaDiStampa {
         return lavoro.id;
     }
 
+    /**
+     * Come sopra, ma con margine e taglio letti dalle impostazioni al momento della stampa
+     * (docs/api.md: {@code margine_mm}, {@code taglio_ogni_etichetta}) invece dei valori fissi.
+     */
+    public String accoda(BufferedImage immagine, int rotoloMm, int copie, int margineDot, boolean taglioAutomatico) {
+        LavoroStampa lavoro = new LavoroStampa(immagine, rotoloMm, Math.max(1, copie), margineDot, taglioAutomatico);
+        registro.put(lavoro.id, lavoro);
+        inAttesa.add(lavoro);
+        return lavoro.id;
+    }
+
     /** Segna il lavoro come annullato; il thread del monitor lo scopre fra una copia e l'altra. */
     public boolean annulla(String lavoroId) {
         LavoroStampa lavoro = registro.get(lavoroId);

@@ -44,6 +44,15 @@ export function useEventi() {
         try {
           const dati = JSON.parse((evento as MessageEvent<string>).data) as EventoStampa;
           client.setQueryData(chiaviQuery.lavoroStampa, dati);
+          // a lavoro completato il servizio ha gia' scritto lo storico e
+          // aggiornato usi/ultimoUso del prodotto: si rileggono entrambi,
+          // qualunque vista sia aperta (docs/api.md, "Stampe").
+          if (dati.stato === "completata") {
+            void client.invalidateQueries({ queryKey: ["storico"] });
+            void client.invalidateQueries({ queryKey: ["prodotti"] });
+            // il lavoro ha consumato un numero di lotto: la prossima proposta e' cambiata
+            void client.invalidateQueries({ queryKey: chiaviQuery.lotto });
+          }
         } catch {
           // evento malformato: si ignora
         }

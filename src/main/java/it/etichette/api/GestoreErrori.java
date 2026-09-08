@@ -1,5 +1,6 @@
 package it.etichette.api;
 
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -7,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
@@ -18,8 +20,11 @@ public class GestoreErrori {
     private static final Logger log = LoggerFactory.getLogger(GestoreErrori.class);
 
     @ExceptionHandler(ErroreApi.class)
-    public ResponseEntity<Map<String, String>> gestisciErroreApi(ErroreApi e) {
-        return ResponseEntity.status(e.getStato()).body(Map.of("errore", e.getMessage()));
+    public ResponseEntity<Map<String, Object>> gestisciErroreApi(ErroreApi e) {
+        Map<String, Object> corpo = new java.util.LinkedHashMap<>();
+        corpo.put("errore", e.getMessage());
+        corpo.putAll(e.getDettagli());
+        return ResponseEntity.status(e.getStato()).body(corpo);
     }
 
     /**
@@ -44,6 +49,16 @@ public class GestoreErrori {
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .orElse("dati non validi");
         return ResponseEntity.badRequest().body(Map.of("errore", messaggio));
+    }
+
+    /**
+     * Il browser ha chiuso la connessione (cambio pagina su {@code /api/eventi}, refresh a meta'
+     * di una risposta): la connessione e' gia' rotta, scrivere un corpo JSON fallirebbe di nuovo.
+     * Non e' un errore del servizio: si logga a DEBUG (non ERROR/WARN) e non si scrive nulla.
+     */
+    @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class})
+    public void gestisciConnessioneCadutaLatoClient(Exception e) {
+        log.debug("connessione interrotta dal client: {}", e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

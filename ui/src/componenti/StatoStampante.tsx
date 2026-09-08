@@ -36,15 +36,17 @@ export default function StatoStampante() {
     );
   }
 
-  const rotolo = data.rotolo ? `rotolo ${data.rotolo} mm · ` : "";
+  // Il messaggio del servizio gia' descrive lo stato (es. "Pronta", "Coperchio
+  // aperto"): affiancarlo sempre a TESTO_STATO duplicava il testo. Per pronta
+  // e in_stampa accanto va solo il rotolo; il messaggio si vede solo quando
+  // c'e' un problema (errore/scollegata), dove non c'entra il rotolo.
+  const inErrore = data.stato === "errore" || data.stato === "scollegata";
+  const accanto = inErrore ? data.messaggio : data.rotolo ? `rotolo ${data.rotolo} mm` : "nessun rotolo";
   return (
     <span className={"pastiglia " + classeDiStato(data.stato)}>
       <span className="punto" />
       <b>{TESTO_STATO[data.stato]}</b>
-      <span className="font-normal">
-        {rotolo}
-        {data.messaggio}
-      </span>
+      <span className="font-normal">{accanto}</span>
     </span>
   );
 }

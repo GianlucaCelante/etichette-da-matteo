@@ -1,0 +1,276 @@
+databaseChangeLog:
+  # Fase 2: colonne aggiunte al modello (docs/api.md), correzione dei semi minimi della fase 1 con
+  # i blocchi veri del prototipo, e i prodotti di esempio. Changeset con id nuovi: eseguiti UNA
+  # VOLTA SOLA da Liquibase (tracciati in DATABASECHANGELOG) sia su un database creato da zero sia
+  # su uno gia' creato dalla fase 1 - nessun rischio di duplicare le etichette/i prodotti gia'
+  # seminati, e le UPDATE (per nome, unico) restano corrette anche se rieseguite a mano.
+
+  - changeSet:
+      id: 9-etichette-zona
+      author: etichette
+      comment: "Larghezza della colonna destra nella zona a due colonne (docs/api.md, zona.larghezzaDestra)."
+      changes:
+        # SQL diretto invece di addColumn: il generatore SQLite di Liquibase ricostruisce sempre
+        # la tabella per un addColumn (SQLite non supporta ALTER TABLE ... ALTER COLUMN) e va in
+        # errore (IndexOutOfBoundsException in SQLiteDatabase.getAlterTableStatements) su tabelle
+        # con chiave esterna come "prodotti" (etichetta_id -> etichette); SQLite supporta pero'
+        # nativamente un semplice ALTER TABLE ADD COLUMN senza vincoli, usato qui direttamente.
+        - sql:
+            sql: "ALTER TABLE etichette ADD COLUMN zona_larghezza_destra TEXT;"
+
+  - changeSet:
+      id: 10-prodotti-nome-stampa
+      author: etichette
+      comment: "Nome stampato nel blocco titolo, se diverso dal nome del prodotto (docs/api.md)."
+      changes:
+        - sql:
+            sql: "ALTER TABLE prodotti ADD COLUMN nome_stampa TEXT;"
+
+  - changeSet:
+      id: 11-correggi-schema-lotto
+      author: etichette
+      comment: "La fase 1 aveva seminato 'data_progressivo': il contratto (docs/api.md) usa 'data'."
+      changes:
+        - update:
+            tableName: impostazioni
+            columns:
+              - column: {name: valore, value: "data"}
+            where: "chiave = 'schema_lotto' AND valore = 'data_progressivo'"
+
+  - changeSet:
+      id: 12-seed-progressivo-continuo
+      author: etichette
+      comment: "Progressivo dello schema di lotto 'continuo' (docs/api.md), mancante nel seme della fase 1."
+      changes:
+        - insert:
+            tableName: impostazioni
+            columns:
+              - column: {name: chiave, value: progressivo_continuo}
+              - column: {name: valore, value: "0"}
+
+  - changeSet:
+      id: 13-etichette-blocchi-completa
+      author: etichette
+      comment: "'Completa': blocchi, dicitura, formato e produttore veri (docs/api.md, esempio dell'Etichetta = questa stessa etichetta)."
+      changes:
+        - update:
+            tableName: etichette
+            columns:
+              - column: {name: blocchi, value: '[{"tipo":"titolo","acceso":true,"corpo":18,"colonna":"piena"},{"tipo":"ingredienti","acceso":true,"corpo":7,"colonna":"piena"},{"tipo":"puoContenere","acceso":true,"corpo":7,"colonna":"piena"},{"tipo":"modoUso","acceso":false,"corpo":7,"colonna":"piena"},{"tipo":"scadenza","acceso":true,"corpo":8,"colonna":"sx"},{"tipo":"lotto","acceso":true,"corpo":7,"colonna":"sx"},{"tipo":"quantita","acceso":true,"corpo":28,"colonna":"sx"},{"tipo":"valori","acceso":true,"corpo":7,"colonna":"dx"},{"tipo":"produttore","acceso":true,"corpo":7,"colonna":"piena"}]'}
+              - column: {name: dicitura_scadenza, value: "da consumare entro"}
+              - column: {name: formato_data, value: "GG/MM/AAAA"}
+              - column: {name: produttore_ragione_sociale, value: "Michi s.n.c. di Michele Alberto Crivellari"}
+              - column: {name: produttore_sede_legale, value: "Via Brigata Marche 257 - 31030 Carbonera (TV)"}
+              - column: {name: produttore_sede_produzione, value: "Via Trieste 4/II - 31020 Fontane di Villorba (TV)"}
+              - column: {name: zona_larghezza_destra, value: "1/3"}
+              - column: {name: creata_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificata_il, value: "2026-09-08 00:00:00.000"}
+            where: "nome = 'Completa'"
+
+  - changeSet:
+      id: 14-etichette-blocchi-cucina
+      author: etichette
+      comment: "'Cucina': blocchi veri del prototipo (ETDEMO.cucina)."
+      changes:
+        - update:
+            tableName: etichette
+            columns:
+              - column: {name: blocchi, value: '[{"tipo":"titolo","acceso":true,"corpo":14,"colonna":"piena"},{"tipo":"testo","acceso":true,"corpo":8,"colonna":"piena","testo":"Prodotto il 03/09/2026"},{"tipo":"scadenza","acceso":true,"corpo":8,"colonna":"piena"},{"tipo":"lotto","acceso":true,"corpo":7,"colonna":"piena"},{"tipo":"testo","acceso":true,"corpo":7,"colonna":"piena","testo":"Preparato da M.C."}]'}
+              - column: {name: dicitura_scadenza, value: "Scade il"}
+              - column: {name: formato_data, value: "GG/MM/AAAA"}
+              - column: {name: produttore_ragione_sociale, value: "Michi s.n.c."}
+              - column: {name: produttore_sede_legale, value: "Carbonera (TV)"}
+              - column: {name: zona_larghezza_destra, value: "1/2"}
+              - column: {name: creata_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificata_il, value: "2026-09-08 00:00:00.000"}
+            where: "nome = 'Cucina'"
+
+  - changeSet:
+      id: 15-etichette-blocchi-aperto
+      author: etichette
+      comment: "'Aperto il / Scade il': blocchi veri del prototipo (ETDEMO.aperto)."
+      changes:
+        - update:
+            tableName: etichette
+            columns:
+              - column: {name: blocchi, value: '[{"tipo":"testoGrande","acceso":true,"corpo":10,"colonna":"piena","testo":"APERTO IL"},{"tipo":"scadenza","acceso":true,"corpo":20,"colonna":"piena"},{"tipo":"lotto","acceso":true,"corpo":8,"colonna":"piena"}]'}
+              - column: {name: dicitura_scadenza, value: "Scade il"}
+              - column: {name: formato_data, value: "GG/MM/AAAA"}
+              - column: {name: produttore_ragione_sociale, value: "Michi s.n.c."}
+              - column: {name: produttore_sede_legale, value: "Carbonera (TV)"}
+              - column: {name: zona_larghezza_destra, value: "1/2"}
+              - column: {name: creata_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificata_il, value: "2026-09-08 00:00:00.000"}
+            where: "nome = 'Aperto il / Scade il'"
+
+  - changeSet:
+      id: 16-etichette-blocchi-libera
+      author: etichette
+      comment: "'Libera': nessun blocco, l'utente la compone da zero (docs/funzionalita-prima-versione.md)."
+      changes:
+        - update:
+            tableName: etichette
+            columns:
+              - column: {name: blocchi, value: "[]"}
+              - column: {name: creata_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificata_il, value: "2026-09-08 00:00:00.000"}
+            where: "nome = 'Libera'"
+
+  - changeSet:
+      id: 17-seed-prodotti
+      author: etichette
+      comment: "Prodotti di esempio del prototipo (artefatti-claude/banco-etichette-2026-09-08.html, 'partenza().prodotti'), cosi' l'app si prova subito (docs/api.md, 'Dati di partenza')."
+      changes:
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Base pizza low carb"}
+              - column: {name: nome_stampa, value: "BASE PIZZA LOW CARB ARTIGIANALE"}
+              - column: {name: etichetta_id, valueNumeric: 1}
+              - column: {name: ingredienti, value: "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO, Lievito madre di farina di FRUMENTO in polvere, Lievito disattivato, Proteina di AVENA], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante in polvere per panificazione [Farina di GRANO tenero tipo 0, Enzimi], Miscela per spolvero [SEMOLA rimacinata di GRANO duro, Farina di riso, Farina di mais]."}
+              - column: {name: puo_contenere, value: '["Latte","Lupini","Senape","Sesamo","Soia","Uova"]'}
+              - column: {name: modo_uso, value: "3 modi per prepararle al meglio: 1. Infornare a 250° per circa 5 minuti; 2. Mettere in padella a fuoco medio per circa 7 minuti; 3. Riscaldare in friggitrice ad aria."}
+              - column: {name: giorni_scadenza, valueNumeric: 7}
+              - column: {name: conservazione, value: "Fuori dal frigo"}
+              - column: {name: quantita, value: "2148 g"}
+              - column: {name: valori_nutrizionali, value: '[{"voce":"Energia","valore":"385 kJ / 91 kcal"},{"voce":"Grassi","valore":"2,6 g"},{"voce":"di cui acidi grassi saturi","valore":"0,5 g"},{"voce":"Carboidrati","valore":"2 g"},{"voce":"di cui zuccheri","valore":"0,7 g"},{"voce":"Fibre","valore":"3,1 g"},{"voce":"Proteine","valore":"15 g"},{"voce":"Sale","valore":"1,5 g"}]'}
+              - column: {name: usi, valueNumeric: 12}
+              - column: {name: ultimo_uso, value: "2026-09-08 11:50:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Impasto classico 24h"}
+              - column: {name: nome_stampa, value: "IMPASTO CLASSICO 24H"}
+              - column: {name: etichetta_id, valueNumeric: 2}
+              - column: {name: ingredienti, value: "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra."}
+              - column: {name: puo_contenere, value: '["Soia"]'}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 3}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "250 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 8}
+              - column: {name: ultimo_uso, value: "2026-09-08 09:12:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Impasto integrale"}
+              - column: {name: nome_stampa, value: "IMPASTO INTEGRALE"}
+              - column: {name: etichetta_id, valueNumeric: 2}
+              - column: {name: ingredienti, value: "Farina integrale di GRANO tenero, Acqua, Sale, Lievito di birra."}
+              - column: {name: puo_contenere, value: "[]"}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 3}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "250 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 7}
+              - column: {name: ultimo_uso, value: "2026-09-07 15:30:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Focaccia al rosmarino"}
+              - column: {name: nome_stampa, value: "FOCACCIA AL ROSMARINO"}
+              - column: {name: etichetta_id, valueNumeric: 1}
+              - column: {name: ingredienti, value: "Farina di GRANO tenero tipo 0, Acqua, Olio extravergine di oliva, Rosmarino, Sale, Lievito di birra."}
+              - column: {name: puo_contenere, value: "[]"}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 2}
+              - column: {name: conservazione, value: "Fuori dal frigo"}
+              - column: {name: quantita, value: "400 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 2}
+              - column: {name: ultimo_uso, value: "2026-09-04 10:00:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Salsa di pomodoro"}
+              - column: {name: nome_stampa, value: "SALSA DI POMODORO"}
+              - column: {name: etichetta_id, valueNumeric: 1}
+              - column: {name: ingredienti, value: "Pomodoro, Olio extravergine di oliva, Basilico, Sale."}
+              - column: {name: puo_contenere, value: "[]"}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 4}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "1000 g"}
+              - column: {name: valori_nutrizionali, value: '[{"voce":"Energia","valore":"160 kJ / 38 kcal"},{"voce":"Grassi","valore":"1,8 g"},{"voce":"Carboidrati","valore":"4,1 g"},{"voce":"Proteine","valore":"1,2 g"},{"voce":"Sale","valore":"0,8 g"}]'}
+              - column: {name: usi, valueNumeric: 6}
+              - column: {name: ultimo_uso, value: "2026-09-07 19:40:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Pesto di basilico"}
+              - column: {name: nome_stampa, value: "PESTO DI BASILICO"}
+              - column: {name: etichetta_id, valueNumeric: 1}
+              - column: {name: ingredienti, value: "Basilico, Olio extravergine di oliva, ANACARDI, Sale, Aglio."}
+              - column: {name: puo_contenere, value: '["Frutta a guscio","Latte"]'}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 5}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "500 g"}
+              - column: {name: valori_nutrizionali, value: '[{"voce":"Energia","valore":"1980 kJ / 480 kcal"},{"voce":"Grassi","valore":"48 g"},{"voce":"Carboidrati","valore":"3 g"},{"voce":"Proteine","valore":"5 g"},{"voce":"Sale","valore":"1,9 g"}]'}
+              - column: {name: usi, valueNumeric: 3}
+              - column: {name: ultimo_uso, value: "2026-09-05 12:00:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Crema di zucca"}
+              - column: {name: nome_stampa, value: "CREMA DI ZUCCA"}
+              - column: {name: etichetta_id, valueNumeric: 2}
+              - column: {name: ingredienti, value: "Zucca, Patate, Cipolla, Olio extravergine di oliva, Sale."}
+              - column: {name: puo_contenere, value: "[]"}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 3}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "500 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 5}
+              - column: {name: ultimo_uso, value: "2026-09-06 17:05:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Ragù bianco"}
+              - column: {name: nome_stampa, value: "RAGÙ BIANCO"}
+              - column: {name: etichetta_id, valueNumeric: 2}
+              - column: {name: ingredienti, value: "Carne di manzo, SEDANO, Carota, Cipolla, Olio extravergine di oliva, Sale."}
+              - column: {name: puo_contenere, value: '["Sedano"]'}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 3}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "800 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 1}
+              - column: {name: ultimo_uso, value: "2026-09-03 18:22:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+        - insert:
+            tableName: prodotti
+            columns:
+              - column: {name: nome, value: "Mozzarella tagliata"}
+              - column: {name: nome_stampa, value: "MOZZARELLA TAGLIATA"}
+              - column: {name: etichetta_id, valueNumeric: 3}
+              - column: {name: ingredienti, value: "LATTE vaccino, Sale, Caglio."}
+              - column: {name: puo_contenere, value: '["Latte"]'}
+              - column: {name: modo_uso, value: ""}
+              - column: {name: giorni_scadenza, valueNumeric: 2}
+              - column: {name: conservazione, value: "In frigo"}
+              - column: {name: quantita, value: "1000 g"}
+              - column: {name: valori_nutrizionali, value: "[]"}
+              - column: {name: usi, valueNumeric: 4}
+              - column: {name: ultimo_uso, value: "2026-09-06 16:48:00.000"}
+              - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
+              - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}

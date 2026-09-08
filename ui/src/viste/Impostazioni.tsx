@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import { percorsoQrRete } from "../api/client";
 import {
+  useDispositivi,
+  useEliminaDispositivo,
   useImpostazioni,
   useLavoroStampa,
+  useLotto,
   useProvaStampa,
   useRete,
   useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
-import type { Stampante } from "../api/tipi";
+import type { SchemaLotto, SchemaLottoInfo, Stampante } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
-import { IconaAllarme, IconaCercaDiNuovo, IconaSpunta, IconaStampa, IconaTelefono } from "../componenti/Icone";
+import {
+  IconaAllarme,
+  IconaCercaDiNuovo,
+  IconaSpunta,
+  IconaStampa,
+  IconaTelefono,
+} from "../componenti/Icone";
+import ConfermaInline from "../componenti/ConfermaInline";
 import Sezione from "../componenti/Sezione";
 
 const MARGINE_MINIMO_MM = 3;
@@ -238,21 +248,21 @@ function SezioneStampa() {
   const [margine, setMargine] = useState("3");
 
   useEffect(() => {
-    if (impostazioni?.margine !== undefined) setMargine(impostazioni.margine);
-  }, [impostazioni?.margine]);
+    if (impostazioni?.margine_mm !== undefined) setMargine(impostazioni.margine_mm);
+  }, [impostazioni?.margine_mm]);
 
-  const taglia = impostazioni?.taglia !== "false"; // di default acceso, come nel prototipo
+  const taglia = impostazioni?.taglio_ogni_etichetta !== "false"; // di default acceso, come nel prototipo
 
   const cambiaTaglio = useCallback(() => {
     if (!impostazioni) return;
-    salva.mutate({ ...impostazioni, taglia: taglia ? "false" : "true" });
+    salva.mutate({ ...impostazioni, taglio_ogni_etichetta: taglia ? "false" : "true" });
   }, [impostazioni, taglia, salva]);
 
   const confermaMargine = useCallback(() => {
     if (!impostazioni) return;
     const numero = Math.max(MARGINE_MINIMO_MM, parseInt(margine, 10) || MARGINE_MINIMO_MM);
     setMargine(String(numero));
-    salva.mutate({ ...impostazioni, margine: String(numero) });
+    salva.mutate({ ...impostazioni, margine_mm: String(numero) });
   }, [impostazioni, margine, salva]);
 
   const cambiaMargine = useCallback((evento: ChangeEvent<HTMLInputElement>) => {
@@ -325,29 +335,140 @@ function SezioneTelefoni() {
           </div>
         </details>
       )}
-      <div className="pt-[14px] border-t border-[var(--riga)] mt-[14px]">
-        <div className="etichettina mb-2">Dispositivi collegati</div>
-        <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45]">
-          <span className="flex shrink-0">
-            <IconaTelefono larghezza={18} spessoreTratto={1.8} />
-          </span>
-          <span>L&apos;elenco dei telefoni e dei tablet collegati arriva in una prossima fetta di lavoro.</span>
-        </div>
+    </Sezione>
+  );
+}
+
+// Il lotto e' la numerazione del locale, unica su tutte le etichette: si
+// sceglie uno dei quattro schemi, e accanto a ognuno si legge il lotto che
+// uscirebbe oggi (docs/api.md, "Lotto"; funzionalita-prima-versione.md).
+function RigaSchemaLotto({
+  schema,
+  scelto,
+  onScegli,
+  disabilitato,
+}: {
+  schema: SchemaLottoInfo;
+  scelto: boolean;
+  onScegli: (codice: SchemaLotto) => void;
+  disabilitato: boolean;
+}) {
+  const clic = useCallback(() => onScegli(schema.codice), [onScegli, schema.codice]);
+  return (
+    <button
+      type="button"
+      className="riga scelta w-full"
+      onClick={clic}
+      disabled={disabilitato}
+      aria-pressed={scelto}
+    >
+      <span className={"cerchio" + (scelto ? " on" : "")} />
+      <div className="min-w-0 flex-1">
+        <div className="t">{schema.nome}</div>
+        <div className="s mono">{schema.esempio}</div>
+      </div>
+      <span className="v mono font-bold">{schema.oggi ?? "da scrivere"}</span>
+    </button>
+  );
+}
+
+function SezioneLotto() {
+  const { data: lotto } = useLotto();
+  const { data: impostazioni } = useImpostazioni();
+  const salva = useSalvaImpostazioni();
+
+  const scegli = useCallback(
+    (codice: SchemaLotto) => {
+      if (!impostazioni) return;
+      salva.mutate({ ...impostazioni, schema_lotto: codice });
+    },
+    [impostazioni, salva],
+  );
+
+  return (
+    <Sezione titolo="Lotto" destra={<span className="text-[13px] text-[var(--tenue)]">Vale per tutte le etichette</span>}>
+      <div className="flex flex-col gap-2">
+        {(lotto?.schemi ?? []).map((schema) => (
+          <RigaSchemaLotto
+            key={schema.codice}
+            schema={schema}
+            scelto={lotto?.schema === schema.codice}
+            onScegli={scegli}
+            disabilitato={salva.isPending}
+          />
+        ))}
       </div>
     </Sezione>
   );
 }
 
+function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string; nome: string; tipo: "pc" | "telefono"; collegatoIl: string; ultimoAccesso: string }) {
+  const eliminaDispositivo = useEliminaDispositivo();
+  const avvisa = useAvviso();
+  const { relativo } = useOraRelativa(ultimoAccesso);
+  const dataCollegamento = new Date(collegatoIl.replace(" ", "T"));
+  const collegatoDal = Number.isNaN(dataCollegamento.getTime())
+    ? collegatoIl
+    : new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" }).format(dataCollegamento);
+
+  const scollega = useCallback(() => {
+    eliminaDispositivo.mutate(id, {
+      onSuccess: () => avvisa(`${nome} scollegato.`),
+      onError: () => avvisa("Non sono riuscito a scollegarlo: riprova."),
+    });
+  }, [eliminaDispositivo, id, nome, avvisa]);
+
+  return (
+    <div className="riga telefonoRiga">
+      <span className="text-[var(--tenue)] flex shrink-0">
+        <IconaTelefono larghezza={20} spessoreTratto={1.8} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="t">{nome}</div>
+        <div className="s">
+          Collegato dal {collegatoDal} · ultimo accesso {relativo}
+        </div>
+      </div>
+      <ConfermaInline etichetta="Scollega" domanda="Scollegare?" onConferma={scollega} disabilitato={eliminaDispositivo.isPending} />
+    </div>
+  );
+}
+
+function SezioneDispositivi() {
+  const { data: dispositivi } = useDispositivi();
+
+  return (
+    <Sezione
+      titolo="Dispositivi collegati"
+      destra={dispositivi && <span className="text-[13px] text-[var(--tenue)]">{dispositivi.length}</span>}
+    >
+      {dispositivi && dispositivi.length === 0 && (
+        <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">
+          <span className="flex shrink-0">
+            <IconaTelefono larghezza={18} spessoreTratto={1.8} />
+          </span>
+          <span>Nessun telefono collegato. Inquadra il QR qui a fianco per collegarne uno.</span>
+        </div>
+      )}
+      {(dispositivi ?? []).map((d) => (
+        <RigaDispositivo key={d.id} id={d.id} nome={d.nome} tipo={d.tipo} collegatoIl={d.collegatoIl} ultimoAccesso={d.ultimoAccesso} />
+      ))}
+    </Sezione>
+  );
+}
+
 // Fetta verticale completa: stato della stampante dal vivo, opzioni di
-// stampa e la scheda per collegare telefoni e tablet dal QR. Due colonne
-// uguali dai 1024px in su (Stampante | Stampa, poi Telefoni e tablet sotto
-// a sinistra), una colonna sotto: vedi .grigliaImpostazioni in index.css.
+// stampa, il lotto del locale, e le schede per collegare telefoni e tablet
+// dal QR e vedere chi e' collegato. Due colonne uguali dai 1024px in su
+// (vedi .grigliaImpostazioni in index.css), una colonna sotto.
 export default function Impostazioni() {
   return (
     <div className="schermo scorre grigliaImpostazioni">
       <SezioneStampante />
       <SezioneStampa />
+      <SezioneLotto />
       <SezioneTelefoni />
+      <SezioneDispositivi />
     </div>
   );
 }

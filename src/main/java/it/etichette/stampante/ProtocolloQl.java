@@ -48,10 +48,18 @@ public final class ProtocolloQl {
     // =========================================================================================
 
     public static byte[] costruisciLavoro(boolean[][] nero, int righe, int colonne, int rotoloMm) {
-        return costruisciLavoro(nero, righe, colonne, rotoloMm, MARGINE_DOT_DEFAULT);
+        return costruisciLavoro(nero, righe, colonne, rotoloMm, MARGINE_DOT_DEFAULT, TAGLIO_AUTOMATICO);
     }
 
     public static byte[] costruisciLavoro(boolean[][] nero, int righe, int colonne, int rotoloMm, int marginDot) {
+        return costruisciLavoro(nero, righe, colonne, rotoloMm, marginDot, TAGLIO_AUTOMATICO);
+    }
+
+    /**
+     * Come sopra, ma con {@code taglioAutomatico} letto dall'impostazione {@code taglio_ogni_etichetta}
+     * al momento della stampa (docs/api.md) invece della costante fissa {@link #TAGLIO_AUTOMATICO}.
+     */
+    public static byte[] costruisciLavoro(boolean[][] nero, int righe, int colonne, int rotoloMm, int marginDot, boolean taglioAutomatico) {
         int[] spec = ROTOLI_CONTINUI.get(rotoloMm);
         if (spec == null) {
             throw new IllegalArgumentException("rotolo non gestito: " + rotoloMm + " mm");
@@ -66,7 +74,7 @@ public final class ProtocolloQl {
         }
         job.write(0x1B);
         job.write('@'); // ESC @ : initialize
-        byte[] pc = controlloPagina(rotoloMm, righe, true, marginDot);
+        byte[] pc = controlloPagina(rotoloMm, righe, true, marginDot, taglioAutomatico);
         job.write(pc, 0, pc.length);
         for (int y = 0; y < righe; y++) {
             byte[] lb = lineaRaster(nero, y, colonne, sinistra);
@@ -78,6 +86,10 @@ public final class ProtocolloQl {
 
     /** Porting esatto di ql_raster.page_control / QlPrintSpike.pageControl. */
     static byte[] controlloPagina(int rotoloMm, int righe, boolean primaPagina, int marginDot) {
+        return controlloPagina(rotoloMm, righe, primaPagina, marginDot, TAGLIO_AUTOMATICO);
+    }
+
+    static byte[] controlloPagina(int rotoloMm, int righe, boolean primaPagina, int marginDot, boolean taglioAutomatico) {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         // 0x80 = "recovery sempre attivo": chiesto dalla mappatura (n1 sempre 0x80|...) e usato
         // cosi' anche dal driver Brother ufficiale (docs/mappatura-brother-ql-1100c.md §9.2), ma
@@ -98,7 +110,7 @@ public final class ProtocolloQl {
         b.write((righe >> 24) & 0xFF);
         b.write(primaPagina ? 0 : 1);
         b.write(0);
-        b.write(0x1B); b.write('i'); b.write('M'); b.write(TAGLIO_AUTOMATICO ? 0x40 : 0x00); // various mode
+        b.write(0x1B); b.write('i'); b.write('M'); b.write(taglioAutomatico ? 0x40 : 0x00); // various mode
         b.write(0x1B); b.write('i'); b.write('A'); b.write(Math.max(1, Math.min(255, TAGLIA_OGNI))); // cut each N
         b.write(0x1B); b.write('i'); b.write('K'); b.write((TAGLIO_A_FINE_JOB ? 0x08 : 0) | (ALTA_RISOLUZIONE ? 0x40 : 0)); // expanded mode
         b.write(0x1B); b.write('i'); b.write('d'); // margine (feed)

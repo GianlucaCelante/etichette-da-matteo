@@ -197,7 +197,8 @@ public class MonitorStampante {
         // parametri (rotolo, margine) sono identici per tutte le copie, quindi ricostruirlo ad
         // ogni giro sarebbe lavoro ripetuto per lo stesso risultato.
         boolean[][] nero = ProtocolloQl.toBilevel(lavoro.immagine);
-        byte[] job = ProtocolloQl.costruisciLavoro(nero, lavoro.immagine.getHeight(), lavoro.immagine.getWidth(), lavoro.rotoloMm);
+        byte[] job = ProtocolloQl.costruisciLavoro(nero, lavoro.immagine.getHeight(), lavoro.immagine.getWidth(),
+                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico);
 
         while (lavoro.copiaCorrente < lavoro.copieTotali) {
             if (lavoro.annullato.get()) {

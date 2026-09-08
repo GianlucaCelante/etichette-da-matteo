@@ -128,7 +128,7 @@ svg { display: block; flex-shrink: 0; }
 .schermo.grigliaImpostazioni { display: flex; flex-direction: column; }
 .schermo.grigliaImpostazioni > .sezione { align-self: stretch; }
 @media (min-width: 1024px) {
-  .schermo.grigliaImpostazioni { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+  .schermo.grigliaImpostazioni { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; }
   .schermo.grigliaImpostazioni > .sezione { align-self: start; }
 }
 
@@ -193,6 +193,8 @@ svg { display: block; flex-shrink: 0; }
 }
 .interruttore.off { background: #C6B7A3; }
 .interruttore.off::after { right: calc(100% - 26px); }
+.cerchio { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #C6B7A3; flex-shrink: 0; }
+.cerchio.on { border-color: var(--verde); background: var(--verde); box-shadow: inset 0 0 0 3px #fff; }
 
 /* ---------- finestra ---------- */
 .velo {
@@ -207,6 +209,10 @@ svg { display: block; flex-shrink: 0; }
   border: 1px solid var(--rossobordo); background: var(--rossochiaro); border-radius: 16px;
   padding: 14px 16px; display: flex; gap: 12px; color: var(--rosso);
 }
+.finestra.piccola { width: min(440px, 100%); padding: 24px 24px 20px; gap: 18px; }
+.piedeFinestra { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.barraAzioniEtichetta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 32px 6px; flex-shrink: 0; flex-wrap: wrap; }
+@media (max-width: 860px) { .barraAzioniEtichetta { padding: 10px 20px 4px; } }
 .avvisino {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
   padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
@@ -216,12 +222,152 @@ svg { display: block; flex-shrink: 0; }
 .kv b { font-size: 15px; color: var(--testo); }
 .mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
 
-/* ---------- placeholder "In arrivo" ---------- */
-.inArrivo {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; color: var(--tenue); text-align: center; padding: 24px;
+/* ---------- Stampa ed Etichette: prodotti, campi, allergeni ---------- */
+.griglia { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; }
+.prodotto {
+  text-align: left; border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta);
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-height: 118px; justify-content: flex-start;
 }
-.inArrivo .h { font-size: 22px; color: var(--testo); }
+.prodotto .n { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 19px; font-weight: 600; line-height: 1.15; }
+.prodotto .d { font-size: 13px; color: var(--tenue); margin-top: auto; }
+.prodotto.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 17px 19px; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.fuoriEtichetta { font-size: 12.5px; color: var(--spento); line-height: 1.45; padding: 0 6px; flex-shrink: 0; }
+.scelto { background: var(--verdechiaro); color: var(--verdescuro); }
+.rigaEt { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.rigaEt .cambia { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 700; color: var(--verdescuro); }
+
+.allergene {
+  height: 32px; padding: 0 9px; border-radius: 16px; border: 1px solid var(--bordo2);
+  background: var(--carta); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.allergene.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+.allergene.aggiungi { border-style: dashed; border-color: var(--tratteggio); color: var(--tenue); font-weight: 400; }
+
+/* ---------- blocchi dell'etichetta (vista Etichette) ---------- */
+.vassoio { display: flex; flex-direction: column; gap: 8px; padding: 8px 6px; flex-shrink: 0; background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+.riquadro { display: flex; flex-direction: column; gap: 12px; padding: 12px 12px 14px; flex-shrink: 0; background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+.capoRiquadro { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 20px; }
+.nomeRiquadro { font-size: 14px; font-weight: 700; }
+.sottoRiquadro { font-weight: 400; font-size: 12.5px; color: var(--spento); }
+.blocco {
+  min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+  border: 1px solid var(--bordo); border-left: 4px solid var(--verde); border-radius: 9px; background: var(--carta);
+  box-shadow: 0 1px 3px rgba(58, 49, 40, .07); font-size: 12.5px; font-weight: 700;
+}
+/* ".acceso" qui non e' l'interruttore del blocco (quello e' ".sw"/".sw.off"):
+   dice che il blocco appartiene al lato sx/dx scelto nell'intestazione della
+   zona, come nel prototipo. ".spento" invece e' il blocco spento davvero. */
+.blocco.acceso { background: var(--verdechiaro); border-color: var(--verdebordo); border-left-color: var(--verde); }
+.blocco.spento { border-left-color: #C6B7A3; }
+.blocco.trascina { opacity: .4; }
+.blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blocco.spento .nome { color: var(--spento); }
+.blocco.libero { flex-direction: column; align-items: stretch; gap: 8px; padding: 9px 10px; }
+.blocco .testa { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.blocco .testoLibero {
+  border: 1px solid var(--bordo2); border-radius: 9px; background: #fff; padding: 9px 11px;
+  font: inherit; font-size: 14px; font-weight: 400; color: inherit;
+}
+.maniglia { width: 16px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--tratteggio); cursor: grab; padding: 3px 0; touch-action: none; }
+.posto { font-size: 10px; line-height: 11px; font-weight: 700; color: var(--spento); font-variant-numeric: tabular-nums; }
+.sw { width: 40px; height: 22px; border-radius: 11px; background: var(--verde); position: relative; flex-shrink: 0; }
+.sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.sw.off { background: #C6B7A3; }
+.sw.off::after { right: calc(100% - 19px); }
+.misura {
+  height: 26px; min-width: 62px; padding: 0 4px 0 9px; border: 1px solid var(--bordo2); border-radius: 8px;
+  background: var(--carta); font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--testo);
+  appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239C8C7C' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; padding-right: 22px;
+}
+.lato { width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
+.lato.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+.via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+.zona { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 2px 2px; }
+.corsia { height: 28px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--bordo2); background: var(--carta); display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--tenue); white-space: nowrap; }
+.corsia.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+.quote { margin-left: auto; display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
+.quote button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.quote button.on { background: var(--verde); color: #fff; }
+.tavolozza { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); font-size: 13.5px; font-weight: 700; white-space: nowrap; width: 100%; }
+.tavolozza.usato { background: var(--sabbia); color: #B0A08E; border-style: dashed; }
+.tavolozza .piu { margin-left: auto; color: var(--verde); font-size: 18px; }
+.piedeRotolo { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--riga); margin-top: 4px; flex-wrap: wrap; }
+.strumentiEt { display: flex; align-items: center; gap: 8px; }
+.strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }
+.strumentiEt .btn.tondo { width: 44px; padding: 0; gap: 0; border-radius: 22px; }
+.strumentiEt .sep { width: 1px; height: 28px; background: var(--bordo); margin: 0 4px; flex-shrink: 0; }
+.btn.elimina { color: var(--rosso); }
+.btn.elimina.forte { background: var(--rosso); border-color: var(--rosso); color: #fff; }
+
+/* ---------- galleria delle etichette e conferma a due tocchi ---------- */
+.galleriaEtichette { display: flex; flex-wrap: wrap; gap: 10px; }
+.cartaEtichetta {
+  width: 168px; flex-shrink: 0; text-align: left; border: 1px solid var(--bordo); border-radius: 14px;
+  background: var(--carta); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+}
+.cartaEtichetta.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 11px 13px; }
+.cartaEtichetta .nome { font-size: 15px; font-weight: 700; }
+.cartaEtichetta .sotto { font-size: 12px; color: var(--tenue); }
+.cartaEtichetta.nuova { border-style: dashed; border-color: var(--tratteggio); align-items: center; justify-content: center; gap: 6px; color: #6B5A4E; }
+
+/* ---------- anteprima e lente ---------- */
+.anteprima { position: relative; }
+.cornice {
+  overflow-y: auto; overflow-x: hidden; max-height: 260px; border-radius: 8px; position: relative;
+  flex-shrink: 0; width: 100%; display: block; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
+}
+.cornice::-webkit-scrollbar { width: 6px; }
+.cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
+.cornice img { display: block; width: 100%; max-width: 100%; height: auto; }
+.lupa {
+  position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
+  color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.finestra.lente { width: 100%; height: 100%; }
+.capoLente { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--riga); }
+.capoLente .chiudi { width: 40px; height: 40px; border-radius: 20px; border: 1px solid var(--bordo); background: var(--sabbia); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); }
+.corpoLente .foglio { margin: auto; padding: 16px; }
+.corpoLente img { box-shadow: 0 6px 20px rgba(88, 68, 60, .14); display: block; max-width: 100%; height: auto; }
+.segmento { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--bordo2); border-radius: 10px; background: var(--carta); flex-shrink: 0; }
+.segmento button { height: 32px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--tenue); }
+.segmento button.on { background: var(--testo); color: #fff; }
+
+/* ---------- stampa in corso ---------- */
+.barraAvanzamento { height: 10px; border-radius: 5px; background: var(--barra); overflow: hidden; }
+.barraAvanzamento > span { display: block; height: 100%; background: var(--ambra); transition: width .25s; }
+
+/* ---------- storico ---------- */
+.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 88px 104px 104px 104px; }
+.tabella { display: grid; gap: 10px; padding: 0 12px 6px; border-bottom: 1px solid var(--riga); }
+.vocestorico { display: grid; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--riga); }
+.giornoStorico { padding: 14px 12px 6px; }
+.vocestorico.tel {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center;
+  width: 100%; min-height: 62px; padding: 10px 12px 10px 16px; border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta);
+}
+.vocestorico.tel .n { grid-column: 1; font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 16.5px; font-weight: 600; line-height: 1.15; }
+.vocestorico.tel .d { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); }
+.ristampino {
+  grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+  border-radius: 18px; border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+
+/* ---------- Etichette sul telefono: la scheda si apre un gruppo alla volta ---------- */
+.gruppo { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.capoGruppo { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.capoGruppo .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nomeGruppo { font-size: 16.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sottoGruppo { font-size: 13px; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.puntaGruppo { display: flex; color: var(--spento); transition: transform .16s; }
+.gruppo.aperto .puntaGruppo { transform: rotate(180deg); }
+.dentroGruppo { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; border-top: 1px solid var(--riga); }
+
+/* ---------- telefoni collegati (Impostazioni) ---------- */
+.telefonoRiga { flex-wrap: wrap; }
 
 /* ---------- telefono: barra sotto e adattamenti ---------- */
 @media (max-width: 860px) {
@@ -241,6 +387,44 @@ svg { display: block; flex-shrink: 0; }
   .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
   .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
   .riga.rotolo { flex-wrap: wrap; }
+
+  /* stampa: una riga piena per prodotto, con la freccia che dice che si apre */
+  .griglia { grid-template-columns: 1fr; gap: 6px; }
+  .prodotto {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px;
+    min-height: 62px; padding: 10px 12px 10px 16px; border-radius: 14px;
+  }
+  .prodotto.on { padding: 9px 11px 9px 15px; box-shadow: none; }
+  .prodotto .n { font-size: 16.5px; }
+  .prodotto .d { font-size: 13px; margin-top: 0; }
+  .prodotto .n, .prodotto .d { grid-column: 1; }
+  .prodotto .freccia { grid-column: 2; grid-row: 1 / span 2; display: flex; color: var(--tratteggio); }
+  .ristampaTel {
+    display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 14px;
+    border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); width: 100%;
+  }
+  .ristampaTel .testo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ristampaTel .testo b { font-size: 15px; }
+  .ristampaTel .testo span { font-size: 13px; color: var(--verde); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* la scheda del prodotto e' una pagina a se', col bottone Stampa fermo in basso */
+  .schermo.dettaglio { padding-bottom: 0; }
+  .schermo.dettaglio > .colonna.scheda { border: 0; background: none; border-radius: 0; padding: 0; flex: 1 0 auto !important; }
+  .schermo.dettaglio .azioni { position: sticky; bottom: 0; margin: auto -20px 0; padding: 14px 20px 12px; background: linear-gradient(to bottom, rgba(234, 222, 206, 0), var(--fondo) 35%); }
+  .indietro { width: 40px; height: 40px; margin-left: -10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* la vista Stampa e' due pagine sul telefono: l'elenco, oppure la scheda del prodotto scelto */
+  .vistaStampa:not(.dettaglio) > .pannelloProdotto { display: none; }
+  .vistaStampa.dettaglio > .colonnaElenco { display: none; }
+
+  .allergene { height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; }
+  .blocco { min-height: 52px; border-radius: 12px; font-size: 13.5px; padding: 0 10px; }
+  .cartaEtichetta { width: 100%; }
+
+  /* storico: ricerca sopra e gettoni sotto come in Stampa, poi una riga piena per stampa che si tocca per rifarla */
+  .storicoTel .prima { flex-direction: column-reverse; gap: 10px; }
+  .storicoTel .prima .cerca { height: 52px !important; flex: none !important; }
+  .storicoTel .scorre { gap: 6px; }
+  .storicoTel .giornoStorico { padding: 8px 16px 0 !important; }
+
   .barrasotto {
     display: flex; background: var(--crema); border-top: 1px solid var(--bordo);
     padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0;

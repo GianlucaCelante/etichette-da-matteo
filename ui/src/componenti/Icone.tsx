@@ -118,3 +118,149 @@ export function IconaTelefono({ larghezza, spessoreTratto, className }: Propriet
     </IconaBase>
   );
 }
+
+export function IconaTablet({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="3" y="2" width="18" height="20" rx="2" />
+      <path d="M11 18.5h2" />
+    </IconaBase>
+  );
+}
+
+export function IconaMonitor({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </IconaBase>
+  );
+}
+
+export function IconaCerca({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </IconaBase>
+  );
+}
+
+export function IconaLente({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.5-4.5" />
+      <path d="M8 11h6M11 8v6" />
+    </IconaBase>
+  );
+}
+
+export function IconaGiu({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M6 9l6 6 6-6" />
+    </IconaBase>
+  );
+}
+
+export function IconaDestra({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M9 6l6 6-6 6" />
+    </IconaBase>
+  );
+}
+
+export function IconaSinistra({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M19 12H5" />
+      <path d="M12 19l-7-7 7-7" />
+    </IconaBase>
+  );
+}
+
+export function IconaPiu({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </IconaBase>
+  );
+}
+
+export function IconaMeno({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M5 12h14" />
+    </IconaBase>
+  );
+}
+
+export function IconaVia({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </IconaBase>
+  );
+}
+
+export function IconaFerma({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </IconaBase>
+  );
+}
+
+export function IconaManiglia({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.6" fill="currentColor" stroke="none" />
+    </IconaBase>
+  );
+}
+
+export function IconaDuplica({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </IconaBase>
+  );
+}
+
+export function IconaCestino({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 7h16" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M9 7V4h6v3" />
+    </IconaBase>
+  );
+}
+
+export function IconaMatita({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </IconaBase>
+  );
+}
+
+export function IconaScarica({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M4 20h16" />
+    </IconaBase>
+  );
+}
