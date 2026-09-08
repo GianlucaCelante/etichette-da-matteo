@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   useAggiornaEtichetta,
   useAggiornaProdotto,
+  useAnnullaStampa,
   useAnteprimaEtichetta,
   useCreaProdotto,
   useEliminaProdotto,
   useEtichetta,
   useEtichette,
+  useLavoroStampa,
   useProdotti,
   useProdotto,
+  useProvaEtichetta,
   useStampante,
 } from "../api/hooks";
 import { useScalaAnteprima } from "../api/resa";
@@ -18,13 +21,16 @@ import {
   NOMIBLOCCO,
   type Etichetta,
   type FormatoData,
+  type NuovaEtichetta,
   type Prodotto,
   type TipoBloccoDati,
 } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
-import { IconaCerca, IconaCestino, IconaPiu } from "../componenti/Icone";
+import { IconaAnnulla, IconaCerca, IconaCestino, IconaPiu, IconaRipristina, IconaStampa } from "../componenti/Icone";
 import Finestra from "../componenti/Finestra";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
+import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
+import { oggiPiuGiorni } from "../componenti/stampa/formattazione";
 import { CampoAllergeni, CampoArea, CampoSelezione, CampoTesto, Gruppo, Riquadro } from "../componenti/etichette/CampiComuni";
 import { blocchiInBozza, bozzaInBlocchi, bozzaInValori, valoriInBozza, type BloccoBozza, type ValoreBozza } from "../componenti/etichette/bozza";
 import BlocchiEditor from "../componenti/etichette/BlocchiEditor";
@@ -55,6 +61,23 @@ interface CondivisiBozza {
   produttore: Etichetta["produttore"];
   zona: Etichetta["zona"];
 }
+
+// Prodotto ed etichetta in modifica insieme, per la cronologia di Annulla/
+// Ripristina: un solo "passo" tiene entrambi, cosi' i due tasti vanno avanti
+// e indietro su tutta la scheda in un colpo solo.
+interface StatoBozza {
+  prodotto: ProdottoBozza;
+  blocchi: BloccoBozza[];
+  condivisi: CondivisiBozza;
+  etichettaId: number;
+}
+interface PassoStoria {
+  stato: string;
+  quando: number;
+  fuoco: string | null;
+}
+const DURATA_RAGGRUPPAMENTO_MS = 500;
+const MASSIMO_PASSI_STORIA = 80;
 
 type CampoProdottoStringa = "nomeStampa" | "ingredienti" | "modoUso" | "conservazione" | "quantita" | "siglaOperatore";
 type CampoCondiviso = "dicituraScadenza" | "formatoData";
@@ -112,17 +135,29 @@ export default function Etichette() {
   const [bozzaCondivisi, setBozzaCondivisi] = useState<CondivisiBozza | null>(null);
   const [gruppiAperti, setGruppiAperti] = useState<Record<string, boolean>>({ prodotto: true });
   const [eliminaChiesto, setEliminaChiesto] = useState(false);
+  const [provaLavoroId, setProvaLavoroId] = useState<string | null>(null);
+
+  // La cronologia di Annulla/Ripristina vive in un ref (non in stato React):
+  // cambia a ogni battuta, e rifarla passare per un render ogni volta
+  // sarebbe inutile. "versioneStoria" e' solo la leva per far ridisegnare i
+  // due tasti quando la cronologia si muove (undo/redo, nuovo passo).
+  const storiaRef = useRef<{ passi: PassoStoria[]; indice: number }>({ passi: [], indice: 0 });
+  const ripristinandoRef = useRef(false);
+  const [, setVersioneStoria] = useState(0);
 
   const { data: prodotti } = useProdotti({ ordine: "nome" });
   const { data: prodotto } = useProdotto(prodottoId ?? undefined);
   const { data: etichette } = useEtichette();
   const { data: etichettaCaricata } = useEtichetta(bozzaEtichettaId ?? undefined);
   const { data: stampante } = useStampante();
+  const { data: lavoro } = useLavoroStampa();
 
   const salvaEtichettaMut = useAggiornaEtichetta();
   const salvaProdottoMut = useAggiornaProdotto();
   const eliminaProdottoMut = useEliminaProdotto();
   const creaProdottoMut = useCreaProdotto();
+  const provaEtichettaMut = useProvaEtichetta();
+  const annullaStampaMut = useAnnullaStampa();
 
   const rotolo = stampante?.rotolo ?? 62;
   const { rif: rifAnteprima, scala } = useScalaAnteprima(rotolo);
@@ -156,6 +191,11 @@ export default function Etichette() {
     setBozzaEtichettaId(prodotto.etichettaId);
     setGruppiAperti({ prodotto: true });
     setEliminaChiesto(false);
+    setProvaLavoroId(null);
+    // Cambiando prodotto la cronologia riparte da zero (docs di questo giro:
+    // "si azzera al cambio di prodotto e al salvataggio").
+    storiaRef.current = { passi: [], indice: 0 };
+    setVersioneStoria((v) => v + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- si ripropone solo quando cambia il prodotto scelto
   }, [prodotto?.id]);
 
@@ -170,6 +210,82 @@ export default function Etichette() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- si ripropone solo quando cambia l'etichetta scelta
   }, [etichettaCaricata?.id]);
+
+  // Ogni cambiamento della bozza (prodotto + etichetta insieme) diventa un
+  // passo della cronologia: le digitazioni nello stesso campo entro mezzo
+  // secondo si raggruppano in un passo solo, invece di uno per lettera.
+  useEffect(() => {
+    if (!bozzaProdotto || !bozzaBlocchi || !bozzaCondivisi || bozzaEtichettaId === null) return;
+    if (ripristinandoRef.current) {
+      ripristinandoRef.current = false;
+      return;
+    }
+    const statoCorrente = JSON.stringify({ prodotto: bozzaProdotto, blocchi: bozzaBlocchi, condivisi: bozzaCondivisi, etichettaId: bozzaEtichettaId });
+    const storia = storiaRef.current;
+    if (storia.passi.length === 0) {
+      storia.passi = [{ stato: statoCorrente, quando: Date.now(), fuoco: null }];
+      storia.indice = 0;
+      setVersioneStoria((v) => v + 1);
+      return;
+    }
+    const corrente = storia.passi[storia.indice];
+    if (!corrente || corrente.stato === statoCorrente) return;
+    const fuoco = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute("aria-label") : null;
+    const adesso = Date.now();
+    if (storia.indice > 0 && fuoco && corrente.fuoco === fuoco && adesso - corrente.quando < DURATA_RAGGRUPPAMENTO_MS) {
+      corrente.stato = statoCorrente;
+      corrente.quando = adesso;
+    } else {
+      const passi = storia.passi.slice(0, storia.indice + 1);
+      passi.push({ stato: statoCorrente, quando: adesso, fuoco });
+      if (passi.length > MASSIMO_PASSI_STORIA) passi.shift();
+      storia.passi = passi;
+      storia.indice = passi.length - 1;
+    }
+    setVersioneStoria((v) => v + 1);
+  }, [bozzaProdotto, bozzaBlocchi, bozzaCondivisi, bozzaEtichettaId]);
+
+  const puoAnnullare = storiaRef.current.indice > 0;
+  const puoRipristinare = storiaRef.current.indice < storiaRef.current.passi.length - 1;
+
+  const annullaRipristina = useCallback(
+    (avanti: boolean) => {
+      const storia = storiaRef.current;
+      const nuovoIndice = storia.indice + (avanti ? 1 : -1);
+      const passo = storia.passi[nuovoIndice];
+      if (nuovoIndice < 0 || !passo) return;
+      storia.indice = nuovoIndice;
+      const stato = JSON.parse(passo.stato) as StatoBozza;
+      ripristinandoRef.current = true;
+      setBozzaProdotto(stato.prodotto);
+      setBozzaBlocchi(stato.blocchi);
+      setBozzaCondivisi(stato.condivisi);
+      setBozzaEtichettaId(stato.etichettaId);
+      setVersioneStoria((v) => v + 1);
+      avvisa(avanti ? "Ripristinato." : "Annullato.");
+    },
+    [avvisa],
+  );
+  const clicAnnulla = useCallback(() => annullaRipristina(false), [annullaRipristina]);
+  const clicRipristina = useCallback(() => annullaRipristina(true), [annullaRipristina]);
+
+  // Scorciatoie da programma di scrittura: Ctrl+Z annulla, Ctrl+Y o
+  // Ctrl+Maiusc+Z ripristina. Non durante la conferma di eliminazione.
+  useEffect(() => {
+    function suTasto(evento: KeyboardEvent) {
+      if (!(evento.ctrlKey || evento.metaKey) || evento.altKey || eliminaChiesto) return;
+      const tasto = evento.key.toLowerCase();
+      if (tasto === "z") {
+        evento.preventDefault();
+        annullaRipristina(evento.shiftKey);
+      } else if (tasto === "y") {
+        evento.preventDefault();
+        annullaRipristina(true);
+      }
+    }
+    document.addEventListener("keydown", suTasto);
+    return () => document.removeEventListener("keydown", suTasto);
+  }, [annullaRipristina, eliminaChiesto]);
 
   const cambiaCercaEt = useCallback((evento: ChangeEvent<HTMLInputElement>) => setCercaEt(evento.target.value), []);
   const scegliProdotto = useCallback((id: number) => setProdottoId(id), []);
@@ -281,7 +397,12 @@ export default function Etichette() {
           salvaProdottoMut.mutate(
             { id: prodotto.id, dati: prodottoAggiornato },
             {
-              onSuccess: () => avvisa(`Salvato. "${prodottoAggiornato.nome}" è pronto da stampare.`),
+              onSuccess: () => {
+                avvisa(`Salvato. "${prodottoAggiornato.nome}" è pronto da stampare.`);
+                // Salvato: la cronologia riparte da qui (docs di questo giro).
+                storiaRef.current = { passi: [], indice: 0 };
+                setVersioneStoria((v) => v + 1);
+              },
               onError: () => avvisa("Non sono riuscito a salvare il prodotto."),
             },
           );
@@ -291,23 +412,48 @@ export default function Etichette() {
     );
   }, [prodotto, bozzaProdotto, bozzaBlocchi, bozzaCondivisi, bozzaEtichettaId, etichettaCaricata, salvaEtichettaMut, salvaProdottoMut, avvisa]);
 
-  const bozzaAnteprima =
+  // L'etichetta in modifica, cosi' com'e' ora (anche non salvata): serve
+  // sia all'anteprima sia alla "Stampa di prova".
+  const etichettaInModifica: NuovaEtichetta | null =
     bozzaBlocchi && bozzaCondivisi && etichettaCaricata
       ? {
-          etichetta: {
-            nome: etichettaCaricata.nome,
-            predefinita: etichettaCaricata.predefinita,
-            dicituraScadenza: bozzaCondivisi.dicituraScadenza,
-            formatoData: bozzaCondivisi.formatoData,
-            produttore: bozzaCondivisi.produttore,
-            zona: bozzaCondivisi.zona,
-            blocchi: bozzaInBlocchi(bozzaBlocchi),
-          },
-          prodottoId: prodottoId ?? undefined,
-          rotolo,
-          scala,
+          nome: etichettaCaricata.nome,
+          predefinita: etichettaCaricata.predefinita,
+          dicituraScadenza: bozzaCondivisi.dicituraScadenza,
+          formatoData: bozzaCondivisi.formatoData,
+          produttore: bozzaCondivisi.produttore,
+          zona: bozzaCondivisi.zona,
+          blocchi: bozzaInBlocchi(bozzaBlocchi),
         }
       : null;
+
+  const bozzaAnteprima = etichettaInModifica ? { etichetta: etichettaInModifica, prodottoId: prodottoId ?? undefined, rotolo, scala } : null;
+
+  // "Stampa di prova" della vista Etichette: prova l'etichetta in modifica su
+  // una copia sola, riusando gli stessi pannelli e eventi SSE della vista
+  // Stampa (docs di questo giro).
+  const stampaDiProva = useCallback(() => {
+    if (!etichettaInModifica) return;
+    provaEtichettaMut.mutate(
+      { etichetta: etichettaInModifica, prodottoId: prodottoId ?? undefined },
+      {
+        onSuccess: (dati) => setProvaLavoroId(dati.lavoroId),
+        onError: () => avvisa("Non sono riuscito ad avviare la stampa di prova."),
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- etichettaInModifica e' ricalcolato ogni render dagli stessi stati
+  }, [provaEtichettaMut, prodottoId, avvisa, bozzaBlocchi, bozzaCondivisi, etichettaCaricata]);
+
+  const fermaProva = useCallback(() => {
+    if (!provaLavoroId) return;
+    annullaStampaMut.mutate(provaLavoroId, { onError: () => avvisa("Non sono riuscito a fermare la stampa.") });
+  }, [provaLavoroId, annullaStampaMut, avvisa]);
+  const ripetiProva = useCallback(() => stampaDiProva(), [stampaDiProva]);
+  const chiudiProva = useCallback(() => setProvaLavoroId(null), []);
+
+  const eventoProva = lavoro && provaLavoroId && lavoro.lavoroId === provaLavoroId ? lavoro : null;
+  const provaTerminata = eventoProva ? eventoProva.stato === "completata" || eventoProva.stato === "annullata" : false;
+  const provaBloccante = !!provaLavoroId && !provaTerminata;
   const { src: srcAnteprima, caricando: caricandoAnteprima } = useAnteprimaEtichetta(bozzaAnteprima);
 
   const ce = useCallback((tipo: TipoBloccoDati) => bozzaBlocchi?.some((b) => b.tipo === tipo && b.acceso) ?? false, [bozzaBlocchi]);
@@ -391,14 +537,37 @@ export default function Etichette() {
         <div className="text-[13px] text-[var(--ambra)] font-bold min-w-0">
           {contoUsoEtichetta > 1 && `Questa etichetta la usano ${contoUsoEtichetta} prodotti.`}
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          <div className="strumentiEt">
+            <button type="button" className="btn tondo" onClick={clicAnnulla} disabled={!puoAnnullare} title="Annulla (Ctrl+Z)" aria-label="Annulla">
+              <IconaAnnulla larghezza={18} spessoreTratto={2} />
+            </button>
+            <button type="button" className="btn tondo" onClick={clicRipristina} disabled={!puoRipristinare} title="Ripristina (Ctrl+Y)" aria-label="Ripristina">
+              <IconaRipristina larghezza={18} spessoreTratto={2} />
+            </button>
+            <div className="sep" />
+          </div>
+          <button
+            type="button"
+            className="btn soloPC"
+            onClick={stampaDiProva}
+            disabled={!etichettaInModifica || stampante?.stato !== "pronta" || provaEtichettaMut.isPending || provaBloccante}
+          >
+            <IconaStampa larghezza={18} spessoreTratto={2} />
+            <span>Stampa di prova</span>
+          </button>
           {prodotto && (
-            <button type="button" className="btn elimina" onClick={chiediElimina} disabled={eliminaProdottoMut.isPending}>
+            <button type="button" className="btn elimina" onClick={chiediElimina} disabled={eliminaProdottoMut.isPending || provaBloccante}>
               <IconaCestino larghezza={17} spessoreTratto={2} />
               <span>Elimina</span>
             </button>
           )}
-          <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaEtichettaMut.isPending || salvaProdottoMut.isPending}>
+          <button
+            type="button"
+            className="btn primario"
+            onClick={salvare}
+            disabled={!pronto || salvaEtichettaMut.isPending || salvaProdottoMut.isPending || provaBloccante}
+          >
             Salva prodotto
           </button>
         </div>
@@ -476,46 +645,74 @@ export default function Etichette() {
         </div>
 
         <div className="colonna scorre flex-1 min-w-0 gap-3">
-          {etichette && <GalleriaEtichette etichette={etichette} selezionataId={bozzaEtichettaId} onScegli={scegliEtichetta} />}
-          <div ref={rifAnteprima} className="min-w-0">
-            <RiquadroAnteprima
-              src={srcAnteprima}
-              caricando={caricandoAnteprima}
-              titolo={etichettaCaricata?.nome ?? ""}
-              didascalia={`Anteprima rotolo ${rotolo} mm`}
-            />
-          </div>
-          {bozzaBlocchi && bozzaCondivisi && (
-            <>
-              <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-[var(--riga)]">
-                <div className="text-[14px] font-bold">Blocchi dell&apos;etichetta</div>
-                <div className="text-[12px] text-[var(--tenue)]">trascina per ordinare</div>
-              </div>
-              <BlocchiEditor
-                blocchi={bozzaBlocchi}
-                onCambiaBlocchi={setBozzaBlocchi}
-                larghezzaDestra={bozzaCondivisi.zona.larghezzaDestra}
-                onCambiaLarghezzaDestra={aggiornaLarghezzaDestra}
+          {provaLavoroId ? (
+            eventoProva?.stato === "errore" ? (
+              <PannelloErrore messaggio={eventoProva.messaggio} onFerma={fermaProva} />
+            ) : provaTerminata && eventoProva ? (
+              <PannelloFatta
+                fatte={eventoProva.copiaCorrente}
+                volute={1}
+                quantita={prodotto?.quantita ?? ""}
+                scadenza={prodotto ? oggiPiuGiorni(prodotto.giorniScadenza) : ""}
+                lotto="PROVA"
+                onRipeti={ripetiProva}
+                onChiudi={chiudiProva}
+                ripetendo={provaEtichettaMut.isPending}
+                testoChiudi="Chiudi"
               />
-              <div className="piedeRotolo">
-                <span className="etichettina">Rotolo</span>
-                <span className="font-bold text-[14px]">{rotolo} mm</span>
-                <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
-                <span className="ml-auto text-[13px] text-[var(--tenue)]">Lunghezza: automatica</span>
-              </div>
-              <div className="riquadro flex flex-col gap-3">
-                <div className="nomeRiquadro">Scadenza e produttore</div>
-                <CampoTesto etichetta="Dicitura scadenza" valore={bozzaCondivisi.dicituraScadenza} campo="dicituraScadenza" onCambia={aggiornaCondiviso} placeholder="es. Scade il" />
-                <CampoSelezione etichetta="Formato data" valore={bozzaCondivisi.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />
-                <CampoTesto etichetta="Ragione sociale" valore={bozzaCondivisi.produttore.ragioneSociale} campo="ragioneSociale" onCambia={aggiornaProduttore} />
-                <CampoTesto etichetta="Sede legale" valore={bozzaCondivisi.produttore.sedeLegale} campo="sedeLegale" onCambia={aggiornaProduttore} />
-                <CampoTesto
-                  etichetta="Sede di produzione · facoltativa"
-                  valore={bozzaCondivisi.produttore.sedeProduzione}
-                  campo="sedeProduzione"
-                  onCambia={aggiornaProduttore}
+            ) : (
+              <PannelloInCorso
+                prodottoNome={prodotto?.nome ?? ""}
+                copiaCorrente={eventoProva?.copiaCorrente ?? 1}
+                copieTotali={1}
+                onFerma={fermaProva}
+                fermando={annullaStampaMut.isPending}
+              />
+            )
+          ) : (
+            <>
+              {etichette && <GalleriaEtichette etichette={etichette} selezionataId={bozzaEtichettaId} onScegli={scegliEtichetta} />}
+              <div ref={rifAnteprima} className="min-w-0">
+                <RiquadroAnteprima
+                  src={srcAnteprima}
+                  caricando={caricandoAnteprima}
+                  titolo={etichettaCaricata?.nome ?? ""}
+                  didascalia={`Anteprima rotolo ${rotolo} mm`}
                 />
               </div>
+              {bozzaBlocchi && bozzaCondivisi && (
+                <>
+                  <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-[var(--riga)]">
+                    <div className="text-[14px] font-bold">Blocchi dell&apos;etichetta</div>
+                    <div className="text-[12px] text-[var(--tenue)]">trascina per ordinare</div>
+                  </div>
+                  <BlocchiEditor
+                    blocchi={bozzaBlocchi}
+                    onCambiaBlocchi={setBozzaBlocchi}
+                    larghezzaDestra={bozzaCondivisi.zona.larghezzaDestra}
+                    onCambiaLarghezzaDestra={aggiornaLarghezzaDestra}
+                  />
+                  <div className="piedeRotolo">
+                    <span className="etichettina">Rotolo</span>
+                    <span className="font-bold text-[14px]">{rotolo} mm</span>
+                    <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
+                    <span className="ml-auto text-[13px] text-[var(--tenue)]">Lunghezza: automatica</span>
+                  </div>
+                  <div className="riquadro flex flex-col gap-3">
+                    <div className="nomeRiquadro">Scadenza e produttore</div>
+                    <CampoTesto etichetta="Dicitura scadenza" valore={bozzaCondivisi.dicituraScadenza} campo="dicituraScadenza" onCambia={aggiornaCondiviso} placeholder="es. Scade il" />
+                    <CampoSelezione etichetta="Formato data" valore={bozzaCondivisi.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />
+                    <CampoTesto etichetta="Ragione sociale" valore={bozzaCondivisi.produttore.ragioneSociale} campo="ragioneSociale" onCambia={aggiornaProduttore} />
+                    <CampoTesto etichetta="Sede legale" valore={bozzaCondivisi.produttore.sedeLegale} campo="sedeLegale" onCambia={aggiornaProduttore} />
+                    <CampoTesto
+                      etichetta="Sede di produzione · facoltativa"
+                      valore={bozzaCondivisi.produttore.sedeProduzione}
+                      campo="sedeProduzione"
+                      onCambia={aggiornaProduttore}
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

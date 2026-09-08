@@ -16,18 +16,29 @@ class LavoroStampa {
     final int copieTotali;
     final int margineDot;
     final boolean taglioAutomatico;
+    /** Stampa di prova (etichetta di prova, o un'etichetta in modifica): non deve aggiornare usi/ultimoUso del prodotto. */
+    final boolean prova;
     volatile int copiaCorrente = 0;
     final AtomicBoolean annullato = new AtomicBoolean(false);
 
     LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali) {
-        this(immagine, rotoloMm, copieTotali, ProtocolloQl.MARGINE_DOT_DEFAULT, ProtocolloQl.TAGLIO_AUTOMATICO);
+        this(immagine, rotoloMm, copieTotali, false);
+    }
+
+    LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali, boolean prova) {
+        this(immagine, rotoloMm, copieTotali, ProtocolloQl.MARGINE_DOT_DEFAULT, ProtocolloQl.TAGLIO_AUTOMATICO, prova);
     }
 
     LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali, int margineDot, boolean taglioAutomatico) {
+        this(immagine, rotoloMm, copieTotali, margineDot, taglioAutomatico, false);
+    }
+
+    LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali, int margineDot, boolean taglioAutomatico, boolean prova) {
         this.immagine = immagine;
         this.rotoloMm = rotoloMm;
         this.copieTotali = copieTotali;
         this.margineDot = margineDot;
         this.taglioAutomatico = taglioAutomatico;
+        this.prova = prova;
     }
 }

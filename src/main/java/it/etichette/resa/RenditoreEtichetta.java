@@ -60,9 +60,11 @@ public class RenditoreEtichetta {
     private static final Pattern PAROLA = Pattern.compile("\\p{L}+");
 
     private final Caratteri caratteri;
+    private final LogoService logo;
 
-    public RenditoreEtichetta(Caratteri caratteri) {
+    public RenditoreEtichetta(Caratteri caratteri, LogoService logo) {
         this.caratteri = caratteri;
+        this.logo = logo;
     }
 
     public RisultatoResa rendi(EtichettaDto etichetta, ProdottoDto prodotto, ParametriStampa parametri, int rotoloMm, double scala) {
@@ -141,7 +143,8 @@ public class RenditoreEtichetta {
             case "valori" -> prodotto.valoriNutrizionali() != null && !prodotto.valoriNutrizionali().isEmpty();
             case "produttore" -> etichetta.produttore() != null && nonVuoto(etichetta.produttore().ragioneSociale());
             case "testo", "testoGrande" -> nonVuoto(b.testo());
-            default -> false; // "logo": riservato, non stampa nulla in questa versione
+            case "logo" -> logo.esiste(); // senza logo caricato, il blocco non occupa spazio
+            default -> false;
         };
     }
 
@@ -268,8 +271,9 @@ public class RenditoreEtichetta {
             }
             case "spazio" -> y += corpoPt * Caratteri.PX_PER_PT;
             case "qr" -> y = disegnaQr(g, parametri.lotto(), corpoPt, x, y);
+            case "logo" -> y = disegnaLogo(g, corpoPt, x, y);
             default -> {
-                // "logo": riservato, non stampa nulla.
+                // nessun altro tipo di blocco previsto
             }
         }
         return y + mmInPx(SPAZIO_TRA_BLOCCHI_MM);
@@ -285,6 +289,83 @@ public class RenditoreEtichetta {
         } catch (Exception e) {
             return y; // lotto non codificabile: il blocco non occupa spazio
         }
+    }
+
+    private static final float LOGO_ALTEZZA_MM_DEFAULT = 10f;
+    private static final float LOGO_ALTEZZA_MM_MINIMA = 5f;
+    private static final float LOGO_ALTEZZA_MM_MASSIMA = 30f;
+
+    /**
+     * Logo in bilivello con diffusione dell'errore di Floyd-Steinberg (non una soglia secca:
+     * una foto o un logo con sfumature diventerebbe un blocco nero informe), alto quanto dice
+     * {@code corpo} in mm (7…48 della scaletta dei corpi non si applica qui: e' un valore libero
+     * in mm, come per il blocco "qr"; docs/api.md), proporzioni conservate, allineato a sinistra.
+     */
+    private float disegnaLogo(Graphics2D g, float altezzaMmRichiesta, float x, float y) {
+        BufferedImage originale = logo.leggiImmagine();
+        if (originale == null || originale.getHeight() <= 0 || originale.getWidth() <= 0) {
+            return y; // nessun logo caricato: il blocco non occupa spazio
+        }
+        float altezzaMm = Math.max(LOGO_ALTEZZA_MM_MINIMA, Math.min(LOGO_ALTEZZA_MM_MASSIMA,
+                altezzaMmRichiesta > 0 ? altezzaMmRichiesta : LOGO_ALTEZZA_MM_DEFAULT));
+        int altezzaPx = mmInPx(altezzaMm);
+        int larghezzaPx = Math.max(1, Math.round((float) originale.getWidth() * altezzaPx / originale.getHeight()));
+
+        BufferedImage scalato = new BufferedImage(larghezzaPx, altezzaPx, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gs = scalato.createGraphics();
+        gs.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        gs.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        gs.drawImage(originale, 0, 0, larghezzaPx, altezzaPx, null);
+        gs.dispose();
+
+        boolean[][] nero = ditherFloydSteinberg(scalato);
+        int xi = Math.round(x);
+        int yi = Math.round(y);
+        for (int yy = 0; yy < altezzaPx; yy++) {
+            for (int xx = 0; xx < larghezzaPx; xx++) {
+                if (nero[yy][xx]) {
+                    g.fillRect(xi + xx, yi + yy, 1, 1);
+                }
+            }
+        }
+        return y + altezzaPx;
+    }
+
+    /** Floyd-Steinberg: soglia a 128 con diffusione dell'errore ai vicini (7/16, 3/16, 5/16, 1/16); il trasparente si fonde con lo sfondo bianco della carta. */
+    private static boolean[][] ditherFloydSteinberg(BufferedImage img) {
+        int w = img.getWidth(), h = img.getHeight();
+        float[][] luminanza = new float[h][w];
+        for (int yy = 0; yy < h; yy++) {
+            for (int xx = 0; xx < w; xx++) {
+                int rgb = img.getRGB(xx, yy);
+                float alfa = ((rgb >>> 24) & 0xFF) / 255f;
+                int r = (rgb >> 16) & 0xFF, verde = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                float lum = 0.299f * r + 0.587f * verde + 0.114f * b;
+                luminanza[yy][xx] = alfa * lum + (1 - alfa) * 255f; // trasparente -> bianco
+            }
+        }
+        boolean[][] nero = new boolean[h][w];
+        for (int yy = 0; yy < h; yy++) {
+            for (int xx = 0; xx < w; xx++) {
+                float vecchio = luminanza[yy][xx];
+                boolean pixelNero = vecchio < 128f;
+                nero[yy][xx] = pixelNero;
+                float errore = vecchio - (pixelNero ? 0f : 255f);
+                if (xx + 1 < w) {
+                    luminanza[yy][xx + 1] += errore * 7f / 16f;
+                }
+                if (yy + 1 < h) {
+                    if (xx - 1 >= 0) {
+                        luminanza[yy + 1][xx - 1] += errore * 3f / 16f;
+                    }
+                    luminanza[yy + 1][xx] += errore * 5f / 16f;
+                    if (xx + 1 < w) {
+                        luminanza[yy + 1][xx + 1] += errore * 1f / 16f;
+                    }
+                }
+            }
+        }
+        return nero;
     }
 
     private float disegnaTabellaValori(Graphics2D g, FontRenderContext frc, List<ValoreNutrizionaleDto> valori, float corpoPt, float x, float y, float larghezza) {

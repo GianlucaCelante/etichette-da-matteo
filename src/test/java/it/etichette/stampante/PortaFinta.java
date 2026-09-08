@@ -4,10 +4,11 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Porta finta usata SOLO nei test (profilo "test"): non parla con nessun hardware, tiene solo
@@ -17,6 +18,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * Con {@link RicercaPortaFinta} che non trova mai nulla, questa classe non viene mai aperta nel
  * test di contesto Spring; resta pero' disponibile per test unitari diretti di MonitorStampante.
+ *
+ * <p><b>Blocca DAVVERO fino a {@code maxMs}</b> (coda concorrente, non un semplice poll istantaneo):
+ * se non c'e' ancora nulla precaricato, {@link #leggiPoll} aspetta - come una porta vera - invece
+ * di rispondere subito vuoto. Questo permette a un test di far arrivare una risposta da un thread
+ * separato, con un ritardo vero, per testare le attese/i silenzi di {@link MonitorStampante} senza
+ * dover precaricare tutto prima di avviare il monitor. {@link #accodaRisposta} e
+ * {@link #accodaNessunDato()} sono percio' chiamabili anche DOPO {@code avvia()}, da un altro thread.
+ *
+ * <p><b>Simulare "nessun dato per ora"</b>: {@link #accodaRisposta} precarica una risposta VERA;
+ * {@link #accodaNessunDato()} precarica invece un pacchetto vuoto SENZA esaurire la coda - serve
+ * per far fermare {@link MonitorStampante#richiediStato} (che drena finche' arrivano risposte,
+ * pensato per scartare notifiche spontanee residue) PRIMA della risposta vera successiva, che
+ * altrimenti verrebbe scambiata per un residuo e consumata dal drenaggio invece che dalla lettura
+ * vera e propria: mettere sempre un {@code accodaNessunDato()} subito prima di ogni risposta
+ * destinata a un {@code richiediStato()} (non serve per le risposte lette in ascolto diretto, es.
+ * durante {@code ascoltaEsitoCopia} o {@code gestisciErroreAMetaCopia}, che non drenano).
  */
 @Component
 @Profile("test")
@@ -24,7 +41,7 @@ public class PortaFinta implements Porta {
 
     private volatile boolean aperta = false;
     final List<byte[]> scritture = new CopyOnWriteArrayList<>();
-    private final Deque<byte[]> risposte = new ArrayDeque<>();
+    private final BlockingDeque<byte[]> risposte = new LinkedBlockingDeque<>();
 
     @Override
     public void apri(String percorso) {
@@ -41,8 +58,13 @@ public class PortaFinta implements Porta {
         if (!aperta) {
             throw new IOException("porta finta non aperta");
         }
-        byte[] pronta = risposte.poll();
-        return pronta != null ? pronta : new byte[0];
+        try {
+            byte[] pronta = risposte.poll(maxMs, TimeUnit.MILLISECONDS);
+            return pronta != null ? pronta : new byte[0];
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new byte[0];
+        }
     }
 
     @Override
@@ -55,8 +77,13 @@ public class PortaFinta implements Porta {
         return aperta;
     }
 
-    /** Precarica una risposta che la prossima {@link #leggiPoll} restituira'. */
-    void accodaRisposta(byte[] risposta) {
+    /** Precarica una risposta che la prossima {@link #leggiPoll} restituira' (subito, o quando arriva se gia' in attesa). */
+    public void accodaRisposta(byte[] risposta) {
         risposte.add(risposta);
+    }
+
+    /** Precarica un pacchetto vuoto: la prossima {@link #leggiPoll} restituisce "nessun dato" senza esaurire la coda (vedi il javadoc della classe). */
+    public void accodaNessunDato() {
+        risposte.add(new byte[0]);
     }
 }

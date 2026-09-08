@@ -264,3 +264,43 @@ export function IconaScarica({ larghezza, spessoreTratto, className }: Proprieta
     </IconaBase>
   );
 }
+
+export function IconaCarica({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 15V3" />
+      <path d="M7 8l5-5 5 5" />
+      <path d="M4 21h16" />
+    </IconaBase>
+  );
+}
+
+export function IconaImmagine({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </IconaBase>
+  );
+}
+
+// Le stesse frecce curve del prototipo per "Annulla" e "Ripristina" nella
+// scheda del prodotto (Ctrl+Z / Ctrl+Y).
+export function IconaAnnulla({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </IconaBase>
+  );
+}
+
+export function IconaRipristina({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </IconaBase>
+  );
+}

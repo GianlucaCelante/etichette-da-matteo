@@ -1,5 +1,7 @@
 package it.etichette.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -17,6 +19,7 @@ import java.nio.file.Path;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,6 +43,8 @@ class EtichetteApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void ilSemeContieneLeQuattroEtichettePronte() throws Exception {
@@ -49,8 +54,12 @@ class EtichetteApiTest {
                 .andExpect(jsonPath("$[0].nome").value("Completa"))
                 .andExpect(jsonPath("$[0].zona.larghezzaDestra").value("1/3"))
                 .andExpect(jsonPath("$[0].blocchi.length()").value(9))
+                .andExpect(jsonPath("$[0].predefinita").value(true))
+                .andExpect(jsonPath("$[1].predefinita").value(true))
+                .andExpect(jsonPath("$[2].predefinita").value(true))
                 .andExpect(jsonPath("$[3].nome").value("Libera"))
-                .andExpect(jsonPath("$[3].blocchi.length()").value(0));
+                .andExpect(jsonPath("$[3].blocchi.length()").value(0))
+                .andExpect(jsonPath("$[3].predefinita").value(true));
     }
 
     @Test
@@ -72,16 +81,72 @@ class EtichetteApiTest {
 
     @Test
     void cancellareUnaEtichettaInUsoRispondeConflittoConINomiDeiProdotti() throws Exception {
-        mockMvc.perform(delete("/api/etichette/1"))
+        // le quattro etichette pronte sono predefinita=true (non eliminabili per definizione,
+        // vedi sotto): per provare il conflitto "in uso" serve un'etichetta nuova, non pronta.
+        long idEtichetta = creaEtichetta("Su misura");
+        String corpoProdotto = "{\"nome\":\"Prodotto di prova\",\"etichettaId\":" + idEtichetta + "}";
+        mockMvc.perform(post("/api/prodotti").contentType("application/json").content(corpoProdotto))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/etichette/" + idEtichetta))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errore").exists())
                 .andExpect(jsonPath("$.prodotti").isArray())
-                .andExpect(jsonPath("$.prodotti[0]").exists());
+                .andExpect(jsonPath("$.prodotti[0]").value("Prodotto di prova"));
+    }
+
+    @Test
+    void cancellareUnaEtichettaPredefinitaRispondeConflittoAncheSeNonEUsata() throws Exception {
+        // "Libera" (id 4) e' predefinita e non e' usata da nessun prodotto: il rifiuto deve
+        // arrivare per "e' una delle quattro pronte", non per il controllo sui prodotti.
+        mockMvc.perform(delete("/api/etichette/4"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errore").value("Le etichette pronte non si possono eliminare"))
+                .andExpect(jsonPath("$.prodotti").doesNotExist());
+    }
+
+    @Test
+    void ilPutConservaPredefinitaDalDatabaseIgnorandoIlCorpo() throws Exception {
+        // "Completa" (id 1) e' predefinita=true nel database: anche mandando predefinita:false
+        // nel corpo, il PUT non deve fidarsene.
+        String corpo = "{\"nome\":\"Completa\",\"predefinita\":false,\"blocchi\":[]}";
+        mockMvc.perform(put("/api/etichette/1").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.predefinita").value(true));
+
+        mockMvc.perform(get("/api/etichette/1"))
+                .andExpect(jsonPath("$.predefinita").value(true));
+    }
+
+    private long creaEtichetta(String nome) throws Exception {
+        String corpo = "{\"nome\":\"" + nome + "\",\"blocchi\":[]}";
+        String risposta = mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode nodo = mapper.readTree(risposta);
+        return nodo.get("id").asLong();
     }
 
     @Test
     void unBloccoConCorpoFuoriScalettaRispondeErrore() throws Exception {
-        String corpo = "{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":13,\"colonna\":\"piena\"}]}";
+        String corpo = "{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":6,\"colonna\":\"piena\"}]}";
+        mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void perLogoEQrIlCorpoEUnMillimetroLiberoNonLaScaletta() throws Exception {
+        // 15 mm non e' nella scaletta dei punti, ma per "logo"/"qr" corpo e' un millimetro
+        // libero (5-48): deve passare.
+        String corpo = "{\"nome\":\"Prova\",\"blocchi\":["
+                + "{\"tipo\":\"logo\",\"acceso\":true,\"corpo\":15,\"colonna\":\"piena\"},"
+                + "{\"tipo\":\"qr\",\"acceso\":true,\"corpo\":15,\"colonna\":\"piena\"}]}";
+        mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void perLogoUnCorpoFuoriDaCinqueQuarantottoRispondeErrore() throws Exception {
+        String corpo = "{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"logo\",\"acceso\":true,\"corpo\":49,\"colonna\":\"piena\"}]}";
         mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
                 .andExpect(status().isBadRequest());
     }

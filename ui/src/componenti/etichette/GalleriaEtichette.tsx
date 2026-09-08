@@ -1,5 +1,6 @@
 import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
-import { useCreaEtichetta, useDuplicaEtichetta } from "../../api/hooks";
+import { ErroreRichiesta } from "../../api/client";
+import { useCreaEtichetta, useDuplicaEtichetta, useEliminaEtichetta } from "../../api/hooks";
 import type { EtichettaElenco } from "../../api/tipi";
 import { useAvviso } from "../../hooks/useAvviso";
 import { IconaPiu } from "../Icone";
@@ -14,23 +15,56 @@ function CartaEtichetta({
   selezionata,
   onScegli,
   onDuplica,
+  onElimina,
+  eliminando,
 }: {
   etichetta: EtichettaElenco;
   selezionata: boolean;
   onScegli: (id: number) => void;
   onDuplica: (id: number, nome: string) => void;
+  onElimina: (id: number, nome: string) => void;
+  eliminando: boolean;
 }) {
+  const [chiestoElimina, setChiestoElimina] = useState(false);
   const clic = useCallback(() => onScegli(etichetta.id), [onScegli, etichetta.id]);
   const clicDuplica = useCallback(() => onDuplica(etichetta.id, etichetta.nome), [onDuplica, etichetta.id, etichetta.nome]);
+  const chiediElimina = useCallback(() => setChiestoElimina(true), []);
+  const annullaElimina = useCallback(() => setChiestoElimina(false), []);
+  const confermaElimina = useCallback(() => {
+    setChiestoElimina(false);
+    onElimina(etichetta.id, etichetta.nome);
+  }, [onElimina, etichetta.id, etichetta.nome]);
+
+  // Le quattro etichette pronte (docs/api.md, "predefinita") non si eliminano.
+  const eliminabile = !etichetta.predefinita;
+
   return (
     <div className={"cartaEtichetta" + (selezionata ? " on" : "")}>
       <button type="button" className="flex flex-col gap-1 text-left w-full" onClick={clic} aria-pressed={selezionata}>
         <span className="nome">{etichetta.nome}</span>
         <span className="sotto">{plurale(etichetta.prodotti, "prodotto", "prodotti")}</span>
       </button>
-      <button type="button" className="text-[12px] font-bold text-[var(--verdescuro)] self-start mt-1" onClick={clicDuplica}>
-        Duplica
-      </button>
+      <div className="flex items-center gap-3 flex-wrap mt-1">
+        <button type="button" className="text-[12px] font-bold text-[var(--verdescuro)]" onClick={clicDuplica}>
+          Duplica
+        </button>
+        {eliminabile && !chiestoElimina && (
+          <button type="button" className="text-[12px] font-bold text-[var(--rosso)]" onClick={chiediElimina} disabled={eliminando}>
+            Elimina
+          </button>
+        )}
+        {eliminabile && chiestoElimina && (
+          <span className="flex items-center gap-2 text-[12px]">
+            <span className="text-[var(--tenue)]">Eliminare?</span>
+            <button type="button" className="font-bold text-[var(--rosso)]" onClick={confermaElimina} disabled={eliminando}>
+              Sì
+            </button>
+            <button type="button" className="font-bold text-[var(--tenue)]" onClick={annullaElimina}>
+              No
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -48,6 +82,7 @@ interface ProprietaGalleria {
 export default function GalleriaEtichette({ etichette, selezionataId, onScegli }: ProprietaGalleria) {
   const duplica = useDuplicaEtichetta();
   const crea = useCreaEtichetta();
+  const elimina = useEliminaEtichetta();
   const avvisa = useAvviso();
 
   const [nuovaAperta, setNuovaAperta] = useState(false);
@@ -77,6 +112,30 @@ export default function GalleriaEtichette({ etichette, selezionataId, onScegli }
       );
     },
     [duplica, onScegli, avvisa],
+  );
+
+  const eliminaCarta = useCallback(
+    (id: number, nome: string) => {
+      elimina.mutate(id, {
+        onSuccess: () => {
+          avvisa(`Eliminata: "${nome}".`);
+          // Se era quella scelta per questo prodotto, si passa a un'altra:
+          // altrimenti la scheda resterebbe agganciata a un id sparito.
+          if (id === selezionataId) {
+            const alternativa = etichette.find((e) => e.id !== id && e.predefinita) ?? etichette.find((e) => e.id !== id);
+            if (alternativa) onScegli(alternativa.id);
+          }
+        },
+        onError: (errore) => {
+          if (errore instanceof ErroreRichiesta && errore.stato === 409 && errore.corpo?.prodotti?.length) {
+            avvisa(`La usano: ${errore.corpo.prodotti.join(", ")}.`);
+          } else {
+            avvisa("Non sono riuscito a eliminarla.");
+          }
+        },
+      });
+    },
+    [elimina, avvisa, selezionataId, etichette, onScegli],
   );
 
   const confermaNuova = useCallback(
@@ -115,7 +174,15 @@ export default function GalleriaEtichette({ etichette, selezionataId, onScegli }
       <div className="etichettina">Etichetta di questo prodotto</div>
       <div className="galleriaEtichette">
         {etichette.map((et) => (
-          <CartaEtichetta key={et.id} etichetta={et} selezionata={et.id === selezionataId} onScegli={onScegli} onDuplica={duplicaCarta} />
+          <CartaEtichetta
+            key={et.id}
+            etichetta={et}
+            selezionata={et.id === selezionataId}
+            onScegli={onScegli}
+            onDuplica={duplicaCarta}
+            onElimina={eliminaCarta}
+            eliminando={elimina.isPending}
+          />
         ))}
         <button type="button" className="cartaEtichetta nuova" onClick={apriNuova}>
           <IconaPiu larghezza={20} spessoreTratto={2.2} />

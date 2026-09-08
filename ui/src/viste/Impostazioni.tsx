@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
-import { percorsoQrRete } from "../api/client";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { percorsoLogo, percorsoQrRete } from "../api/client";
 import {
+  useCaricaLogo,
   useDispositivi,
   useEliminaDispositivo,
+  useEliminaLogo,
   useImpostazioni,
   useLavoroStampa,
+  useLogoEsiste,
   useLotto,
   useProvaStampa,
   useRete,
@@ -16,13 +19,18 @@ import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
 import {
   IconaAllarme,
+  IconaCarica,
   IconaCercaDiNuovo,
+  IconaImmagine,
   IconaSpunta,
   IconaStampa,
   IconaTelefono,
 } from "../componenti/Icone";
 import ConfermaInline from "../componenti/ConfermaInline";
 import Sezione from "../componenti/Sezione";
+
+const TIPI_LOGO_VALIDI = ["image/png", "image/jpeg"];
+const LOGO_MASSIMO_BYTE = 2_000_000;
 
 const MARGINE_MINIMO_MM = 3;
 
@@ -339,6 +347,105 @@ function SezioneTelefoni() {
   );
 }
 
+// Il logo caricato qui e' quello che il blocco "Logo" dei blocchi
+// dell'etichetta stampa: senza un logo caricato, quel blocco non stampa
+// nulla (docs/api.md). PNG o JPEG, fino a 2 MB.
+function SezioneLogo() {
+  const { data: esiste } = useLogoEsiste();
+  const carica = useCaricaLogo();
+  const elimina = useEliminaLogo();
+  const avvisa = useAvviso();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [chiaveVersione, setChiaveVersione] = useState(0);
+  const [chiestoElimina, setChiestoElimina] = useState(false);
+
+  const apriSelettore = useCallback(() => inputRef.current?.click(), []);
+
+  const scegliFile = useCallback(
+    (evento: ChangeEvent<HTMLInputElement>) => {
+      const file = evento.target.files?.[0];
+      evento.target.value = "";
+      if (!file) return;
+      if (!TIPI_LOGO_VALIDI.includes(file.type)) {
+        avvisa("Serve un file PNG o JPEG.");
+        return;
+      }
+      if (file.size > LOGO_MASSIMO_BYTE) {
+        avvisa("Il file supera i 2 MB.");
+        return;
+      }
+      carica.mutate(file, {
+        onSuccess: () => {
+          setChiaveVersione((v) => v + 1);
+          avvisa("Logo caricato.");
+        },
+        onError: () => avvisa("Non sono riuscito a caricare il logo."),
+      });
+    },
+    [carica, avvisa],
+  );
+
+  const chiediElimina = useCallback(() => setChiestoElimina(true), []);
+  const annullaElimina = useCallback(() => setChiestoElimina(false), []);
+  const confermaElimina = useCallback(() => {
+    elimina.mutate(undefined, {
+      onSuccess: () => {
+        setChiestoElimina(false);
+        setChiaveVersione((v) => v + 1);
+        avvisa("Logo tolto.");
+      },
+      onError: () => avvisa("Non sono riuscito a toglierlo."),
+    });
+  }, [elimina, avvisa]);
+
+  return (
+    <Sezione titolo="Logo sull'etichetta">
+      <div className="flex items-center gap-4 flex-wrap py-1">
+        <div className="w-24 h-24 rounded-2xl border border-[var(--bordo)] bg-[var(--sabbia)] flex items-center justify-center overflow-hidden flex-shrink-0">
+          {esiste ? (
+            <img src={`${percorsoLogo}?v=${chiaveVersione}`} alt="Logo caricato" className="max-w-full max-h-full object-contain" />
+          ) : (
+            <span className="text-[var(--spento)]">
+              <IconaImmagine larghezza={28} spessoreTratto={1.6} />
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 flex-1 min-w-[180px]">
+          <div className="text-[13px] text-[var(--tenue)] leading-normal">
+            {esiste
+              ? "Si usa nel blocco «Logo» delle etichette."
+              : "Nessun logo caricato: il blocco «Logo» non stampa nulla finché non ce n'è uno."}
+          </div>
+          <div className="flex gap-2.5 flex-wrap items-center">
+            <button type="button" className="btn" onClick={apriSelettore} disabled={carica.isPending}>
+              <IconaCarica larghezza={18} spessoreTratto={2} />
+              <span>Carica</span>
+            </button>
+            {esiste && !chiestoElimina && (
+              <button type="button" className="btn" onClick={chiediElimina} disabled={elimina.isPending}>
+                Togli
+              </button>
+            )}
+            {esiste && chiestoElimina && (
+              <span className="flex items-center gap-2 text-[13px]">
+                <span className="text-[var(--tenue)]">Togliere il logo?</span>
+                <button type="button" className="btn" onClick={confermaElimina} disabled={elimina.isPending}>
+                  Sì
+                </button>
+                <button type="button" className="btn" onClick={annullaElimina}>
+                  No
+                </button>
+              </span>
+            )}
+          </div>
+          <div className="text-[12px] text-[var(--spento)]">PNG o JPEG, fino a 2 MB.</div>
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={scegliFile} aria-label="Carica il logo" />
+    </Sezione>
+  );
+}
+
 // Il lotto e' la numerazione del locale, unica su tutte le etichette: si
 // sceglie uno dei quattro schemi, e accanto a ognuno si legge il lotto che
 // uscirebbe oggi (docs/api.md, "Lotto"; funzionalita-prima-versione.md).
@@ -466,6 +573,7 @@ export default function Impostazioni() {
     <div className="schermo scorre grigliaImpostazioni">
       <SezioneStampante />
       <SezioneStampa />
+      <SezioneLogo />
       <SezioneLotto />
       <SezioneTelefoni />
       <SezioneDispositivi />

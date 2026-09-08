@@ -96,7 +96,10 @@ public class EtichetteController {
     @DeleteMapping("/{id}")
     @Transactional
     public Map<String, Object> elimina(@PathVariable Long id) {
-        trova(id);
+        Etichetta entita = trova(id);
+        if (entita.isPredefinita()) {
+            throw new ErroreApi(HttpStatus.CONFLICT, "Le etichette pronte non si possono eliminare");
+        }
         List<Prodotto> inUso = prodotti.findByEtichettaId(id);
         if (!inUso.isEmpty()) {
             List<String> nomi = inUso.stream().map(Prodotto::getNome).toList();

@@ -38,7 +38,7 @@ L'etichetta è condivisa fra i prodotti che la usano. È un elenco ordinato di b
 ```
 
 - `formatoData`: `GG/MM/AAAA`, `GG/MM/AA` o `GG.MM.AAAA`.
-- `corpo` in punti, dalla scaletta 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48 (mai sotto 7, vedi `prova-corpi.md`).
+- `corpo` in punti, dalla scaletta 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48 (mai sotto 7, vedi `prova-corpi.md`). Per i blocchi `logo` e `qr` il corpo è invece una misura in millimetri, intero fra 5 e 48 (logo: altezza, usata fra 5 e 30; qr: lato, default 12).
 - `colonna`: `piena` attraversa tutta l'etichetta; `sx` e `dx` mettono il blocco nella zona a due colonne. Blocchi `sx`/`dx` consecutivi (anche alternati) formano una sola zona; un blocco `piena` la chiude. `zona.larghezzaDestra` (`1/4`, `1/3`, `1/2`, `2/3`) è la parte di larghezza della colonna destra; la sinistra prende il resto; fra le due un filetto verticale.
 - `testo` (solo per `testo` e `testoGrande`): il contenuto fisso del blocco.
 - I blocchi `dati` prendono il contenuto dal prodotto; i blocchi `liberi` no.
@@ -113,7 +113,7 @@ Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le
 
 ### Stampe
 - `POST /api/stampe` con `{"prodottoId": 1, "copie": 3, "quantita": "2148 g", "scadenza": "2026-09-15", "lotto": "L 20260908-004"}` → `{"lavoroId":"…","lotto":"…","scadenza":"…"}`. `quantita`, `scadenza`, `lotto` sono opzionali: se mancano si usano quelli proposti (lotto dallo schema; con schema `mano` il lotto è obbligatorio). Il servizio rende l'etichetta per il rotolo caricato, accoda, e a fine lavoro scrive lo storico (una riga per lavoro, con le copie), aggiorna `usi` e `ultimoUso`.
-- `POST /api/stampe/{lavoroId}/annulla` (già esistente).
+- `POST /api/stampe/{lavoroId}/annulla` (già esistente). L'annullamento agisce fra una copia e l'altra; se la stampante è in errore (coperchio aperto) il lavoro resta `in_pausa`: alla chiusura la stampante ristampa da sola la pagina interrotta e il servizio la conta come fatta, poi prosegue con le copie rimaste (regola decisa l'8 settembre dopo la prova con la stampante).
 - `POST /api/stampe/ultima` → ristampa l'ultima riga dello storico (stesso lotto, stessa etichetta), `{"copie": 1}` opzionale → `{"lavoroId":"…"}`; 404 se lo storico è vuoto.
 - L'avanzamento arriva dagli eventi SSE `stampa` già esistenti; a `completata` l'interfaccia rilegge lo storico.
 
@@ -128,6 +128,15 @@ Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le
 - `PUT /api/dispositivi/io` con `{"nome":"…"}`.
 - `GET /api/dispositivi` → elenco con `collegatoIl` e `ultimoAccesso`; `DELETE /api/dispositivi/{id}` → «Scollega»: il token non vale più, alla prossima richiesta quel browser torna `nuovo`.
 - Il nome del dispositivo finisce nello storico (`dispositivoNome`).
+
+### Logo (aggiunto l'8 settembre, sera)
+- `PUT /api/impostazioni/logo` (multipart, campo `file`, PNG o JPEG fino a 2 MB) → `{"larghezza": 600, "altezza": 200}`; il file viene salvato come `logo.png` nella cartella dati.
+- `GET /api/impostazioni/logo.png` → l'immagine; 404 se non c'è.
+- `DELETE /api/impostazioni/logo`.
+- Il blocco `logo` stampa il logo in bilivello con dithering, alto quanti mm dice `corpo` (5…30, default 10), proporzioni conservate, allineato a sinistra; senza logo caricato non occupa spazio.
+
+### Stampa di prova di un'etichetta in modifica
+- `POST /api/stampe/prova-etichetta` con `{"etichetta": {…}, "prodottoId": 1}` → `{"lavoroId":"…"}`: rende con l'etichetta ricevuta (anche non salvata) e il prodotto indicato, quantità/scadenza/lotto proposti (il lotto non viene consumato), una copia, riga di storico con `etichettaNome` = nome + « (prova)». 409 se la stampante non è pronta. Le stampe di prova (questa e quella delle Impostazioni) non aggiornano `usi` e `ultimoUso` del prodotto.
 
 ### Impostazioni (chiavi)
 `schema_lotto` (`data|giorno|continuo|mano`), `progressivo_continuo` (numero), `taglio_ogni_etichetta` (`true|false`), `margine_mm` (numero, minimo 3).

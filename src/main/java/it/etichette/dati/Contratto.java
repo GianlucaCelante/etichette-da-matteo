@@ -16,6 +16,14 @@ public final class Contratto {
     /** Scaletta dei corpi in punti (docs/funzionalita-prima-versione.md, prova-corpi.md). */
     public static final List<Integer> SCALETTA_CORPI = List.of(7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48);
 
+    /**
+     * Per "logo" e "qr" {@code corpo} e' un millimetro libero (altezza del logo, lato del QR),
+     * non un corpo tipografico: non deve rispettare la scaletta dei punti, solo questo intervallo.
+     */
+    public static final Set<String> TIPI_BLOCCO_CORPO_IN_MM = Set.of("logo", "qr");
+    public static final int CORPO_MM_MINIMO = 5;
+    public static final int CORPO_MM_MASSIMO = 48;
+
     /** Famiglia "dati": il contenuto viene dal prodotto. */
     public static final Set<String> TIPI_BLOCCO_DATI = Set.of(
             "titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "lotto", "quantita", "valori", "produttore");

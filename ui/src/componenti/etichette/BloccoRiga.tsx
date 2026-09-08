@@ -1,12 +1,16 @@
 import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useLogoEsiste } from "../../api/hooks";
 import { NOMIBLOCCO, SCALETTA_CORPO, type ColonnaBlocco } from "../../api/tipi";
 import { IconaManiglia, IconaVia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import IconaColonna from "./IconaColonna";
 
 const PROSSIMA_COLONNA: Record<ColonnaBlocco, ColonnaBlocco> = { piena: "sx", sx: "dx", dx: "piena" };
+// Per il blocco "Logo" il corpo non e' un corpo in punti ma l'altezza del
+// logo in mm (5...30, proposta 10): stessa tendina, scaletta diversa.
+const ALTEZZE_LOGO_MM = Array.from({ length: 26 }, (_, i) => i + 5);
 
 interface ProprietaBloccoRiga {
   blocco: BloccoBozza;
@@ -39,7 +43,13 @@ export default function BloccoRiga({
   );
 
   const libero = blocco.tipo === "testo" || blocco.tipo === "testoGrande";
+  const eLogo = blocco.tipo === "logo";
   const inZonaAttiva = blocco.colonna !== "piena" && blocco.colonna === latoAttivo;
+  const { data: logoEsiste } = useLogoEsiste();
+  const notaLogo = eLogo && !logoEsiste;
+  // ".libero" mette la riga su due righe (testa sopra, il resto sotto): serve
+  // sia al campo di testo dei blocchi liberi sia alla nota del logo mancante.
+  const suDueRighe = libero || notaLogo;
 
   const clicSw = useCallback(() => onToggleAcceso(blocco.chiave), [onToggleAcceso, blocco.chiave]);
   const cambiaCorpo = useCallback(
@@ -59,7 +69,7 @@ export default function BloccoRiga({
     <div
       ref={setNodeRef}
       style={stile}
-      className={"blocco" + (inZonaAttiva ? " acceso" : "") + (blocco.acceso ? "" : " spento") + (libero ? " libero" : "") + (isDragging ? " trascina" : "")}
+      className={"blocco" + (inZonaAttiva ? " acceso" : "") + (blocco.acceso ? "" : " spento") + (suDueRighe ? " libero" : "") + (isDragging ? " trascina" : "")}
     >
       <div className="testa">
         <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${NOMIBLOCCO[blocco.tipo]}`}>
@@ -68,13 +78,23 @@ export default function BloccoRiga({
         </span>
         <button type="button" className={"sw" + (blocco.acceso ? "" : " off")} onClick={clicSw} aria-pressed={blocco.acceso} aria-label={blocco.acceso ? `Spegni ${NOMIBLOCCO[blocco.tipo]}` : `Accendi ${NOMIBLOCCO[blocco.tipo]}`} />
         <span className="nome">{NOMIBLOCCO[blocco.tipo]}</span>
-        <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
-          {SCALETTA_CORPO.map((v) => (
-            <option key={v} value={v}>
-              {v} pt
-            </option>
-          ))}
-        </select>
+        {eLogo ? (
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label="Altezza del logo, in millimetri">
+            {ALTEZZE_LOGO_MM.map((v) => (
+              <option key={v} value={v}>
+                alto {v} mm
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
+            {SCALETTA_CORPO.map((v) => (
+              <option key={v} value={v}>
+                {v} pt
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           className={"lato" + (blocco.colonna !== "piena" ? " on" : "")}
@@ -97,6 +117,7 @@ export default function BloccoRiga({
           aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`}
         />
       )}
+      {notaLogo && <div className="text-[11.5px] text-[var(--spento)] px-1.5">Carica il logo nelle Impostazioni.</div>}
     </div>
   );
 }

@@ -23,6 +23,13 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  servlet:
+    multipart:
+      # Il limite del contratto e' 2 MB (verificato a codice in ImpostazioniController); questo
+      # e' solo il tetto del contenitore servlet, un po' piu' alto cosi' un file di 2 MB esatti
+      # arriva sempre al nostro controllo e non a un rifiuto generico di Spring.
+      max-file-size: 3MB
+      max-request-size: 3MB
 
 etichette:
   # Cartella dati: creata all'avvio se manca (vedi EtichetteApplication.main). Sovrascrivibile

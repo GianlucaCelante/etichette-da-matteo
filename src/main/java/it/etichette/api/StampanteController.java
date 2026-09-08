@@ -44,7 +44,7 @@ public class StampanteController {
         }
         int rotolo = stato.rotolo() != null ? stato.rotolo() : ROTOLO_DI_DEFAULT_MM;
         BufferedImage immagine = etichettaDiProva.rendi(rotolo, LUNGHEZZA_PROVA_MM);
-        String lavoroId = coda.accoda(immagine, rotolo, 1);
+        String lavoroId = coda.accoda(immagine, rotolo, 1, true); // prova: nessun prodotto, nessuna statistica da aggiornare
         return Map.of("lavoroId", lavoroId);
     }
 }

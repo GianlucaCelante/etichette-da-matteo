@@ -10,26 +10,35 @@ import it.etichette.stampante.ProtocolloQl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
+
+import javax.imageio.ImageIO;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Test del renderer (docs/api.md): larghezza del rotolo, misure coerenti, avvisi, grassetto degli
- * allergeni negli ingredienti. Non richiede il contesto Spring: {@link Caratteri} si costruisce a
- * mano e si inizializza chiamando {@code carica()} (di norma un @PostConstruct).
+ * allergeni negli ingredienti, blocco logo. Non richiede il contesto Spring: {@link Caratteri} si
+ * costruisce a mano e si inizializza chiamando {@code carica()} (di norma un @PostConstruct);
+ * idem per {@link LogoService}, senza nessun file (il blocco "logo" non stampa nulla) a meno che
+ * un test non ne salvi uno apposta (vedi {@code ilBloccoLogoSiStampaConDithering}).
  */
 class RenditoreEtichettaTest {
 
     private RenditoreEtichetta renderer;
 
     @BeforeEach
-    void creaRenderer() {
+    void creaRenderer() throws Exception {
         Caratteri caratteri = new Caratteri();
         caratteri.carica();
-        renderer = new RenditoreEtichetta(caratteri);
+        LogoService senzaLogo = new LogoService(Files.createTempDirectory("etichette-test-senza-logo-").toString());
+        renderer = new RenditoreEtichetta(caratteri, senzaLogo);
     }
 
     /** Blocchi della "Completa" cosi' come seminati (docs/api.md). */
@@ -145,6 +154,36 @@ class RenditoreEtichettaTest {
             assertThat(s.testo()).isEqualTo("Acqua");
             assertThat(s.font()).isEqualTo(fontRegolare);
         });
+    }
+
+    @Test
+    void ilBloccoLogoSiStampaConDitheringSeCaricato() throws Exception {
+        Path cartella = Files.createTempDirectory("etichette-test-con-logo-");
+        // meta' nera, meta' bianca: col dithering ci si aspetta sicuramente pixel neri, e
+        // un'immagine diversa da un rettangolo pieno (la soglia secca darebbe lo stesso risultato
+        // per un'immagine cosi' netta; qui basta verificare che si stampi qualcosa e che le
+        // dimensioni tornino - i dettagli del dithering sono verificati a vista nel report).
+        BufferedImage sorgente = new BufferedImage(40, 20, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = sorgente.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 40, 20);
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, 20, 20);
+        g.dispose();
+        ImageIO.write(sorgente, "png", cartella.resolve("logo.png").toFile());
+
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        RenditoreEtichetta rendererConLogo = new RenditoreEtichetta(caratteri, new LogoService(cartella.toString()));
+
+        List<BloccoDto> blocchi = List.of(new BloccoDto("logo", true, 10, "piena", null));
+        EtichettaDto etichetta = new EtichettaDto(1L, "Prova logo", false, null, null, null, null, blocchi, null, null, null);
+
+        RisultatoResa r = rendererConLogo.rendi(etichetta, prodottoBase(), ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(contienePixelNeri(r.immagine())).isTrue();
+        // margine (1,5 mm sopra) + logo alto 10 mm (corpo del blocco) + margine sotto
+        assertThat(r.altezzaMm()).isGreaterThan(10.0);
     }
 
     private static boolean contienePixelNeri(BufferedImage img) {

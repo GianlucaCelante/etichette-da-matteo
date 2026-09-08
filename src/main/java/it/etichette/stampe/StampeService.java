@@ -92,7 +92,25 @@ public class StampeService {
                 ? lotti.generaConSchemaAttivo() : lottoRichiesto;
         LocalDate scadenza = nonVuoto(scadenzaRichiesta) ? LocalDate.parse(scadenzaRichiesta) : scadenzaProposta(p);
         String quantita = nonVuoto(quantitaRichiesta) ? quantitaRichiesta : p.getQuantita();
-        return accodaEregistra(p, e, copie, quantita, scadenza, lotto, dispositivoNome);
+        return accodaEregistra(p, etichetteConversioni.aDto(e), e.getNome(), copie, quantita, scadenza, lotto, dispositivoNome, false);
+    }
+
+    /**
+     * {@code POST /api/stampe/prova-etichetta}: rende con l'etichetta RICEVUTA (anche non
+     * salvata, es. in modifica nell'editor) e il prodotto indicato, quantita'/scadenza/lotto
+     * proposti - il lotto NON si consuma (e' solo una prova, non una stampa vera per il
+     * cliente): stampa 1 copia e scrive lo storico con {@code etichettaNome} = nome + " (prova)".
+     */
+    public RispostaStampa provaEtichetta(EtichettaDto etichettaRicevuta, Long prodottoId, String dispositivoNome) {
+        if (etichettaRicevuta == null) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta: obbligatoria");
+        }
+        EtichetteConversioni.valida(etichettaRicevuta);
+        Prodotto p = trovaProdotto(prodottoId);
+        LocalDate scadenza = scadenzaProposta(p);
+        String lotto = lotti.prossimoConSchemaAttivo(); // solo la proposta: una prova non consuma il progressivo
+        String nomeProva = (nonVuoto(etichettaRicevuta.nome()) ? etichettaRicevuta.nome() : "Etichetta") + " (prova)";
+        return accodaEregistra(p, etichettaRicevuta, nomeProva, 1, p.getQuantita(), scadenza, lotto, dispositivoNome, true);
     }
 
     /** {@code POST /api/stampe/ultima}: ristampa l'ultima riga dello storico, stesso lotto e stessa etichetta. */
@@ -122,11 +140,11 @@ public class StampeService {
         // Nessuna nuova immagine salvata nello storico: si rende di nuovo con prodotto ed
         // etichetta CORRENTI (potrebbero essere cambiati) ma stesso lotto, quantita' e scadenza
         // della riga originale (docs/api.md).
-        return accodaEregistra(p, e, copie, riga.getQuantita(), scadenza, riga.getLotto(), dispositivoNome);
+        return accodaEregistra(p, etichetteConversioni.aDto(e), e.getNome(), copie, riga.getQuantita(), scadenza, riga.getLotto(), dispositivoNome, false);
     }
 
-    private RispostaStampa accodaEregistra(Prodotto p, Etichetta e, int copie, String quantita, LocalDate scadenza,
-                                            String lotto, String dispositivoNome) {
+    private RispostaStampa accodaEregistra(Prodotto p, EtichettaDto etichettaDto, String etichettaNomeStorico, int copie,
+                                            String quantita, LocalDate scadenza, String lotto, String dispositivoNome, boolean prova) {
         StatoStampante stato = monitor.statoCorrente();
         if (StatoStampante.SCOLLEGATA.equals(stato.stato())) {
             throw new ErroreApi(HttpStatus.CONFLICT, "Stampante spenta o scollegata");
@@ -137,16 +155,15 @@ public class StampeService {
         int rotolo = stato.rotolo();
 
         ProdottoDto prodottoDto = prodottiConversioni.aDto(p);
-        EtichettaDto etichettaDto = etichetteConversioni.aDto(e);
         ParametriStampa parametri = new ParametriStampa(quantita, scadenza, lotto);
         RisultatoResa risultato = renderer.rendi(etichettaDto, prodottoDto, parametri, rotolo, 1.0);
 
         int margineDot = ProtocolloQl.mmInDot(margineMm());
         boolean taglioAutomatico = taglioOgniEtichetta();
-        String lavoroId = coda.accoda(risultato.immagine(), rotolo, copie, margineDot, taglioAutomatico);
+        String lavoroId = coda.accoda(risultato.immagine(), rotolo, copie, margineDot, taglioAutomatico, prova);
 
         String scadenzaStr = scadenza != null ? scadenza.format(DateTimeFormatter.ISO_LOCAL_DATE) : null;
-        lavoriInCorso.put(lavoroId, new ContestoLavoro(p.getId(), p.getNome(), e.getNome(), lotto, quantita,
+        lavoriInCorso.put(lavoroId, new ContestoLavoro(p.getId(), p.getNome(), etichettaNomeStorico, lotto, quantita,
                 scadenzaStr, copie, dispositivoNome, System.nanoTime()));
         log.info("Stampa avviata: lavoroId={}, prodotto={}, copie={}, lotto={}, dispositivo={}",
                 lavoroId, p.getNome(), copie, lotto, dispositivoNome);
@@ -177,7 +194,9 @@ public class StampeService {
         riga.setDispositivoNome(ctx.dispositivoNome());
         storico.save(riga);
 
-        if (EventoStampa.COMPLETATA.equals(evento.stato())) {
+        // Una prova (etichetta di prova, o un'etichetta in modifica) scrive comunque lo storico
+        // (tracciabilita': e' uscita una copia fisica) ma non conta come un uso vero del prodotto.
+        if (EventoStampa.COMPLETATA.equals(evento.stato()) && !evento.prova()) {
             prodotti.findById(ctx.prodottoId()).ifPresent(p -> {
                 p.setUsi(p.getUsi() + 1);
                 p.setUltimoUso(LocalDateTime.now());

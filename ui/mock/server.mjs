@@ -57,6 +57,10 @@ let impostazioni = {
 
 const versione = { versione: "0.1.0-mock" };
 
+// Il logo caricato dalle Impostazioni: null finche' nessuno l'ha caricato
+// (il blocco "Logo" non stampa nulla, docs/api.md). {buffer, mime, larghezzaPx, altezzaPx}.
+let logo = null;
+
 /* ============================ SSE ============================ */
 const client_i_sse = new Set();
 
@@ -171,8 +175,9 @@ function indirizziLocali() {
 
 /* ============================ dati di partenza: etichette e prodotti ============================ */
 // Le quattro etichette pronte (docs/api.md, "Dati di partenza"), coi blocchi
-// del prototipo banco-etichette-2026-09-08.html. "Completa" e' la sola
-// predefinita: e' quella proposta ai prodotti nuovi.
+// del prototipo banco-etichette-2026-09-08.html. Tutte e quattro sono
+// "predefinita": non si eliminano dalla galleria. "Completa" resta la prima
+// dell'elenco, quindi quella proposta ai prodotti nuovi.
 const MICHI_COMPLETO = {
   ragioneSociale: "Michi s.n.c. di Michele Alberto Crivellari",
   sedeLegale: "Via Brigata Marche 257 - 31030 Carbonera (TV)",
@@ -214,7 +219,7 @@ const etichette = [
   {
     id: 2,
     nome: "Cucina",
-    predefinita: false,
+    predefinita: true,
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
     produttore: MICHI_BREVE,
@@ -232,7 +237,7 @@ const etichette = [
   {
     id: 3,
     nome: "Aperto il / Scade il",
-    predefinita: false,
+    predefinita: true,
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
     produttore: MICHI_BREVE,
@@ -244,7 +249,7 @@ const etichette = [
   {
     id: 4,
     nome: "Libera",
-    predefinita: false,
+    predefinita: true,
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
     produttore: MICHI_BREVE,
@@ -453,8 +458,14 @@ function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
       return { righe: [], extraMm: corpo * 0.3528 };
     case "qr":
       return { righe: [], quadratoMm: corpo || 12 };
-    case "logo":
-      return null; // riservato: senza logo caricato non si stampa nulla
+    case "logo": {
+      // Qui il corpo non e' un corpo in punti ma l'altezza in mm (5...30,
+      // proposta 10): il blocco cresce in proporzione al logo caricato.
+      if (!logo) return null; // senza logo caricato non si stampa nulla
+      const altezzaMm = corpo || 10;
+      const rapporto = logo.larghezzaPx / logo.altezzaPx;
+      return { righe: [], rettangolo: { larghezzaMm: altezzaMm * rapporto, altezzaMm } };
+    }
     default:
       return null;
   }
@@ -477,6 +488,11 @@ function calcolaGeometria(prodotto, etichetta, { rotolo = 62, scadenza, lotto } 
     if (info.quadratoMm) {
       disegni.push({ tipo: "quadrato", yMm, latoMm: info.quadratoMm });
       yMm += info.quadratoMm + 0.8;
+      continue;
+    }
+    if (info.rettangolo) {
+      disegni.push({ tipo: "rettangolo", yMm, larghezzaMm: info.rettangolo.larghezzaMm, altezzaMm: info.rettangolo.altezzaMm });
+      yMm += info.rettangolo.altezzaMm + 0.8;
       continue;
     }
     if (info.filetto) {
@@ -515,6 +531,12 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
     if (d.tipo === "quadrato") {
       const lato = Math.round(d.latoMm * K);
       rettangoloVuoto(tela, margineDxPx, y0, margineDxPx + lato, y0 + lato);
+      continue;
+    }
+    if (d.tipo === "rettangolo") {
+      const larghezzaLogoPx = Math.round(d.larghezzaMm * K);
+      const altezzaLogoPx = Math.round(d.altezzaMm * K);
+      rettangoloVuoto(tela, margineDxPx, y0, margineDxPx + larghezzaLogoPx, y0 + altezzaLogoPx);
       continue;
     }
     if (d.tipo === "filetto") {
@@ -696,10 +718,92 @@ function leggiCorpoJson(req) {
   });
 }
 
+// Come leggiCorpoJson, ma tenendo i byte grezzi: serve per il multipart del
+// logo, dove il corpo e' un'immagine binaria e non si puo' leggere come testo.
+function leggiCorpoBuffer(req, limite = 3_000_000) {
+  return new Promise((resolve, reject) => {
+    const pezzi = [];
+    let totale = 0;
+    req.on("data", (pezzo) => {
+      totale += pezzo.length;
+      if (totale > limite) { req.destroy(new Error("corpo troppo grande")); return; }
+      pezzi.push(pezzo);
+    });
+    req.on("end", () => resolve(Buffer.concat(pezzi)));
+    req.on("error", reject);
+  });
+}
+
+// Un lettore multipart/form-data minimo, quanto basta per un solo campo file
+// (niente librerie: "Node puro" come il resto del mock). Ritorna un elenco di
+// parti {nome, nomeFile, tipo, dati (Buffer)}.
+function analizzaMultipart(corpo, contentType) {
+  const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType || "");
+  if (!m) return [];
+  const boundary = Buffer.from("--" + (m[1] || m[2]).trim());
+  const parti = [];
+  let inizio = corpo.indexOf(boundary);
+  while (inizio !== -1) {
+    const fine = corpo.indexOf(boundary, inizio + boundary.length);
+    if (fine === -1) break;
+    let pezzo = corpo.slice(inizio + boundary.length, fine);
+    if (pezzo.slice(0, 2).toString("latin1") === "\r\n") pezzo = pezzo.slice(2);
+    const separatore = pezzo.indexOf("\r\n\r\n");
+    if (separatore !== -1) {
+      const intestazioni = pezzo.slice(0, separatore).toString("utf8");
+      let dati = pezzo.slice(separatore + 4);
+      if (dati.slice(-2).toString("latin1") === "\r\n") dati = dati.slice(0, -2);
+      const nomeMatch = /name="([^"]*)"/i.exec(intestazioni);
+      const fileMatch = /filename="([^"]*)"/i.exec(intestazioni);
+      const tipoMatch = /Content-Type:\s*([^\r\n]+)/i.exec(intestazioni);
+      parti.push({
+        nome: nomeMatch ? nomeMatch[1] : null,
+        nomeFile: fileMatch ? fileMatch[1] : null,
+        tipo: tipoMatch ? tipoMatch[1].trim() : null,
+        dati,
+      });
+    }
+    inizio = fine;
+  }
+  return parti;
+}
+
+// Larghezza e altezza da un PNG (firma + IHDR) o da un JPEG (marcatore SOFn):
+// bastano per proporzionare il blocco "logo" senza librerie di immagini.
+function leggiDimensioniPng(buf) {
+  if (buf.length < 24 || buf[0] !== 0x89 || buf[1] !== 0x50) return null;
+  const larghezza = buf.readUInt32BE(16);
+  const altezza = buf.readUInt32BE(20);
+  return larghezza && altezza ? { larghezza, altezza } : null;
+}
+function leggiDimensioniJpeg(buf) {
+  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  let i = 2;
+  while (i < buf.length - 9) {
+    if (buf[i] !== 0xff) { i++; continue; }
+    const marcatore = buf[i + 1];
+    if (marcatore === 0xd8 || marcatore === 0x01 || (marcatore >= 0xd0 && marcatore <= 0xd9)) { i += 2; continue; }
+    const lunghezza = buf.readUInt16BE(i + 2);
+    const eSof = marcatore >= 0xc0 && marcatore <= 0xcf && marcatore !== 0xc4 && marcatore !== 0xc8 && marcatore !== 0xcc;
+    if (eSof) {
+      const altezza = buf.readUInt16BE(i + 5);
+      const larghezza = buf.readUInt16BE(i + 7);
+      return larghezza && altezza ? { larghezza, altezza } : null;
+    }
+    i += 2 + lunghezza;
+  }
+  return null;
+}
+function leggiDimensioniImmagine(buf, mime) {
+  if ((mime || "").includes("png") || (buf[0] === 0x89 && buf[1] === 0x50)) return leggiDimensioniPng(buf);
+  if ((mime || "").includes("jp") || (buf[0] === 0xff && buf[1] === 0xd8)) return leggiDimensioniJpeg(buf);
+  return leggiDimensioniPng(buf) || leggiDimensioniJpeg(buf);
+}
+
 /* ============================ stampe: lavori attivi ============================ */
 const lavoriAttivi = new Map(); // lavoroId -> { annullato }
 
-function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome }) {
+function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, registraNelloStorico = true }) {
   const lavoroId = "stampa-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const lavoro = { annullato: false, copiaCorrente: 0 };
   lavoriAttivi.set(lavoroId, lavoro);
@@ -712,7 +816,7 @@ function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, disposi
     lavoriAttivi.delete(lavoroId);
     stampante = { ...stampante, stato: "pronta", messaggio: "Pronta" };
     mandaEvento("stampante", stampante);
-    if (lavoro.copiaCorrente > 0) {
+    if (lavoro.copiaCorrente > 0 && registraNelloStorico) {
       registraStorico(prodotto, etichetta, {
         copie: lavoro.copiaCorrente,
         quantita,
@@ -855,6 +959,27 @@ const server = http.createServer(async (req, res) => {
       return rispondiJson(res, 200, { lavoroId });
     }
 
+    // La "Stampa di prova" della vista Etichette: prova l'etichetta COSI' COM'E'
+    // in modifica (anche non salvata), su una sola copia. Non tocca lo storico
+    // ne' "usi"/"ultimoUso" del prodotto: e' solo una prova, non una stampa vera.
+    if (percorso === "/api/stampe/prova-etichetta" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      if (!corpo.etichetta || !Array.isArray(corpo.etichetta.blocchi)) return erroreJson(res, 400, "Manca l'etichetta da provare");
+      let prodotto = corpo.prodottoId ? trovaProdotto(Number(corpo.prodottoId)) : undefined;
+      if (!prodotto) prodotto = prodotti[0];
+      if (!prodotto) return erroreJson(res, 400, "Nessun prodotto disponibile per la prova");
+      const dispositivo = identificaDispositivo(req, res);
+      const lavoroId = avviaLavoroStampa(prodotto, {
+        copie: 1,
+        quantita: prodotto.quantita,
+        scadenza: dataLocale(piuGiorni(new Date(), prodotto.giorniScadenza)),
+        lotto: "PROVA",
+        dispositivoNome: dispositivo.nome,
+        registraNelloStorico: false,
+      });
+      return rispondiJson(res, 200, { lavoroId });
+    }
+
     /* ---- impostazioni ---- */
     if (percorso === "/api/impostazioni" && req.method === "GET") return rispondiJson(res, 200, impostazioni);
     if (percorso === "/api/impostazioni" && req.method === "PUT") {
@@ -862,6 +987,36 @@ const server = http.createServer(async (req, res) => {
       impostazioni = { ...impostazioni, ...corpo };
       if (Number(impostazioni.margine_mm) < 3) impostazioni.margine_mm = "3";
       return rispondiJson(res, 200, impostazioni);
+    }
+
+    /* ---- logo ---- */
+    if (percorso === "/api/impostazioni/logo.png" && (req.method === "GET" || req.method === "HEAD")) {
+      if (!logo) return erroreJson(res, 404, "Nessun logo caricato");
+      res.writeHead(200, { "Content-Type": logo.mime, "Content-Length": logo.buffer.length });
+      res.end(req.method === "HEAD" ? undefined : logo.buffer);
+      return;
+    }
+    if (percorso === "/api/impostazioni/logo" && req.method === "PUT") {
+      const contentType = req.headers["content-type"] || "";
+      if (!contentType.toLowerCase().includes("multipart/form-data")) {
+        return erroreJson(res, 400, "Serve multipart/form-data col campo «file»");
+      }
+      const corpo = await leggiCorpoBuffer(req, 2_100_000);
+      const parti = analizzaMultipart(corpo, contentType);
+      const parteFile = parti.find((p) => p.nome === "file" && p.nomeFile);
+      if (!parteFile || !parteFile.dati.length) return erroreJson(res, 400, "Manca il file");
+      if (parteFile.dati.length > 2_000_000) return erroreJson(res, 400, "Il file supera i 2 MB");
+      const dimensioni = leggiDimensioniImmagine(parteFile.dati, parteFile.tipo);
+      if (!dimensioni) return erroreJson(res, 400, "Formato non valido: solo PNG o JPEG");
+      const mimeMinuscolo = (parteFile.tipo || "").toLowerCase();
+      const mime = mimeMinuscolo.includes("png") ? "image/png" : mimeMinuscolo.includes("jp") ? "image/jpeg" : parteFile.dati[0] === 0x89 ? "image/png" : "image/jpeg";
+      logo = { buffer: parteFile.dati, mime, larghezzaPx: dimensioni.larghezza, altezzaPx: dimensioni.altezza };
+      return rispondiJson(res, 200, { larghezza: dimensioni.larghezza, altezza: dimensioni.altezza });
+    }
+    if (percorso === "/api/impostazioni/logo" && req.method === "DELETE") {
+      logo = null;
+      res.writeHead(204).end();
+      return;
     }
 
     /* ---- rete ---- */
@@ -927,6 +1082,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === "DELETE") {
         if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
+        if (etichetta.predefinita) return erroreJson(res, 409, "Le etichette pronte non si possono eliminare");
         const usanti = prodotti.filter((p) => p.etichettaId === id);
         if (usanti.length) return erroreJson(res, 409, "La usano ancora dei prodotti", { prodotti: usanti.map((p) => p.nome) });
         etichette.splice(etichette.indexOf(etichetta), 1);

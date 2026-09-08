@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useAnnullaStampa,
@@ -16,45 +16,12 @@ import {
 import { useScalaAnteprima } from "../api/resa";
 import type { Prodotto } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
-import {
-  IconaAllarme,
-  IconaCerca,
-  IconaCercaDiNuovo,
-  IconaDestra,
-  IconaMatita,
-  IconaPiu,
-  IconaSinistra,
-  IconaSpunta,
-  IconaStampa,
-  IconaVia,
-} from "../componenti/Icone";
+import { IconaCerca, IconaCercaDiNuovo, IconaDestra, IconaMatita, IconaSinistra, IconaStampa } from "../componenti/Icone";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
+import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
+import { formattaDataItaliana, oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
 
 type Filtro = "usati" | "tutti";
-
-function dueCifre(n: number): string {
-  return String(n).padStart(2, "0");
-}
-function oggiPiuGiorni(giorni: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + giorni);
-  return `${d.getFullYear()}-${dueCifre(d.getMonth() + 1)}-${dueCifre(d.getDate())}`;
-}
-function formattaDataItaliana(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
-}
-function plurale(n: number, uno: string, molti: string): string {
-  return `${n} ${n === 1 ? uno : molti}`;
-}
-// "Copia 3" · "Copie 1 e 2" · "Copie 4, 5 e 6"
-function elencaCopie(da: number, a: number): string {
-  const numeri: number[] = [];
-  for (let i = da; i <= a; i++) numeri.push(i);
-  if (numeri.length === 1) return "Copia " + numeri[0];
-  return "Copie " + numeri.slice(0, -1).join(", ") + " e " + numeri[numeri.length - 1];
-}
 
 interface Riepilogo {
   lavoroId: string;
@@ -256,165 +223,6 @@ function PannelloProdotto({
         >
           <IconaStampa larghezza={20} />
           <span>{copie > 1 ? `Stampa ${copie} copie` : "Stampa"}</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function PannelloInCorso({
-  prodottoNome,
-  copiaCorrente,
-  copieTotali,
-  onFerma,
-  fermando,
-}: {
-  prodottoNome: string;
-  copiaCorrente: number;
-  copieTotali: number;
-  onFerma: () => void;
-  fermando: boolean;
-}) {
-  const percento = useMemo<CSSProperties>(
-    () => ({ width: `${Math.round(((copiaCorrente - 0.5) / copieTotali) * 100)}%` }),
-    [copiaCorrente, copieTotali],
-  );
-  const segmenti: { da: number; a: number; testo: string }[] = [
-    { da: 1, a: copiaCorrente - 1, testo: "tagliate" },
-    { da: copiaCorrente, a: copiaCorrente, testo: "in stampa" },
-    { da: copiaCorrente + 1, a: copieTotali, testo: "in attesa" },
-  ];
-  return (
-    <div className="flex flex-col gap-3 min-h-0 flex-1">
-      <div className="h text-[20px] font-semibold">Stampa in corso</div>
-      <div className="text-[15px] text-[var(--tenue)] -mt-1.5">{prodottoNome}</div>
-      <div className="flex items-baseline gap-2">
-        <div className="h text-[44px] font-bold leading-none text-[var(--ambra)]">{copiaCorrente}</div>
-        <div className="text-[17px] text-[var(--tenue)]">di {copieTotali} copie</div>
-      </div>
-      <div className="barraAvanzamento">
-        <span style={percento} />
-      </div>
-      <div className="flex flex-col gap-2.5 text-[14px] pt-1">
-        {segmenti
-          .filter((s) => s.a >= s.da && s.da >= 1 && s.da <= copieTotali)
-          .map((s) => (
-            <div key={s.testo} className="flex items-center gap-2.5">
-              <span
-                className={
-                  "w-2 h-2 rounded-full flex-shrink-0 " +
-                  (s.testo === "tagliate" ? "bg-[var(--verde)]" : s.testo === "in stampa" ? "bg-[var(--ambra)]" : "bg-[#C6B7A3]")
-                }
-              />
-              <span className="font-bold">{elencaCopie(s.da, s.a)}</span>
-              <span className="ml-auto text-[var(--tenue)]">{s.da === s.a && s.testo === "tagliate" ? "tagliata" : s.testo}</span>
-            </div>
-          ))}
-      </div>
-      <div className="text-[13px] text-[var(--tenue)] leading-normal">
-        Le copie partono una alla volta: fermando la serie, quella in corso finisce e le altre non vengono stampate.
-      </div>
-      <div className="flex-1" />
-      <button type="button" className="btn grande" onClick={onFerma} disabled={fermando}>
-        <IconaVia larghezza={20} spessoreTratto={2} />
-        <span>Ferma la serie</span>
-      </button>
-    </div>
-  );
-}
-
-function PannelloErrore({ messaggio, onFerma }: { messaggio: string; onFerma: () => void }) {
-  return (
-    <div className="flex flex-col gap-3 min-h-0 flex-1">
-      <div className="avviso">
-        <span className="flex-shrink-0">
-          <IconaAllarme larghezza={22} spessoreTratto={2} />
-        </span>
-        <div>
-          <div className="text-[16px] font-bold text-[var(--rossocupo)]">La stampa si è fermata</div>
-          <div className="text-[13.5px] leading-snug mt-1">
-            {messaggio || "In pausa: riprende da sola appena il problema si risolve."}
-          </div>
-        </div>
-      </div>
-      <div className="flex-1" />
-      <button type="button" className="btn grande" onClick={onFerma}>
-        <IconaVia larghezza={20} spessoreTratto={2} />
-        <span>Annulla la stampa</span>
-      </button>
-    </div>
-  );
-}
-
-function PannelloFatta({
-  fatte,
-  volute,
-  quantita,
-  scadenza,
-  lotto,
-  onRipeti,
-  onChiudi,
-  ripetendo,
-}: {
-  fatte: number;
-  volute: number;
-  quantita: string;
-  scadenza: string;
-  lotto: string;
-  onRipeti: (copie: number) => void;
-  onChiudi: () => void;
-  ripetendo: boolean;
-}) {
-  const fermata = fatte < volute;
-  const sotto = fermata
-    ? `${fatte === 1 ? "Uscita 1 copia" : "Uscite " + fatte + " copie"} su ${volute}: ${fatte === 1 ? "prendila" : "prendile"} dalla stampante`
-    : fatte === 1
-      ? "Prendila dalla stampante"
-      : fatte + " copie: prendile dalla stampante";
-  const ripetiUnaAltra = useCallback(() => onRipeti(fatte), [onRipeti, fatte]);
-  const ripetiMancanti = useCallback(() => onRipeti(volute - fatte), [onRipeti, volute, fatte]);
-
-  return (
-    <div className="flex flex-col gap-3 min-h-0 flex-1">
-      <div className="flex flex-col items-center gap-3.5 py-2">
-        <div className="w-24 h-24 rounded-full bg-[var(--verdechiaro)] flex items-center justify-center text-[var(--verde)]">
-          <IconaSpunta larghezza={52} spessoreTratto={2.6} />
-        </div>
-        <div className="text-center">
-          <div className="h text-[28px] font-bold">{fermata ? "Serie fermata" : fatte === 1 ? "Stampata" : "Stampate"}</div>
-          <div className="text-[16px] text-[var(--tenue)] mt-1">{sotto}</div>
-        </div>
-      </div>
-      <div className="scheda px-4 py-3">
-        <div className="kv">
-          <span>Quantità</span>
-          <b>{quantita}</b>
-        </div>
-        <div className="kv">
-          <span>Scadenza</span>
-          <b>{formattaDataItaliana(scadenza)}</b>
-        </div>
-        <div className="kv">
-          <span>Lotto</span>
-          <b className="mono">{lotto}</b>
-        </div>
-      </div>
-      <div className="flex-1" />
-      <div className="flex flex-col gap-2.5">
-        {fermata ? (
-          <button type="button" className="btn primario grande" onClick={ripetiMancanti} disabled={ripetendo}>
-            <IconaStampa larghezza={20} />
-            <span>{volute - fatte === 1 ? "Stampa la copia che manca" : `Stampa le ${volute - fatte} che mancano`}</span>
-          </button>
-        ) : (
-          <button type="button" className="btn primario grande" onClick={ripetiUnaAltra} disabled={ripetendo}>
-            <IconaPiu larghezza={20} spessoreTratto={2.4} />
-            <span>{fatte === 1 ? "Stampane un'altra" : `Stampane altre ${fatte}`}</span>
-          </button>
-        )}
-        <button type="button" className="btn" onClick={onChiudi}>
-          <IconaSinistra larghezza={20} spessoreTratto={2} />
-          <span>Torna all&apos;elenco</span>
         </button>
       </div>
     </div>

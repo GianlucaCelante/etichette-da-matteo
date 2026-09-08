@@ -74,7 +74,12 @@ public class EtichetteConversioni {
             if (b.tipo() == null || !Contratto.TIPI_BLOCCO.contains(b.tipo())) {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "blocchi: tipo non ammesso: " + b.tipo());
             }
-            if (!Contratto.SCALETTA_CORPI.contains(b.corpo())) {
+            if (Contratto.TIPI_BLOCCO_CORPO_IN_MM.contains(b.tipo())) {
+                if (b.corpo() < Contratto.CORPO_MM_MINIMO || b.corpo() > Contratto.CORPO_MM_MASSIMO) {
+                    throw new ErroreApi(HttpStatus.BAD_REQUEST, "blocchi: corpo (mm) fuori dall'intervallo "
+                            + Contratto.CORPO_MM_MINIMO + "-" + Contratto.CORPO_MM_MASSIMO + ": " + b.corpo());
+                }
+            } else if (!Contratto.SCALETTA_CORPI.contains(b.corpo())) {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "blocchi: corpo non nella scaletta: " + b.corpo());
             }
             if (b.colonna() == null || !Contratto.COLONNE.contains(b.colonna())) {

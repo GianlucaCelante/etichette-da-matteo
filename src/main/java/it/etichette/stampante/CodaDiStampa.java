@@ -24,7 +24,12 @@ public class CodaDiStampa {
 
     /** Accoda un nuovo lavoro e ne restituisce l'id, usato per l'annullamento e negli eventi SSE. */
     public String accoda(BufferedImage immagine, int rotoloMm, int copie) {
-        LavoroStampa lavoro = new LavoroStampa(immagine, rotoloMm, Math.max(1, copie));
+        return accoda(immagine, rotoloMm, copie, false);
+    }
+
+    /** Come sopra, marcando il lavoro come "prova" (etichetta di prova, o un'etichetta in modifica): non aggiorna usi/ultimoUso del prodotto. */
+    public String accoda(BufferedImage immagine, int rotoloMm, int copie, boolean prova) {
+        LavoroStampa lavoro = new LavoroStampa(immagine, rotoloMm, Math.max(1, copie), prova);
         registro.put(lavoro.id, lavoro);
         inAttesa.add(lavoro);
         return lavoro.id;
@@ -35,7 +40,12 @@ public class CodaDiStampa {
      * (docs/api.md: {@code margine_mm}, {@code taglio_ogni_etichetta}) invece dei valori fissi.
      */
     public String accoda(BufferedImage immagine, int rotoloMm, int copie, int margineDot, boolean taglioAutomatico) {
-        LavoroStampa lavoro = new LavoroStampa(immagine, rotoloMm, Math.max(1, copie), margineDot, taglioAutomatico);
+        return accoda(immagine, rotoloMm, copie, margineDot, taglioAutomatico, false);
+    }
+
+    /** Come sopra, marcando il lavoro come "prova" (vedi {@link #accoda(BufferedImage, int, int, boolean)}). */
+    public String accoda(BufferedImage immagine, int rotoloMm, int copie, int margineDot, boolean taglioAutomatico, boolean prova) {
+        LavoroStampa lavoro = new LavoroStampa(immagine, rotoloMm, Math.max(1, copie), margineDot, taglioAutomatico, prova);
         registro.put(lavoro.id, lavoro);
         inAttesa.add(lavoro);
         return lavoro.id;

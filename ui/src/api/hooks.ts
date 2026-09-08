@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useDebounced } from "../hooks/useDebounced";
-import { anteprimaEtichettaBlob, api, percorsoResaProdotto } from "./client";
+import { anteprimaEtichettaBlob, api, caricaLogo, eliminaLogo, logoEsiste, percorsoResaProdotto } from "./client";
 import type {
   Etichetta,
   EventoStampa,
@@ -12,6 +12,7 @@ import type {
   ParametriResa,
   PeriodoStorico,
   Prodotto,
+  ProvaEtichettaRichiesta,
   RistampaRichiesta,
   Rotolo,
   StampaRichiesta,
@@ -42,6 +43,8 @@ export const chiaviQuery = {
 
   dispositivoIo: ["dispositivi", "io"] as QueryKey,
   dispositivi: ["dispositivi", "elenco"] as QueryKey,
+
+  logo: ["impostazioni", "logo"] as QueryKey,
 };
 
 export function useStampante() {
@@ -224,6 +227,34 @@ export function useCreaStampa() {
 
 export function useRistampaUltima() {
   return useMutation({ mutationFn: (dati?: RistampaRichiesta) => api.ristampaUltima(dati) });
+}
+
+// "Stampa di prova" della vista Etichette: prova l'etichetta in modifica,
+// anche non salvata, riusando gli stessi eventi SSE "stampa" della vista Stampa.
+export function useProvaEtichetta() {
+  return useMutation({ mutationFn: (dati: ProvaEtichettaRichiesta) => api.provaEtichetta(dati) });
+}
+
+/* ============================ logo ============================ */
+
+export function useLogoEsiste() {
+  return useQuery({ queryKey: chiaviQuery.logo, queryFn: logoEsiste });
+}
+
+export function useCaricaLogo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => caricaLogo(file),
+    onSuccess: () => void client.invalidateQueries({ queryKey: chiaviQuery.logo }),
+  });
+}
+
+export function useEliminaLogo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => eliminaLogo(),
+    onSuccess: () => void client.invalidateQueries({ queryKey: chiaviQuery.logo }),
+  });
 }
 
 /* ============================ storico ============================ */

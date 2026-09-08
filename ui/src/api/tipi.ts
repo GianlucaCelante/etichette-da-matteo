@@ -254,6 +254,26 @@ export interface RistampaRisposta {
   lavoroId: string;
 }
 
+/* ============================ logo ============================ */
+
+// PUT /api/impostazioni/logo (multipart, campo "file", PNG o JPEG, max 2 MB)
+// ritorna le dimensioni vere del file caricato, per proporzionare il blocco.
+export interface LogoRisposta {
+  larghezza: number;
+  altezza: number;
+}
+
+/* ============================ stampa di prova (Etichette) ============================ */
+
+export interface ProvaEtichettaRichiesta {
+  etichetta: Etichetta | NuovaEtichetta;
+  prodottoId?: number;
+}
+
+export interface ProvaEtichettaRisposta {
+  lavoroId: string;
+}
+
 /* ============================ storico ============================ */
 
 export type PeriodoStorico = "oggi" | "7" | "30" | "tutto";

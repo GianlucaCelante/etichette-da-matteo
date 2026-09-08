@@ -26,9 +26,11 @@ import java.util.Optional;
  *       spontanei durante la stampa (mai comandi, mappatura §4.1);</li>
  *   <li>se l'I/O fallisce o la stampante sparisce chiude la porta, segna "scollegata" e la
  *       ricerca ogni secondo con SetupApi finche' non ricompare;</li>
- *   <li>un errore recuperabile a meta' serie (coperchio aperto, rotolo finito) mette il lavoro
- *       in pausa: quando lo stato torna pulito riprende dalla copia interrotta, senza rifare le
- *       precedenti.</li>
+ *   <li>un errore a meta' copia (coperchio aperto, rotolo finito) mette il lavoro in pausa e
+ *       resta in ASCOLTO PASSIVO (mai un comando durante la stampa, mappatura §4.1): se la
+ *       stampante ristampa da sola la pagina interrotta (il flag di recovery di {@code ESC i z})
+ *       la copia conta come fatta senza rimandarla; solo se torna "in ricezione" senza aver
+ *       ristampato la si rimanda davvero (vedi {@link #gestisciErroreAMetaCopia}).</li>
  * </ul>
  */
 @Component
@@ -37,11 +39,23 @@ public class MonitorStampante {
     private static final Logger log = LoggerFactory.getLogger(MonitorStampante.class);
     private static final long ATTESA_CICLO_MS = 1000;
     private static final long SCADENZA_STAMPA_MS = 60_000; // ampio margine sui 2-5 s osservati
+    /** Prima di stampare, se in errore, si interroga attivamente (nessuna stampa in corso: sicuro). */
+    private static final long ATTESA_RIPRISTINO_PRE_STAMPA_MS = 2000;
 
     private final RicercaPorta ricerca;
     private final Porta porta;
     private final CodaDiStampa coda;
     private final ApplicationEventPublisher eventi;
+
+    /**
+     * Dopo un errore A META' COPIA si resta in ascolto passivo (nessun comando, mai durante la
+     * stampa: mappatura §4.1) per non rischiare di far ristampare la stampante una seconda volta
+     * la pagina che ha gia' ripreso da sola col flag di recovery (rischio 7, docs/stack-tecnologico.md,
+     * verificato sull'hardware: coperchio aperto/richiuso -> prima etichetta uscita due volte).
+     * Solo dopo questo lungo silenzio (coperchio lasciato aperto) si manda un'unica interrogazione
+     * attiva. Sovrascrivibile SOLO nei test (altrimenti 15 minuti veri).
+     */
+    private volatile long attesaSilenzioDopoErroreMs = 15 * 60_000L;
 
     private volatile StatoStampante statoCorrente = StatoStampante.scollegata();
     private volatile boolean attivo = true;
@@ -72,6 +86,11 @@ public class MonitorStampante {
 
     public StatoStampante statoCorrente() {
         return statoCorrente;
+    }
+
+    /** SOLO per i test: un'attesa di 15 minuti veri non e' testabile, qui si accorcia. */
+    void impostaAttesaSilenzioDopoErrorePerTest(long millis) {
+        this.attesaSilenzioDopoErroreMs = millis;
     }
 
     private void ciclo() {
@@ -243,15 +262,13 @@ public class MonitorStampante {
                 }
                 case COMPLETATA -> lavoro.copiaCorrente++;
                 case ERRORE_RECUPERABILE -> {
-                    // Il lavoro resta in pausa: attendiRipristino ha gia' aspettato che lo stato
-                    // tornasse pulito, si rimanda la stessa copia senza incrementare il
-                    // contatore. NOTA: il job include il flag "recovery sempre attivo" di
-                    // ESC i z (vedi il commento in ProtocolloQl.controlloPagina) - alla chiusura
-                    // del coperchio la stampante potrebbe quindi ristampare da sola la pagina
-                    // interrotta, e qui la si rimanderebbe una seconda volta (rischio 7 in
-                    // docs/stack-tecnologico.md, doppia copia). Da verificare con l'hardware
-                    // aprendo il coperchio a meta' di una serie di copie; nessun cambio di
-                    // logica qui finche' non e' verificato.
+                    // gestisciErroreAMetaCopia ha gia' verificato che la stampante NON ha
+                    // ristampato da sola la pagina (e' tornata "in ricezione" senza passare da
+                    // "completata"): si rimanda davvero la stessa copia, senza incrementare il
+                    // contatore. Se invece avesse ristampato da sola, l'esito sarebbe stato
+                    // COMPLETATA (vedi il case sopra) e non si arriverebbe qui - questo evita la
+                    // copia doppia osservata sull'hardware il 2026-09-08 (rischio 7,
+                    // docs/stack-tecnologico.md).
                 }
             }
         }
@@ -355,9 +372,7 @@ public class MonitorStampante {
                 buf = Arrays.copyOfRange(buf, 32, buf.length);
                 EsitoStato esito = ProtocolloQl.decodificaStato(blocco32);
                 if (esito.tipoStato() == 0x02) { // errore spontaneo durante la stampa
-                    pubblicaStato(descrivi(esito));
-                    pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio());
-                    return attendiRipristino(lavoro) ? EsitoCopia.ERRORE_RECUPERABILE : EsitoCopia.ANNULLATO;
+                    return gestisciErroreAMetaCopia(lavoro, esito);
                 }
                 if (esito.tipoStato() == 0x01) { // stampa completata
                     completata = true;
@@ -381,7 +396,109 @@ public class MonitorStampante {
         }
     }
 
-    /** Aspetta che lo stato torni pulito (nessun errore) prima di riprendere la copia interrotta. */
+    /**
+     * Un errore spontaneo (0x02) e' arrivato A META' di una copia: si resta in ascolto PASSIVO
+     * degli stati spontanei (mai un comando, mai {@code ESC i S}, mappatura §4.1 - la stampante
+     * sta ancora "lavorando" la pagina interrotta) finche' non si capisce come e' andata:
+     *
+     * <ul>
+     *   <li>un altro errore (0x02): si aggiorna il messaggio e si continua ad aspettare;</li>
+     *   <li>«cambio fase -> in stampa» (0x06/01): la stampante sta ristampando DA SOLA la pagina
+     *       grazie al flag di recovery di {@code ESC i z} - si continua ad ascoltare;</li>
+     *   <li>«stampa completata» (0x01) VISTA dopo l'errore, seguita da «tornata in ricezione»
+     *       (0x06/00): la ristampa automatica e' riuscita, la copia conta come FATTA, non si
+     *       rimanda (altrimenti sarebbe una copia doppia: rischio 7, docs/stack-tecnologico.md,
+     *       verificato sull'hardware il 2026-09-08 - coperchio aperto/richiuso a meta' della
+     *       prima copia, uscita due volte perche' il servizio la rimandava a sua volta);</li>
+     *   <li>«tornata in ricezione» (0x06/00) SENZA che sia passata «completata»: la pagina e'
+     *       stata scartata, si rimanda la stessa copia (comportamento di prima di questa
+     *       correzione).</li>
+     * </ul>
+     *
+     * Se per {@link #attesaSilenzioDopoErroreMs} (15 minuti veri: coperchio lasciato aperto) non
+     * arriva nulla, si manda un'UNICA interrogazione attiva ({@link #interrogaStato()}): se e'
+     * ancora in errore si continua ad aspettare (altri 15 minuti), se e' pulita si tratta come
+     * "tornata in ricezione" (si sono perse le notifiche spontanee).
+     */
+    private EsitoCopia gestisciErroreAMetaCopia(LavoroStampa lavoro, EsitoStato erroreIniziale) {
+        pubblicaStato(descrivi(erroreIniziale));
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(erroreIniziale).messaggio());
+
+        boolean completataVista = false;
+        long ultimoSegnaleNanos = System.nanoTime();
+        byte[] buf = new byte[0];
+
+        while (true) {
+            if (lavoro.annullato.get()) {
+                return EsitoCopia.ANNULLATO;
+            }
+            byte[] d;
+            try {
+                d = porta.leggiPoll(400, 60, 64);
+            } catch (IOException e) {
+                return EsitoCopia.ERRORE_IO;
+            }
+            if (d.length == 0) {
+                if (msTrascorsi(ultimoSegnaleNanos) >= attesaSilenzioDopoErroreMs) {
+                    try {
+                        EsitoStato esito = interrogaStato();
+                        pubblicaStato(descrivi(esito));
+                        ultimoSegnaleNanos = System.nanoTime();
+                        if (esito.haErrori()) {
+                            pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio());
+                        } else {
+                            // pulita ma nessuna notifica di "tornata in ricezione" vista: si
+                            // tratta come se fosse appena arrivata (si sono perse le notifiche).
+                            return completataVista ? EsitoCopia.COMPLETATA : EsitoCopia.ERRORE_RECUPERABILE;
+                        }
+                    } catch (IOException e) {
+                        return EsitoCopia.ERRORE_IO;
+                    }
+                }
+                continue;
+            }
+            ultimoSegnaleNanos = System.nanoTime();
+            byte[] merge = new byte[buf.length + d.length];
+            System.arraycopy(buf, 0, merge, 0, buf.length);
+            System.arraycopy(d, 0, merge, buf.length, d.length);
+            buf = merge;
+            while (buf.length >= 32) {
+                byte[] blocco32 = Arrays.copyOfRange(buf, 0, 32);
+                buf = Arrays.copyOfRange(buf, 32, buf.length);
+                EsitoStato esito = ProtocolloQl.decodificaStato(blocco32);
+
+                if (esito.tipoStato() == 0x02) {
+                    pubblicaStato(descrivi(esito));
+                    pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio());
+                    completataVista = false;
+                } else if (esito.tipoStato() == 0x06 && esito.tipoFase() == 0x01) {
+                    pubblicaProgresso(lavoro, EventoStampa.IN_CORSO,
+                            "Copia " + (lavoro.copiaCorrente + 1) + " di " + lavoro.copieTotali + " in corso (ripresa automatica)");
+                } else if (esito.tipoStato() == 0x01) {
+                    completataVista = true;
+                } else if (esito.tipoStato() == 0x06 && esito.tipoFase() == 0x00) {
+                    return completataVista ? EsitoCopia.COMPLETATA : EsitoCopia.ERRORE_RECUPERABILE;
+                }
+            }
+        }
+    }
+
+    /** {@code ESC i S} + lettura, SENZA drenare prima: usata solo dove si sta gia' ascoltando in continuo (nessun residuo da scartare). */
+    private EsitoStato interrogaStato() throws IOException {
+        porta.scrivi(new byte[]{0x1B, 'i', 'S'});
+        byte[] raw = porta.leggiPoll(1500, 150, 64);
+        if (raw.length < 32) {
+            throw new IOException("risposta di stato troppo corta: " + raw.length + " byte");
+        }
+        return ProtocolloQl.decodificaStato(raw);
+    }
+
+    /**
+     * SOLO per {@link #controllaPrimaDiStampare}: la stampante non sta ancora stampando, quindi
+     * interrogarla attivamente ogni 2 s con {@code ESC i S} e' sicuro (mappatura §4.1) - a
+     * differenza di un errore a meta' copia, gestito invece da {@link #gestisciErroreAMetaCopia}
+     * in puro ascolto passivo.
+     */
     private boolean attendiRipristino(LavoroStampa lavoro) {
         while (true) {
             if (lavoro.annullato.get()) {
@@ -396,13 +513,13 @@ public class MonitorStampante {
             } catch (IOException e) {
                 return false;
             }
-            dormi(ATTESA_CICLO_MS);
+            dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
         }
     }
 
     private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio) {
         int copiaMostrata = lavoro.copiaCorrente + (EventoStampa.IN_CORSO.equals(stato) ? 1 : 0);
-        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio));
+        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio, lavoro.prova));
     }
 
     private static long msTrascorsi(long t0Nanos) {

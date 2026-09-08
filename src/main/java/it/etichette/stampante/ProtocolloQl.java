@@ -92,13 +92,11 @@ public final class ProtocolloQl {
     static byte[] controlloPagina(int rotoloMm, int righe, boolean primaPagina, int marginDot, boolean taglioAutomatico) {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         // 0x80 = "recovery sempre attivo": chiesto dalla mappatura (n1 sempre 0x80|...) e usato
-        // cosi' anche dal driver Brother ufficiale (docs/mappatura-brother-ql-1100c.md §9.2), ma
-        // il suo effetto esatto non e' stato ancora verificato sull'hardware - potrebbe far
-        // ristampare da sola alla stampante la pagina interrotta quando il coperchio si richiude
-        // dopo un errore a meta' serie, mentre MonitorStampante.eseguiLavoro rimanda la stessa
-        // copia a sua volta: rischio di una copia doppia (rischio 7 in docs/stack-tecnologico.md).
-        // Da provare aprendo il coperchio a meta' di una serie di piu' copie; nessun cambio qui
-        // finche' non e' verificato.
+        // cosi' anche dal driver Brother ufficiale (docs/mappatura-brother-ql-1100c.md §9.2).
+        // Effetto VERIFICATO sull'hardware il 2026-09-08 (rischio 7, docs/stack-tecnologico.md):
+        // a coperchio richiuso la stampante ristampa DA SOLA la pagina interrotta. MonitorStampante
+        // (vedi gestisciErroreAMetaCopia) ascolta questa ristampa spontanea e NON la rimanda a sua
+        // volta, cosi' non esce piu' una copia doppia.
         int n1 = 0x80 | 0x04 | 0x02 | (QUALITA_ALTA ? 0x40 : 0); // recovery + larghezza valida + tipo valido (+ qualita')
         b.write(0x1B); b.write('i'); b.write('a'); b.write(0x01); // ESC i a 1: modalita' raster
         b.write(0x1B); b.write('i'); b.write('!'); b.write(0x00); // ESC i ! 0: notifiche durante la stampa

@@ -19,6 +19,7 @@ import IconaColonna from "./IconaColonna";
 function corpoIniziale(tipo: TipoBlocco): number {
   if (tipo === "titolo" || tipo === "quantita") return 28;
   if (tipo === "testoGrande") return 14;
+  if (tipo === "logo") return 10; // qui e' l'altezza in mm, non un corpo in punti
   return 8;
 }
 

@@ -37,10 +37,21 @@ public class StampeController {
     private record RichiestaCopie(Integer copie) {
     }
 
+    private record RichiestaProvaEtichetta(EtichettaDto etichetta, Long prodottoId) {
+    }
+
     @PostMapping
     public Map<String, Object> stampa(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
         RichiestaStampa r = json.converti(corpo, RichiestaStampa.class);
         RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), nomeDispositivo(request));
+        return corpoRisposta(risposta);
+    }
+
+    /** {@code POST /api/stampe/prova-etichetta}: stampa di prova di un'etichetta in modifica (anche non salvata). */
+    @PostMapping("/prova-etichetta")
+    public Map<String, Object> provaEtichetta(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
+        RichiestaProvaEtichetta r = json.converti(corpo, RichiestaProvaEtichetta.class);
+        RispostaStampa risposta = stampe.provaEtichetta(r.etichetta(), r.prodottoId(), nomeDispositivo(request));
         return corpoRisposta(risposta);
     }
 

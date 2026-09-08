@@ -18,18 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code POST /api/stampe} e {@code /api/stampe/ultima} col profilo "test" (stampante sempre
- * "scollegata": {@link it.etichette.stampante.RicercaPortaFinta} non trova mai nulla).
- *
- * <p>NON verifica qui il percorso di una stampa completata con successo: {@link
- * it.etichette.stampante.PortaFinta} e' una coda FIFO senza attesa reale, e {@code
- * MonitorStampante.svuotaCoda()} (fase 1) consuma SEMPRE per intero qualunque risposta
- * precaricata prima della lettura "vera" (pensata per scartare notifiche spontanee residue):
- * qualunque bytes di stato "pronta" precaricati vengono quindi sempre inghiottiti come "residui",
- * e la lettura vera trova la coda gia' vuota. Provato tracciando la sequenza esatta delle
- * chiamate: non e' un problema di tempistica risolvibile con piu' attese, e' strutturale nella
- * coppia svuotaCoda/PortaFinta della fase 1. Il percorso di successo (stampa, storico, usi
- * aggiornato) e' verificato dal vivo con la stampante vera (vedi il report finale).
+ * {@code POST /api/stampe}, {@code /ultima} e {@code /prova-etichetta} col profilo "test"
+ * (stampante sempre "scollegata": {@link it.etichette.stampante.RicercaPortaFinta} non trova mai
+ * nulla, quindi qui si verificano solo i percorsi di errore/validazione). Il percorso di
+ * successo (stampa, ripresa dopo un errore a meta' copia, storico, usi aggiornato) e' verificato
+ * con la porta finta in {@link it.etichette.stampante.MonitorStampanteRipresaTest} e dal vivo
+ * con la stampante vera (vedi il report finale).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -60,5 +54,29 @@ class StampeApiTest {
     void ristampaUltimaConStoricoVuotoRispondeNonTrovato() throws Exception {
         mockMvc.perform(post("/api/stampe/ultima"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void provaEtichettaSenzaEtichettaRispondeErrore() throws Exception {
+        mockMvc.perform(post("/api/stampe/prova-etichetta")
+                        .contentType("application/json")
+                        .content("{\"prodottoId\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
+    }
+
+    @Test
+    void provaEtichettaConProdottoInesistenteRispondeNonTrovato() throws Exception {
+        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodottoId\":9999}";
+        mockMvc.perform(post("/api/stampe/prova-etichetta").contentType("application/json").content(corpo))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void provaEtichettaConStampanteScollegataRispondeConflitto() throws Exception {
+        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodottoId\":1}";
+        mockMvc.perform(post("/api/stampe/prova-etichetta").contentType("application/json").content(corpo))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errore").value("Stampante spenta o scollegata"));
     }
 }

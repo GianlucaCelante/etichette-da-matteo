@@ -5,6 +5,7 @@ import type {
   Etichetta,
   EtichettaElenco,
   Impostazioni,
+  LogoRisposta,
   Lotto,
   MisureRisposta,
   NuovaEtichetta,
@@ -13,6 +14,8 @@ import type {
   ParametriResa,
   PeriodoStorico,
   Prodotto,
+  ProvaEtichettaRichiesta,
+  ProvaEtichettaRisposta,
   ProvaStampaRisposta,
   Rete,
   RistampaRichiesta,
@@ -108,6 +111,10 @@ export const api = {
   stampa: (dati: StampaRichiesta) => richiedi<StampaRisposta>("/stampe", { method: "POST", body: JSON.stringify(dati) }),
   ristampaUltima: (dati?: RistampaRichiesta) =>
     richiedi<RistampaRisposta>("/stampe/ultima", { method: "POST", body: JSON.stringify(dati ?? {}) }),
+  // "Stampa di prova" della vista Etichette: prova l'etichetta in modifica,
+  // anche non ancora salvata, su una copia sola.
+  provaEtichetta: (dati: ProvaEtichettaRichiesta) =>
+    richiedi<ProvaEtichettaRisposta>("/stampe/prova-etichetta", { method: "POST", body: JSON.stringify(dati) }),
 
   /* ---- storico ---- */
   storico: (opzioni?: { periodo?: PeriodoStorico; q?: string }) =>
@@ -157,6 +164,39 @@ export async function anteprimaEtichettaBlob(corpo: {
   });
   if (!risposta.ok) throw new ErroreRichiesta("/resa/anteprima.png", risposta.status);
   return risposta.blob();
+}
+
+/* ============================ logo ============================ */
+
+// L'immagine del logo, come il QR: un src diretto, niente client JSON.
+export const percorsoLogo = `${BASE}/impostazioni/logo.png`;
+
+// Nessun endpoint dedicato per "c'e' un logo?": si chiede l'immagine con HEAD
+// e si guarda se risponde 200 o 404 (docs del compito: "404 = nessun logo").
+export async function logoEsiste(): Promise<boolean> {
+  const risposta = await fetch(percorsoLogo, { method: "HEAD" });
+  return risposta.ok;
+}
+
+export async function caricaLogo(file: File): Promise<LogoRisposta> {
+  const corpo = new FormData();
+  corpo.append("file", file);
+  const risposta = await fetch(`${BASE}/impostazioni/logo`, { method: "PUT", body: corpo });
+  if (!risposta.ok) {
+    let dettaglio: CorpoErrore | undefined;
+    try {
+      dettaglio = (await risposta.json()) as CorpoErrore;
+    } catch {
+      // corpo assente o non JSON
+    }
+    throw new ErroreRichiesta("/impostazioni/logo", risposta.status, dettaglio);
+  }
+  return (await risposta.json()) as LogoRisposta;
+}
+
+export async function eliminaLogo(): Promise<void> {
+  const risposta = await fetch(`${BASE}/impostazioni/logo`, { method: "DELETE" });
+  if (!risposta.ok) throw new ErroreRichiesta("/impostazioni/logo", risposta.status);
 }
 
 export { ErroreRichiesta };
