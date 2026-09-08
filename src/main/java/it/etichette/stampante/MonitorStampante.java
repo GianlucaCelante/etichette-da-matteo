@@ -242,6 +242,11 @@ public class MonitorStampante {
         log.info("Lavoro {}: {} copie, rotolo {} mm, job {} byte.", lavoro.id, lavoro.copieTotali, lavoro.rotoloMm, job.length);
 
         while (lavoro.copiaCorrente < lavoro.copieTotali) {
+            // Il flag si controlla QUI, fra una copia e l'altra (mai a meta' di una gia'
+            // inviata: mappatura §9, vedi ascoltaEsitoCopia). Se l'annullamento arriva quando
+            // l'ULTIMA copia e' gia' stata inviata e completata, copiaCorrente == copieTotali e
+            // la condizione del while sopra e' gia' falsa: si esce dal ciclo normalmente e il
+            // lavoro finisce "completata" (tutte le copie sono davvero uscite), non "annullata".
             if (lavoro.annullato.get()) {
                 log.info("Lavoro {}: annullato prima della copia {} di {}.", lavoro.id, lavoro.copiaCorrente + 1, lavoro.copieTotali);
                 pubblicaProgresso(lavoro, EventoStampa.ANNULLATA, "Stampa annullata");
@@ -283,6 +288,12 @@ public class MonitorStampante {
                     return;
                 }
                 case ANNULLATO -> {
+                    // ascoltaEsitoCopia non controlla piu' l'annullamento (una pagina gia'
+                    // inviata si stampa comunque, mappatura §9): questo caso arriva solo dalle
+                    // fasi di pausa di gestisciErroreAMetaCopia, MAI da una copia normale in
+                    // corso di stampa. copiaCorrente non e' stato incrementato per questa copia:
+                    // pubblicaProgresso pubblica correttamente il numero di copie completate PRIMA
+                    // di questa (le uniche davvero "uscite").
                     pubblicaProgresso(lavoro, EventoStampa.ANNULLATA, "Stampa annullata");
                     coda.completa(lavoro.id);
                     aggiornaStato();
@@ -373,16 +384,22 @@ public class MonitorStampante {
      * Ascolta SOLO gli stati spontanei durante la stampa (mai comandi, mappatura §4.1) fino a
      * "stampa completata" + "tornata in ricezione" (sequenza verificata in mappatura §4.5),
      * un errore recuperabile (mappatura §9: coperchio aperto, rotolo finito rientrano da soli),
-     * un errore di I/O o l'annullamento.
+     * o un errore di I/O.
+     *
+     * <p>NON controlla l'annullamento (4a prova hardware del 2026-09-08: l'annullamento agisce
+     * SOLO fra una copia e l'altra, mai a meta' di una pagina gia' inviata - docs/api.md, mappatura
+     * §9 - "una pagina gia' inviata si stampa comunque"). Interrogare la stampante con {@code ESC
+     * i S} mentre sta ancora stampando la pagina in corso e' proprio quello che ha causato il
+     * difetto osservato: risposta troppo corta, la stampante dichiarata scollegata a torto. Il
+     * flag si controlla invece in {@link #eseguiLavoro} prima di inviare la copia SUCCESSIVA, e
+     * nelle fasi di pausa dove la stampante non sta stampando ({@link #attendiStatoPulitoAttivamente},
+     * {@link #ascoltaRistampaAutomatica}, {@link #cancellaBufferEspelliERimanda} prima di espellere).
      */
     private EsitoCopia ascoltaEsitoCopia(LavoroStampa lavoro) {
         long inizio = System.nanoTime();
         byte[] buf = new byte[0];
         boolean completata = false;
         while (msTrascorsi(inizio) < SCADENZA_STAMPA_MS) {
-            if (lavoro.annullato.get()) {
-                return EsitoCopia.ANNULLATO;
-            }
             byte[] d;
             try {
                 d = porta.leggiPoll(400, 60, 64);
@@ -576,6 +593,12 @@ public class MonitorStampante {
      * la copia rimandata usciva SOPRA il pezzo rovinato, perche' la stampante non lo fa avanzare
      * ne' lo taglia da sola dopo un errore a meta' pagina) e solo allora rimanda la stessa copia
      * come una pagina normale.
+     *
+     * <p>La stampante non sta stampando durante la cancellazione e la rilettura di stato: fin li'
+     * un annullamento puo' interrompere subito (controllato appena PRIMA di mandare la pagina di
+     * espulsione). Una volta inviata la pagina di espulsione, pero', va attesa fino in fondo come
+     * qualunque altra pagina ({@link #ascoltaEsitoCopia} non controlla piu' l'annullamento, 4a
+     * prova hardware del 2026-09-08).
      */
     private EsitoCopia cancellaBufferEspelliERimanda(LavoroStampa lavoro) {
         try {
@@ -590,6 +613,11 @@ public class MonitorStampante {
             }
         } catch (IOException e) {
             return EsitoCopia.ERRORE_IO;
+        }
+
+        if (lavoro.annullato.get()) {
+            log.info("Ripresa annullata dall'utente prima di mandare la pagina di espulsione.");
+            return EsitoCopia.ANNULLATO;
         }
 
         EsitoCopia esitoEspulsione = espelliPezzoAMetaStampato(lavoro);

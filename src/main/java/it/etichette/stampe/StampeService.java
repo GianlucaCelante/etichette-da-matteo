@@ -185,7 +185,11 @@ public class StampeService {
         if (ctx == null) {
             return; // non un lavoro avviato da questo servizio (es. stampa di prova)
         }
-        StoricoStampa riga = new StoricoStampa(ctx.prodottoNome(), ctx.copie(), esito);
+        // copie EFFETTIVAMENTE uscite (evento.copiaCorrente()), non quelle richieste
+        // (ctx.copie()): un annullamento fra una copia e l'altra (mandato del 2026-09-08, 4a
+        // prova hardware) ferma il lavoro prima che tutte le copie richieste siano state
+        // stampate, e lo storico deve riflettere quante ne sono uscite davvero.
+        StoricoStampa riga = new StoricoStampa(ctx.prodottoNome(), evento.copiaCorrente(), esito);
         riga.setProdottoId(ctx.prodottoId());
         riga.setEtichettaNome(ctx.etichettaNome());
         riga.setLotto(ctx.lotto());

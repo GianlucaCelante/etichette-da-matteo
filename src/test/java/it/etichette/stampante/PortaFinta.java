@@ -40,7 +40,8 @@ import java.util.concurrent.TimeUnit;
 public class PortaFinta implements Porta {
 
     private volatile boolean aperta = false;
-    final List<byte[]> scritture = new CopyOnWriteArrayList<>();
+    /** Pubblico (come {@link #accodaRisposta}/{@link #accodaNessunDato}) per i test cross-pacchetto che ispezionano le scritture byte per byte (es. {@code it.etichette.api}). */
+    public final List<byte[]> scritture = new CopyOnWriteArrayList<>();
     private final BlockingDeque<byte[]> risposte = new LinkedBlockingDeque<>();
 
     @Override
