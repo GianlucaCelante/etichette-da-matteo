@@ -297,15 +297,18 @@ $jpackageArgs = @(
     "--copyright", "Copyright (C) 2026 Gianluca Celante",
     "--description", "Banco etichette: stampa etichette alimentari su Brother QL-1100c",
     "--icon", $IconFile,
-    "--win-menu",
-    "--win-menu-group", "Etichette",
     "--win-upgrade-uuid", $UpgradeUuid,
     "--resource-dir", $WixResourceDir,
     "--dest", $InstallerDir
 )
-# Deliberatamente ASSENTI: --win-dir-chooser (cartella fissa, decisa) e
-# --win-shortcut (le scorciatoie le crea install_service.ps1, non jpackage:
-# cosi' puntano a Edge in modalita' app invece che al lanciatore nativo).
+# Deliberatamente ASSENTI: --win-dir-chooser (cartella fissa, decisa),
+# --win-shortcut e --win-menu/--win-menu-group (le scorciatoie le crea
+# install_service.ps1, non jpackage: cosi' puntano a Edge in modalita' app
+# invece che al lanciatore nativo di jpackage, che oltretutto non funziona
+# per questa app - "Failed to launch JVM" - perche' jpackage lo costruisce
+# per lanciare la JVM direttamente, non tramite il servizio Windows che
+# imposta ETICHETTE_DATA_DIR; osservato da Gianluca il 9 settembre 2026 con
+# la voce di menu Start creata da --win-menu nella 0.1.2).
 
 & $JpackageExe @jpackageArgs
 if ($LASTEXITCODE -ne 0) { throw "jpackage ha fallito (codice $LASTEXITCODE)" }

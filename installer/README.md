@@ -23,8 +23,8 @@ Sul PC di Matteo gira anche il gestionale delle casse. L'installer tocca
 - il proprio servizio Windows (`Etichette`);
 - **una** regola del firewall (TCP 8765, profili Privato e Dominio, mai
   Pubblico, mai la porta 80);
-- le proprie scorciatoie (desktop pubblico + avvio automatico di tutti gli
-  utenti).
+- le proprie scorciatoie (desktop pubblico, avvio automatico e menu Start di
+  tutti gli utenti).
 
 Nessuna rinomina del PC, nessun `powercfg`, nessun'altra impostazione di
 Windows.
@@ -104,9 +104,12 @@ msiexec /i "Etichette-1.0.0.msi" /qb
 ```
 
 Dopo l'installazione: `C:\Program Files\Etichette\` contiene l'app e la
-JRE ridotta, il servizio `Etichette` e' `Running`, e sul desktop pubblico e
-in "Esecuzione automatica" c'e' la scorciatoia "Etichette" (Edge in modalita'
-app su `http://localhost:8765/`).
+JRE ridotta, il servizio `Etichette` e' `Running`, e sul desktop pubblico, in
+"Esecuzione automatica" e nel menu Start c'e' la scorciatoia "Etichette"
+(Edge in modalita' app su `http://localhost:8765/`) - nessuna voce di menu
+Start creata da jpackage: il suo lanciatore nativo non funzionerebbe per
+questa app ("Failed to launch JVM", avvia la JVM direttamente invece che
+tramite il servizio Windows).
 
 ## Come si aggiorna
 

@@ -104,10 +104,12 @@ function Remove-EtichetteFirewallRule {
 
 function Remove-EtichetteShortcuts {
     $paths = @()
-    $commonDesktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
-    $commonStartup = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
-    if (-not [string]::IsNullOrWhiteSpace($commonDesktop)) { $paths += (Join-Path $commonDesktop $ShortcutName) }
-    if (-not [string]::IsNullOrWhiteSpace($commonStartup)) { $paths += (Join-Path $commonStartup $ShortcutName) }
+    $commonDesktop  = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+    $commonStartup  = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
+    $commonPrograms = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
+    if (-not [string]::IsNullOrWhiteSpace($commonDesktop))  { $paths += (Join-Path $commonDesktop $ShortcutName) }
+    if (-not [string]::IsNullOrWhiteSpace($commonStartup))  { $paths += (Join-Path $commonStartup $ShortcutName) }
+    if (-not [string]::IsNullOrWhiteSpace($commonPrograms)) { $paths += (Join-Path $commonPrograms $ShortcutName) }
 
     foreach ($path in $paths) {
         if (Test-Path $path) {

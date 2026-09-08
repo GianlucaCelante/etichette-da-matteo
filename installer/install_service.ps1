@@ -20,9 +20,9 @@
 #      avvio, non serve nessun comando apposta per farlo), ripristina
 #      l'avvio automatico ritardato e le azioni di ripristino, e lo fa
 #      partire.
-#   4. Crea il collegamento "Etichette" sul desktop pubblico e in
-#      "Esecuzione automatica" di tutti gli utenti: Edge in modalita' app
-#      su http://localhost:8765/.
+#   4. Crea il collegamento "Etichette" sul desktop pubblico, in
+#      "Esecuzione automatica" e nel menu Start di tutti gli utenti: Edge in
+#      modalita' app su http://localhost:8765/.
 #   5. Se non e' -Silent, apre la pagina alla fine.
 #
 # Rieseguibile senza danni (idempotente): non duplica regole del firewall
@@ -173,7 +173,7 @@ function New-EtichetteShortcut {
 }
 
 function Set-EtichetteShortcuts {
-    Write-Host "[3/4] Creo le scorciatoie (desktop e avvio automatico)..." -ForegroundColor Green
+    Write-Host "[3/4] Creo le scorciatoie (desktop, avvio automatico, menu Start)..." -ForegroundColor Green
 
     $edgePath = Get-EdgePath
     if (-not $edgePath) {
@@ -181,8 +181,15 @@ function Set-EtichetteShortcuts {
         return
     }
 
-    $commonDesktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
-    $commonStartup = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
+    $commonDesktop  = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+    $commonStartup  = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
+    # CommonPrograms = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs":
+    # un file li' dentro, non una sottocartella, e' la voce del menu Start
+    # per tutti gli utenti. jpackage NON crea piu' la propria (tolto
+    # --win-menu da Build-Setup.ps1: il lanciatore nativo che generava non
+    # funziona per questa app, "Failed to launch JVM", perche' avvia la JVM
+    # direttamente invece che tramite il servizio Windows).
+    $commonPrograms = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
 
     $targets = @()
     if (-not [string]::IsNullOrWhiteSpace($commonDesktop)) {
@@ -191,9 +198,12 @@ function Set-EtichetteShortcuts {
     if (-not [string]::IsNullOrWhiteSpace($commonStartup)) {
         $targets += (Join-Path $commonStartup $ShortcutName)
     }
+    if (-not [string]::IsNullOrWhiteSpace($commonPrograms)) {
+        $targets += (Join-Path $commonPrograms $ShortcutName)
+    }
 
     if ($targets.Count -eq 0) {
-        Write-Warning "Nessuna cartella desktop/avvio automatico risolta; scorciatoie non create."
+        Write-Warning "Nessuna cartella desktop/avvio automatico/menu Start risolta; scorciatoie non create."
         return
     }
 
