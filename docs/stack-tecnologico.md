@@ -104,6 +104,10 @@ Il nome `etichette.local` non passa dalla rinomina del PC: lo annuncia il serviz
 
 **Prova prima di andare da Matteo.** L'MSI si prova in Windows Sandbox (servizio, firewall, collegamenti, disinstallazione); la stampante si prova sul PC di sviluppo, perché la Sandbox non vede l'USB.
 
+## Revisione contro il mockup (8 settembre, sera)
+
+Un agente ha confrontato l'app con i due tour del mockup (45 passi PC, 28 telefono) e con le funzioni del documento: 108 righe di controllo, 74 uguali, 24 diverse, 8 mancanti, 2 in più. Corrette: il crash sull'etichetta «Libera», l'anteprima che non si aggiornava scrivendo, «Salva prodotto» che non tornava alla Stampa, «+ Nuovo prodotto» sul telefono, «Duplica prodotto», l'avviso sulle modifiche non salvate, la scheda del prodotto con un riquadro per blocco nell'ordine dell'etichetta, la vista Etichette sul telefono (anteprima in cima, gruppi a fisarmonica, blocchi semplificati), i tasti «Tutta» e «Da leggere» della lente, e i blocchi dati «Data di produzione» e «Sigla» per la Cucina. Lasciate come sono, con motivo: le Impostazioni a card e non a linguette (il prototipo ha card), il QR sempre visibile, lo schema del lotto nelle Impostazioni (il documento delle funzioni vale più del tour), il firmware della stampante (richiede un comando in più, rimandato).
+
 ## Nota per dopo
 
 Con lo stesso stack dell'agent RMP, se un giorno il locale entrasse nella piattaforma l'app delle etichette potrebbe diventare un modulo dell'agent invece di un programma a sé. Non è un obiettivo della prima versione, che resta un programma indipendente come deciso il 3 settembre; è solo una porta lasciata aperta.

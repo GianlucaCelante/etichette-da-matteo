@@ -274,3 +274,26 @@ databaseChangeLog:
               - column: {name: ultimo_uso, value: "2026-09-06 16:48:00.000"}
               - column: {name: creato_il, value: "2026-09-08 00:00:00.000"}
               - column: {name: modificato_il, value: "2026-09-08 00:00:00.000"}
+
+  - changeSet:
+      id: 18-etichette-blocchi-cucina-dati
+      author: etichette
+      comment: "'Cucina': i due 'testo' scritti a mano (data fissa, sigla fissa) diventano i blocchi veri dataProduzione/sigla (revisione contro il mockup, 2026-09-08)."
+      changes:
+        - update:
+            tableName: etichette
+            columns:
+              - column: {name: blocchi, value: '[{"tipo":"titolo","acceso":true,"corpo":14,"colonna":"piena"},{"tipo":"dataProduzione","acceso":true,"corpo":8,"colonna":"piena"},{"tipo":"scadenza","acceso":true,"corpo":8,"colonna":"piena"},{"tipo":"lotto","acceso":true,"corpo":7,"colonna":"piena"},{"tipo":"sigla","acceso":true,"corpo":7,"colonna":"piena"}]'}
+              - column: {name: modificata_il, value: "2026-09-08 00:00:00.000"}
+            where: "nome = 'Cucina'"
+
+  - changeSet:
+      id: 19-prodotti-cucina-sigla-operatore
+      author: etichette
+      comment: "'sigla_operatore' mancava su tutti i prodotti di esempio: i quattro con l'etichetta 'Cucina' la avevano solo come testo scritto a mano nel blocco (ora sostituito dal blocco 'sigla', punto 18)."
+      changes:
+        - update:
+            tableName: prodotti
+            columns:
+              - column: {name: sigla_operatore, value: "M.C."}
+            where: "nome IN ('Impasto classico 24h', 'Impasto integrale', 'Crema di zucca', 'Ragù bianco')"

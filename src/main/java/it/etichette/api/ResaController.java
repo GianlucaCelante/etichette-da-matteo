@@ -70,6 +70,13 @@ public class ResaController {
         return png(risultato.immagine());
     }
 
+    /**
+     * {@code prodotto}: stessa forma del corpo di {@code PUT /api/prodotti/{id}} (anche senza
+     * {@code id}) - se presente, la resa usa QUESTI dati al posto di quelli salvati, cosi'
+     * l'editor puo' aggiornare l'anteprima mentre si scrive, prima di salvare. Validato come per
+     * il PUT ({@link ProdottiConversioni#valida}). {@code prodottoId} resta per la
+     * retrocompatibilita' e per i dati proposti (quantita'/scadenza) quando {@code prodotto} manca.
+     */
     @PostMapping(value = "/anteprima.png", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> anteprima(@RequestBody Map<String, Object> corpo) {
         CorpoAnteprima richiesta = json.converti(corpo, CorpoAnteprima.class);
@@ -77,13 +84,22 @@ public class ResaController {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta: obbligatoria");
         }
         EtichetteConversioni.valida(richiesta.etichetta());
-        ProdottoDto prodottoDto = richiesta.prodottoId() != null
-                ? prodottiConversioni.aDto(trovaProdotto(richiesta.prodottoId()))
-                : prodottoDiEsempio();
+        ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
         double scala = richiesta.scala() != null ? richiesta.scala() : 1.0;
         RisultatoResa risultato = renderer.rendi(richiesta.etichetta(), prodottoDto, parametri(null, null, null), rotolo, scala);
         return png(risultato.immagine());
+    }
+
+    private ProdottoDto prodottoPerAnteprima(CorpoAnteprima richiesta) {
+        if (richiesta.prodotto() != null) {
+            ProdottiConversioni.valida(richiesta.prodotto());
+            return richiesta.prodotto();
+        }
+        if (richiesta.prodottoId() != null) {
+            return prodottiConversioni.aDto(trovaProdotto(richiesta.prodottoId()));
+        }
+        return prodottoDiEsempio();
     }
 
     @GetMapping("/prodotti/{id}/misure")
@@ -102,7 +118,7 @@ public class ResaController {
 
     // ---------------------------------------------------------------------------------------
 
-    private record CorpoAnteprima(EtichettaDto etichetta, Long prodottoId, Integer rotolo, Double scala) {
+    private record CorpoAnteprima(EtichettaDto etichetta, Long prodottoId, ProdottoDto prodotto, Integer rotolo, Double scala) {
     }
 
     private ParametriStampa parametri(String quantita, String scadenza, String lotto) {

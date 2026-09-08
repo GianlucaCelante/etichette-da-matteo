@@ -10,6 +10,7 @@ import it.etichette.api.ProdottoDto;
 import it.etichette.api.ProduttoreDto;
 import it.etichette.api.ValoreNutrizionaleDto;
 import it.etichette.api.ZonaDto;
+import it.etichette.dati.Contratto;
 import it.etichette.stampante.ProtocolloQl;
 import org.springframework.stereotype.Component;
 
@@ -142,6 +143,8 @@ public class RenditoreEtichetta {
             case "quantita" -> risolviQuantita(prodotto, parametri) != null;
             case "valori" -> prodotto.valoriNutrizionali() != null && !prodotto.valoriNutrizionali().isEmpty();
             case "produttore" -> etichetta.produttore() != null && nonVuoto(etichetta.produttore().ragioneSociale());
+            case "dataProduzione" -> true; // la data della stampa c'e' sempre, come titolo/riga/spazio
+            case "sigla" -> nonVuoto(prodotto.siglaOperatore()); // vuota: il blocco non si stampa (docs/api.md)
             case "testo", "testoGrande" -> nonVuoto(b.testo());
             case "logo" -> logo.esiste(); // senza logo caricato, il blocco non occupa spazio
             default -> false;
@@ -261,6 +264,12 @@ public class RenditoreEtichetta {
             }
             case "valori" -> y = disegnaTabellaValori(g, frc, prodotto.valoriNutrizionali(), corpoPt, x, y, larghezza);
             case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), caratteri.regolare(corpoPt))), x, y, larghezza).y();
+            case "dataProduzione" -> y = disegnaParagrafo(g, frc,
+                    List.of(new Segmento(testoDataProduzione(etichetta.formatoData()), caratteri.regolare(corpoPt))),
+                    x, y, larghezza).y();
+            case "sigla" -> y = disegnaParagrafo(g, frc,
+                    List.of(new Segmento(testoSigla(prodotto), caratteri.regolare(corpoPt))),
+                    x, y, larghezza).y();
             case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.regolare(corpoPt))), x, y, larghezza).y();
             case "testoGrande" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.grassetto(corpoPt))), x, y, larghezza).y();
             case "riga" -> {
@@ -554,6 +563,16 @@ public class RenditoreEtichetta {
         return nonVuoto(prodotto.quantita()) ? prodotto.quantita() : null;
     }
 
+    /** Pacchetto-privato per i test: {@code "Prodotto il " + la data di oggi nel formatoData dell'etichetta} (docs/api.md). */
+    String testoDataProduzione(String formatoData) {
+        return "Prodotto il " + formattaData(LocalDate.now(), formatoData);
+    }
+
+    /** Pacchetto-privato per i test: {@code "Preparato da " + siglaOperatore} (docs/api.md; se vuota il blocco non si stampa, vedi haContenuto). */
+    String testoSigla(ProdottoDto prodotto) {
+        return "Preparato da " + prodotto.siglaOperatore();
+    }
+
     private String testoProduttore(ProduttoreDto p) {
         if (p == null) {
             return "";
@@ -582,7 +601,7 @@ public class RenditoreEtichetta {
     }
 
     private static double frazioneZona(ZonaDto zona) {
-        String v = zona != null && zona.larghezzaDestra() != null ? zona.larghezzaDestra() : "1/3";
+        String v = zona != null && zona.larghezzaDestra() != null ? zona.larghezzaDestra() : Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT;
         return switch (v) {
             case "1/4" -> 0.25;
             case "1/2" -> 0.5;

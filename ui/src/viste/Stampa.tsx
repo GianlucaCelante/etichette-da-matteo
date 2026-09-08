@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useAnnullaStampa,
   useAnteprimaProdottoSrc,
@@ -236,11 +236,20 @@ function PannelloProdotto({
 export default function Stampa() {
   const navigate = useNavigate();
   const avvisa = useAvviso();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [cerca, setCerca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("usati");
-  const [prodottoId, setProdottoId] = useState<number | null>(null);
-  const [dettaglio, setDettaglio] = useState(false);
+  // Si puo' arrivare qui gia' su un prodotto preciso (dopo "Salva prodotto"
+  // in Etichette: /stampa?prodotto=ID, revisione di questo giro): letto una
+  // sola volta all'avvio, poi tolto dall'URL, che qui non segue la scelta
+  // come in Etichette.
+  const [prodottoId, setProdottoId] = useState<number | null>(() => {
+    const p = searchParams.get("prodotto");
+    const n = p ? Number(p) : NaN;
+    return Number.isFinite(n) ? n : null;
+  });
+  const [dettaglio, setDettaglio] = useState(() => searchParams.has("prodotto"));
   const [copie, setCopie] = useState(1);
   const [altroAperto, setAltroAperto] = useState(false);
   const [quantita, setQuantita] = useState("");
@@ -264,6 +273,14 @@ export default function Stampa() {
     if (prodottoId === null && lista[0]) setProdottoId(lista[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seleziona solo il primo prodotto disponibile, una volta
   }, [lista.length]);
+
+  // Il "prodotto" nell'URL e' solo l'innesco iniziale: consumato, si toglie,
+  // cosi' non resta li' a ogni cambio di prodotto fatto dopo (qui l'URL non
+  // segue la scelta come in Etichette).
+  useEffect(() => {
+    if (searchParams.has("prodotto")) setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- si consuma solo all'avvio
+  }, []);
 
   useEffect(() => {
     if (!prodotto) return;

@@ -156,6 +156,67 @@ class RenditoreEtichettaTest {
         });
     }
 
+    /** Blocchi veri della "Cucina" dopo la revisione contro il mockup del 2026-09-08 (v2-semi.yaml, 18-etichette-blocchi-cucina-dati). */
+    private EtichettaDto etichettaCucina() {
+        List<BloccoDto> blocchi = List.of(
+                new BloccoDto("titolo", true, 14, "piena", null),
+                new BloccoDto("dataProduzione", true, 8, "piena", null),
+                new BloccoDto("scadenza", true, 8, "piena", null),
+                new BloccoDto("lotto", true, 7, "piena", null),
+                new BloccoDto("sigla", true, 7, "piena", null));
+        ProduttoreDto produttore = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null);
+        return new EtichettaDto(2L, "Cucina", true, "Scade il", "GG/MM/AAAA", produttore,
+                new ZonaDto("1/2"), blocchi, null, null, null);
+    }
+
+    /** "Impasto classico 24h" (v2-semi.yaml, 17-seed-prodotti + 19-prodotti-cucina-sigla-operatore: siglaOperatore = "M.C."). */
+    private ProdottoDto impastoClassico24h() {
+        return new ProdottoDto(2L, "Impasto classico 24h", "IMPASTO CLASSICO 24H", 2L,
+                "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", List.of("Soia"), "", 3,
+                "In frigo", "250 g", List.of(), "M.C.", 8, null, null, null);
+    }
+
+    @Test
+    void laCucinaDiImpastoClassico24hContieneDataDiProduzioneESigla() {
+        RisultatoResa r = renderer.rendi(etichettaCucina(), impastoClassico24h(), parametriDiProva(), 102, 1.0);
+
+        assertThat(contienePixelNeri(r.immagine())).isTrue();
+        // la riga di "dataProduzione" (data della stampa: cambia ogni giorno, non si confronta un
+        // valore fisso) inizia sempre con "Prodotto il " nel formatoData dell'etichetta.
+        assertThat(renderer.testoDataProduzione(etichettaCucina().formatoData())).startsWith("Prodotto il ");
+        // la riga di "sigla" e' esattamente "Preparato da " + siglaOperatore del prodotto.
+        assertThat(renderer.testoSigla(impastoClassico24h())).isEqualTo("Preparato da M.C.");
+    }
+
+    @Test
+    void ilBloccoSiglaNonOccupaSpazioSeSiglaOperatoreEVuota() {
+        ProdottoDto senzaSigla = new ProdottoDto(2L, "Impasto classico 24h", null, 2L,
+                "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", List.of(), "", 3,
+                "In frigo", "250 g", List.of(), "", 0, null, null, null); // siglaOperatore = ""
+
+        List<BloccoDto> soloSigla = List.of(new BloccoDto("sigla", true, 7, "piena", null));
+        EtichettaDto etichettaSoloSigla = new EtichettaDto(2L, "Prova sigla", false, null, "GG/MM/AAAA", null,
+                new ZonaDto("1/3"), soloSigla, null, null, null);
+
+        RisultatoResa r = renderer.rendi(etichettaSoloSigla, senzaSigla, ParametriStampa.VUOTI, 102, 1.0);
+
+        // nessun contenuto: il blocco "sigla" e' l'unico e non si stampa (haContenuto -> false),
+        // quindi l'etichetta resta vuota (solo il margine, nessun pixel nero).
+        assertThat(contienePixelNeri(r.immagine())).isFalse();
+    }
+
+    @Test
+    void ilBloccoDataProduzioneOccupaSempreSpazio() {
+        List<BloccoDto> soloDataProduzione = List.of(new BloccoDto("dataProduzione", true, 8, "piena", null));
+        EtichettaDto etichetta = new EtichettaDto(2L, "Prova data", false, null, "GG/MM/AAAA", null,
+                new ZonaDto("1/3"), soloDataProduzione, null, null, null);
+
+        RisultatoResa r = renderer.rendi(etichetta, prodottoBase(), ParametriStampa.VUOTI, 102, 1.0);
+
+        // a differenza di "sigla", "dataProduzione" ha sempre contenuto (la data di oggi c'e' sempre).
+        assertThat(contienePixelNeri(r.immagine())).isTrue();
+    }
+
     @Test
     void ilBloccoLogoSiStampaConDitheringSeCaricato() throws Exception {
         Path cartella = Files.createTempDirectory("etichette-test-con-logo-");

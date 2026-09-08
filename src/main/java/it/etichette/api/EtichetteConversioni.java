@@ -27,7 +27,10 @@ public class EtichetteConversioni {
         ProduttoreDto produttore = e.getProduttoreRagioneSociale() == null && e.getProduttoreSedeLegale() == null
                 && e.getProduttoreSedeProduzione() == null ? null
                 : new ProduttoreDto(e.getProduttoreRagioneSociale(), e.getProduttoreSedeLegale(), e.getProduttoreSedeProduzione());
-        ZonaDto zona = e.getZonaLarghezzaDestra() == null ? null : new ZonaDto(e.getZonaLarghezzaDestra());
+        // Il servizio restituisce SEMPRE zona (docs/api.md): un'etichetta senza zona mai
+        // impostata (es. "Libera", 0 blocchi) tornava null e mandava in crash l'interfaccia.
+        ZonaDto zona = new ZonaDto(e.getZonaLarghezzaDestra() != null
+                ? e.getZonaLarghezzaDestra() : Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT);
         int usoDaProdotti = (int) prodotti.countByEtichettaId(e.getId());
         return new EtichettaDto(e.getId(), e.getNome(), e.isPredefinita(), e.getDicituraScadenza(), e.getFormatoData(),
                 produttore, zona, blocchi, usoDaProdotti, e.getCreataIl(), e.getModificataIl());
@@ -49,7 +52,11 @@ public class EtichetteConversioni {
             entita.setProduttoreSedeLegale(null);
             entita.setProduttoreSedeProduzione(null);
         }
-        entita.setZonaLarghezzaDestra(dto.zona() != null ? dto.zona().larghezzaDestra() : null);
+        // In scrittura zona puo' mancare (docs/api.md): si applica il default "1/3", non si
+        // lascia la colonna a null (coerente con PUT come sostituzione intera, come gli altri
+        // campi di questo metodo: un'etichetta senza zona nel corpo NON conserva quella salvata).
+        String larghezzaDestra = dto.zona() != null ? dto.zona().larghezzaDestra() : null;
+        entita.setZonaLarghezzaDestra(larghezzaDestra != null ? larghezzaDestra : Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT);
     }
 
     public EtichettaDto converti(Object corpoGrezzo) {

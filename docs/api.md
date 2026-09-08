@@ -54,6 +54,8 @@ L'etichetta è condivisa fra i prodotti che la usano. È un elenco ordinato di b
 | `quantita` | dati | «Quantità» piccolo e sopra una riga, poi il valore grande (es. «2148 g») al corpo del blocco |
 | `valori` | dati | «VALORI NUTRIZIONALI (100 g)» e la tabella voce/valore, valori allineati a destra |
 | `produttore` | dati | `ragioneSociale` - `sedeLegale`; se c'è `sedeProduzione`: « - Prodotto in: …» |
+| `dataProduzione` | dati | «Prodotto il » + la data della stampa nel `formatoData` (aggiunto dopo la revisione contro il mockup: la «Cucina» lo usa al posto di un testo scritto a mano) |
+| `sigla` | dati | «Preparato da » + `siglaOperatore` del prodotto; se vuota non si stampa |
 | `testo` | liberi | il `testo` del blocco al corpo dato |
 | `testoGrande` | liberi | come `testo`, in grassetto |
 | `riga` | liberi | un filetto orizzontale |
@@ -61,7 +63,9 @@ L'etichetta è condivisa fra i prodotti che la usano. È un elenco ordinato di b
 | `qr` | liberi | QR con il lotto; lato in mm = `corpo` (default 12) |
 | `logo` | liberi | riservato: senza logo caricato non si stampa nulla |
 
-Nomi da mostrare (dal prototipo): Titolo prodotto, Ingredienti, Può contenere, Modo d'uso, Scadenza e conservazione, Lotto, Quantità, Valori nutrizionali, Produttore, Testo libero, Testo grande, Riga separatrice, Spazio vuoto, QR del lotto, Logo.
+Nomi da mostrare (dal prototipo): Titolo prodotto, Ingredienti, Può contenere, Modo d'uso, Scadenza e conservazione, Lotto, Quantità, Valori nutrizionali, Produttore, Data di produzione, Sigla di chi l'ha fatta, Testo libero, Testo grande, Riga separatrice, Spazio vuoto, QR del lotto, Logo.
+
+Il servizio restituisce sempre `zona` (default `{"larghezzaDestra":"1/3"}`) e `blocchi` (anche vuoto); in scrittura `zona` può mancare.
 
 ## Prodotto
 
@@ -102,7 +106,7 @@ Nomi da mostrare (dal prototipo): Titolo prodotto, Ingredienti, Può contenere, 
 ### Resa (anteprima e misure)
 La resa avviene solo sul servizio, in Java 2D, con lo stesso renderer che manda la stampa.
 - `GET /api/resa/prodotti/{id}.png?rotolo=62|102&scala=0.35&quantita=…&scadenza=AAAA-MM-GG&lotto=…` → PNG dell'etichetta come uscirà, ridotta di `scala` (1 = 300 dpi, i punti veri). I parametri opzionali sostituiscono i valori proposti.
-- `POST /api/resa/anteprima.png` con corpo `{"etichetta": {…}, "prodottoId": 1, "rotolo": 62, "scala": 0.35}` → PNG; serve all'editor per un'etichetta non ancora salvata. Senza `prodottoId` si usa un prodotto di esempio.
+- `POST /api/resa/anteprima.png` con corpo `{"etichetta": {…}, "prodottoId": 1, "prodotto": {…}, "rotolo": 62, "scala": 0.35}` → PNG; serve all'editor per un'etichetta e un prodotto non ancora salvati: `prodotto` (stessa forma del `PUT`) è opzionale e, se presente, vale al posto dei dati salvati. Senza `prodottoId` né `prodotto` si usa un prodotto di esempio.
 - `GET /api/resa/prodotti/{id}/misure?rotolo=62` → `{"larghezzaMm": 58.9, "altezzaMm": 96.6, "avvisi": ["Il titolo è stato mandato a capo"]}`.
 
 Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le righe di testo attraversano il nastro e l'etichetta cresce lungo il nastro, senza rotazioni: righe larghe 58,9 mm (696 punti) sul 62 e 98,6 mm (1164 punti) sul 102, altezza dal contenuto, margine interno 1,5 mm. Sul 62 la «Completa» viene quindi lunga circa 100 mm con la colonna nutrizionale stretta, come misurato in `prova-corpi.md`: l'alternativa con il testo lungo il nastro (etichetta alta al massimo 58,9 mm, ruotata di 90° prima dell'invio) resta rinviata a quando si avrà l'etichetta originale del cliente da misurare. Font Arial (Liberation Sans di riserva), bilivello, 300 dpi.

@@ -263,6 +263,9 @@ svg { display: block; flex-shrink: 0; }
 .blocco.trascina { opacity: .4; }
 .blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blocco.spento .nome { color: var(--spento); }
+/* riga semplificata del telefono (revisione di questo giro): il nome non si
+   tronca mai, anche a costo di andare a capo. */
+.blocco.telefono .nome { white-space: normal; overflow: visible; text-overflow: unset; }
 .blocco.libero { flex-direction: column; align-items: stretch; gap: 8px; padding: 9px 10px; }
 .blocco .testa { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .blocco .testoLibero {
@@ -332,6 +335,11 @@ svg { display: block; flex-shrink: 0; }
 .corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); }
 .corpoLente .foglio { margin: auto; padding: 16px; }
 .corpoLente img { box-shadow: 0 6px 20px rgba(88, 68, 60, .14); display: block; max-width: 100%; height: auto; }
+/* "Da leggere" (revisione di questo giro): l'immagine ai suoi pixel veri,
+   niente margin:auto (si scorre da un angolo) cosi' si legge il testo
+   piccolo invece di vederlo rimpicciolito per stare tutto a schermo. */
+.corpoLente.leggibile .foglio { margin: 0; }
+.corpoLente.leggibile img { max-width: none; width: auto; }
 .segmento { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--bordo2); border-radius: 10px; background: var(--carta); flex-shrink: 0; }
 .segmento button { height: 32px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--tenue); }
 .segmento button.on { background: var(--testo); color: #fff; }

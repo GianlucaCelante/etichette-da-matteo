@@ -237,8 +237,12 @@ export function useProvaEtichetta() {
 
 /* ============================ logo ============================ */
 
+// Una sola richiesta per sessione (staleTime infinito, nessun retry): si
+// rilegge solo dopo carica/togli logo (le due mutazioni sotto invalidano la
+// chiave), non a ogni cambio di prodotto o di blocco "Logo" (revisione di
+// questo giro: evitava un 404 ripetuto in console).
 export function useLogoEsiste() {
-  return useQuery({ queryKey: chiaviQuery.logo, queryFn: logoEsiste });
+  return useQuery({ queryKey: chiaviQuery.logo, queryFn: logoEsiste, staleTime: Infinity, retry: false });
 }
 
 export function useCaricaLogo() {
@@ -312,6 +316,10 @@ export function useAnteprimaProdottoSrc(id: number | undefined, opzioni: Paramet
 interface BozzaAnteprima {
   etichetta: Etichetta | NuovaEtichetta;
   prodottoId?: number;
+  // Il prodotto in modifica, non ancora salvato (stessa forma di PUT
+  // /api/prodotti): senza, l'anteprima si aggiornerebbe solo per i blocchi,
+  // non per i campi del prodotto (revisione di questo giro).
+  prodotto?: Prodotto;
   rotolo?: Rotolo;
   scala?: number;
 }
@@ -325,8 +333,10 @@ interface AnteprimaEtichetta {
 // L'anteprima di un'etichetta in modifica (POST /api/resa/anteprima.png): un
 // vero fetch, quindi si scarica come blob e si tiene vivo un object URL,
 // revocando quello precedente cosi' da non perdere memoria mentre si compone.
-export function useAnteprimaEtichetta(bozza: BozzaAnteprima | null): AnteprimaEtichetta {
-  const differita = useDebounced(bozza, 400);
+// ritardoMs: 400 per l'anteprima del prodotto in Stampa, 500 per quella
+// dell'etichetta in modifica in Etichette (revisione di questo giro).
+export function useAnteprimaEtichetta(bozza: BozzaAnteprima | null, ritardoMs = 400): AnteprimaEtichetta {
+  const differita = useDebounced(bozza, ritardoMs);
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [caricando, setCaricando] = useState(false);
   const [errore, setErrore] = useState(false);

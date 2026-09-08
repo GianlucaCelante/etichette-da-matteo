@@ -49,6 +49,8 @@ export interface Versione {
 export type ColonnaBlocco = "piena" | "sx" | "dx";
 
 // Famiglia "dati": prendono il contenuto dal prodotto in stampa.
+// "dataProduzione" e "sigla" sono i due blocchi aggiunti in questo giro (li
+// usa l'etichetta "Cucina" al posto dei due testi liberi del prototipo).
 export type TipoBloccoDati =
   | "titolo"
   | "ingredienti"
@@ -58,7 +60,9 @@ export type TipoBloccoDati =
   | "lotto"
   | "quantita"
   | "valori"
-  | "produttore";
+  | "produttore"
+  | "dataProduzione"
+  | "sigla";
 
 // Famiglia "liberi": non dipendono dal prodotto.
 export type TipoBloccoLibero = "testo" | "testoGrande" | "riga" | "spazio" | "qr" | "logo";
@@ -169,6 +173,8 @@ export const NOMIBLOCCO: Record<TipoBlocco, string> = {
   quantita: "Quantità",
   valori: "Valori nutrizionali",
   produttore: "Produttore",
+  dataProduzione: "Data di produzione",
+  sigla: "Sigla di chi l'ha fatta",
   testo: "Testo libero",
   testoGrande: "Testo grande",
   riga: "Riga separatrice",
@@ -188,6 +194,8 @@ export const BLOCCHI_DATI: TipoBloccoDati[] = [
   "quantita",
   "valori",
   "produttore",
+  "dataProduzione",
+  "sigla",
 ];
 export const BLOCCHI_LIBERI: TipoBloccoLibero[] = ["testo", "testoGrande", "riga", "spazio", "qr", "logo"];
 

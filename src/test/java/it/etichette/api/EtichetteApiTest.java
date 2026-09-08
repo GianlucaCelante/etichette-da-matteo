@@ -59,7 +59,37 @@ class EtichetteApiTest {
                 .andExpect(jsonPath("$[2].predefinita").value(true))
                 .andExpect(jsonPath("$[3].nome").value("Libera"))
                 .andExpect(jsonPath("$[3].blocchi.length()").value(0))
-                .andExpect(jsonPath("$[3].predefinita").value(true));
+                .andExpect(jsonPath("$[3].predefinita").value(true))
+                // "Libera" non ha mai avuto zona impostata (0 blocchi): il servizio deve comunque
+                // restituire il default, mai null (altrimenti l'interfaccia va in crash).
+                .andExpect(jsonPath("$[3].zona.larghezzaDestra").value("1/3"));
+    }
+
+    @Test
+    void laLiberaSuGetSingoloHaSempreZonaEBlocchiVuoto() throws Exception {
+        // GET /api/etichette/4 (mandato del 2026-09-08, revisione contro il mockup): stesso
+        // controllo del test sopra ma sull'endpoint del singolo elemento, non della lista.
+        mockMvc.perform(get("/api/etichette/4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nome").value("Libera"))
+                .andExpect(jsonPath("$.zona.larghezzaDestra").value("1/3"))
+                .andExpect(jsonPath("$.blocchi").isArray())
+                .andExpect(jsonPath("$.blocchi.length()").value(0));
+    }
+
+    @Test
+    void unaEtichettaCreataSenzaZonaHaComunqueIlDefault() throws Exception {
+        // In scrittura zona puo' mancare (docs/api.md): il servizio applica il default "1/3",
+        // non lascia la colonna a null.
+        String corpo = "{\"nome\":\"Senza zona\",\"blocchi\":[]}";
+        String risposta = mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.zona.larghezzaDestra").value("1/3"))
+                .andReturn().getResponse().getContentAsString();
+        long id = mapper.readTree(risposta).get("id").asLong();
+
+        mockMvc.perform(get("/api/etichette/" + id))
+                .andExpect(jsonPath("$.zona.larghezzaDestra").value("1/3"));
     }
 
     @Test
@@ -149,5 +179,26 @@ class EtichetteApiTest {
         String corpo = "{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"logo\",\"acceso\":true,\"corpo\":49,\"colonna\":\"piena\"}]}";
         mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void iNuoviTipiDataProduzioneESiglaSonoAmmessi() throws Exception {
+        // Aggiunti dopo la revisione contro il mockup del 2026-09-08 (famiglia "dati").
+        String corpo = "{\"nome\":\"Prova\",\"blocchi\":["
+                + "{\"tipo\":\"dataProduzione\",\"acceso\":true,\"corpo\":8,\"colonna\":\"piena\"},"
+                + "{\"tipo\":\"sigla\",\"acceso\":true,\"corpo\":7,\"colonna\":\"piena\"}]}";
+        mockMvc.perform(post("/api/etichette").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.blocchi[0].tipo").value("dataProduzione"))
+                .andExpect(jsonPath("$.blocchi[1].tipo").value("sigla"));
+    }
+
+    @Test
+    void unPutConUnTipoDiBloccoSconosciutoRispondeErrore() throws Exception {
+        long id = creaEtichetta("Da modificare");
+        String corpo = "{\"nome\":\"Da modificare\",\"blocchi\":[{\"tipo\":\"nonEsiste\",\"acceso\":true,\"corpo\":8,\"colonna\":\"piena\"}]}";
+        mockMvc.perform(put("/api/etichette/" + id).contentType("application/json").content(corpo))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
     }
 }

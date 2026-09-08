@@ -13,15 +13,9 @@ import {
 import { IconaPiu } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { nuovaChiave } from "./bozza";
+import { corpoIniziale } from "./corpoBlocco";
 import BloccoRiga from "./BloccoRiga";
 import IconaColonna from "./IconaColonna";
-
-function corpoIniziale(tipo: TipoBlocco): number {
-  if (tipo === "titolo" || tipo === "quantita") return 28;
-  if (tipo === "testoGrande") return 14;
-  if (tipo === "logo") return 10; // qui e' l'altezza in mm, non un corpo in punti
-  return 8;
-}
 
 function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; attivo: boolean; onScegli: (v: LarghezzaDestra) => void }) {
   const clic = useCallback(() => onScegli(valore), [onScegli, valore]);
@@ -64,7 +58,9 @@ function IntestazioneZona({
   );
 }
 
-function BottoneTavolozza({
+// Esportato: lo riusa anche BlocchiTelefono.tsx (lo stesso vassoio "Aggiungi
+// un blocco" del telefono, con le righe semplificate).
+export function BottoneTavolozza({
   tipo,
   usato,
   onAggiungi,
@@ -79,6 +75,23 @@ function BottoneTavolozza({
       <span>{NOMIBLOCCO[tipo]}</span>
       <span className="piu">{usato ? "✓" : "+"}</span>
     </button>
+  );
+}
+
+// Il pannello dei blocchi disponibili ("Dati del prodotto" / "Blocchi
+// liberi"): identico per il vassoio PC e per quello del telefono.
+export function PannelloTavolozza({ blocchi, onAggiungi }: { blocchi: BloccoBozza[]; onAggiungi: (tipo: TipoBlocco) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5 mt-1.5">
+      <div className="etichettina mt-1">Dati del prodotto</div>
+      {BLOCCHI_DATI.map((tipo) => (
+        <BottoneTavolozza key={tipo} tipo={tipo} usato={blocchi.some((b) => b.tipo === tipo)} onAggiungi={onAggiungi} />
+      ))}
+      <div className="etichettina mt-1">Blocchi liberi</div>
+      {BLOCCHI_LIBERI.map((tipo) => (
+        <BottoneTavolozza key={tipo} tipo={tipo} usato={false} onAggiungi={onAggiungi} />
+      ))}
+    </div>
   );
 }
 
@@ -188,18 +201,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         <IconaPiu larghezza={20} spessoreTratto={2.2} />
         <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi un blocco"}</span>
       </button>
-      {tavolozzaAperta && (
-        <div className="flex flex-col gap-1.5 mt-1.5">
-          <div className="etichettina mt-1">Dati del prodotto</div>
-          {BLOCCHI_DATI.map((tipo) => (
-            <BottoneTavolozza key={tipo} tipo={tipo} usato={blocchi.some((b) => b.tipo === tipo)} onAggiungi={aggiungiBlocco} />
-          ))}
-          <div className="etichettina mt-1">Blocchi liberi</div>
-          {BLOCCHI_LIBERI.map((tipo) => (
-            <BottoneTavolozza key={tipo} tipo={tipo} usato={false} onAggiungi={aggiungiBlocco} />
-          ))}
-        </div>
-      )}
+      {tavolozzaAperta && <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />}
     </div>
   );
 }

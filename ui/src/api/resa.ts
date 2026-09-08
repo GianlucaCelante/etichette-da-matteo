@@ -17,3 +17,18 @@ export function useScalaAnteprima(rotolo: Rotolo | null | undefined) {
   const scala = larghezza > 0 ? Math.min(SCALA_MASSIMA, Math.max(SCALA_MINIMA, larghezza / pieno)) : 0.4;
   return { rif, scala };
 }
+
+// Come sopra, ma per quando la stessa anteprima puo' comparire in due punti
+// del DOM insieme (PC e telefono, l'uno nascosto dall'altro con CSS secondo
+// lo schermo, mai visibili insieme davvero - revisione di questo giro, vista
+// Etichette col telefono: anteprima in cima, prima dei gruppi). Due
+// contenitori da misurare, una scala sola: quella di chi e' davvero
+// visibile, perche' quello nascosto (display:none) misura sempre 0.
+export function useScalaAnteprimaDoppia(rotolo: Rotolo | null | undefined) {
+  const [rifPC, larghezzaPC] = useLarghezzaElemento<HTMLDivElement>();
+  const [rifTel, larghezzaTel] = useLarghezzaElemento<HTMLDivElement>();
+  const pieno = LARGHEZZA_PX_PIENA[rotolo ?? 62];
+  const larghezza = larghezzaPC > 0 ? larghezzaPC : larghezzaTel;
+  const scala = larghezza > 0 ? Math.min(SCALA_MASSIMA, Math.max(SCALA_MINIMA, larghezza / pieno)) : 0.4;
+  return { rifPC, rifTel, scala };
+}

@@ -151,9 +151,13 @@ export function percorsoResaProdotto(id: number, opzioni: ParametriResa): string
 // completa) non entra in una query string, quindi e' un POST che rende un PNG.
 // Non e' utilizzabile direttamente come src di <img>: si scarica come blob (vedi
 // useAnteprimaEtichetta in hooks.ts) e si tiene vivo un URL locale.
+// "prodotto" (stessa forma di PUT /api/prodotti) manda anche il prodotto in
+// modifica, non ancora salvato: senza, l'anteprima si aggiornerebbe solo
+// quando cambiano i blocchi, non i campi del prodotto (revisione di questo giro).
 export async function anteprimaEtichettaBlob(corpo: {
   etichetta: Etichetta | NuovaEtichetta;
   prodottoId?: number;
+  prodotto?: Prodotto;
   rotolo?: Rotolo;
   scala?: number;
 }): Promise<Blob> {

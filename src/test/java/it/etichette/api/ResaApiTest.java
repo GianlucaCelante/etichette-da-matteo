@@ -13,7 +13,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -64,5 +66,66 @@ class ResaApiTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("image/png"))
                 .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    /**
+     * Mandato del 2026-09-08: {@code prodotto} (opzionale, stessa forma del corpo di
+     * {@code PUT /api/prodotti/{id}}, anche senza {@code id}) fa usare quei dati al posto di
+     * quelli salvati - serve all'editor per aggiornare l'anteprima mentre si scrive, prima di
+     * salvare. Qui il blocco "titolo" stampa {@code nomeStampa}: con un {@code nomeStampa} diverso
+     * nel corpo l'immagine deve cambiare rispetto a quella coi dati salvati del prodotto 1.
+     */
+    @Test
+    void anteprimaConProdottoInModificaUsaIlNomeStampaDiversoDaQuelloSalvato() throws Exception {
+        String etichettaConTitolo = "\"etichetta\":{\"nome\":\"Prova anteprima\",\"blocchi\":"
+                + "[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]}";
+
+        byte[] pngSalvato = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json")
+                        .content("{" + etichettaConTitolo + ",\"prodottoId\":1}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        byte[] pngInModifica = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json")
+                        .content("{" + etichettaConTitolo + ",\"prodottoId\":1,"
+                                + "\"prodotto\":{\"nome\":\"Base pizza low carb\",\"nomeStampa\":\"NOME DIVERSO IN MODIFICA\"}}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        assertThat(pngInModifica).isNotEqualTo(pngSalvato);
+    }
+
+    @Test
+    void anteprimaSenzaProdottoRestaIdenticaAPrima() throws Exception {
+        // Aggiungere il campo "prodotto" non deve cambiare NULLA quando manca: stessa richiesta
+        // (solo prodottoId, come prima di questo mandato) deve produrre esattamente lo stesso PNG.
+        String corpo = "{\"etichetta\":{\"nome\":\"Prova anteprima\",\"blocchi\":"
+                + "[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]},\"prodottoId\":1}";
+
+        byte[] primo = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        byte[] secondo = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        assertThat(secondo).isEqualTo(primo);
+    }
+
+    @Test
+    void anteprimaConProdottoSenzaNomeRispondeErroreComeIlPut() throws Exception {
+        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodotto\":{\"nome\":\"\"}}";
+        mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
+    }
+
+    @Test
+    void anteprimaConProdottoSenzaIdFunzionaComunque() throws Exception {
+        // "anche senza id": il corpo di prodotto non ha bisogno di id, la resa non lo usa.
+        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]},"
+                + "\"prodotto\":{\"nome\":\"Prodotto nuovo, mai salvato\"}}";
+        mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/png"));
     }
 }

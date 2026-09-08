@@ -226,10 +226,10 @@ const etichette = [
     zona: { larghezzaDestra: "1/2" },
     blocchi: [
       bl("titolo", 14),
-      bl("testo", 8, "piena", true, "Prodotto in giornata"),
+      bl("dataProduzione", 8),
       bl("scadenza", 8),
       bl("lotto", 7),
-      bl("testo", 7, "piena", true, "Preparato da M.C."),
+      bl("sigla", 7),
     ],
     creataIl: oraIniziale,
     modificataIl: oraIniziale,
@@ -253,7 +253,9 @@ const etichette = [
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
     produttore: MICHI_BREVE,
-    zona: { larghezzaDestra: "1/2" },
+    // apposta null: verifica che l'interfaccia regga zona mancante (correzione
+    // di questo giro). Il servizio vero la manda sempre, ma non ci si affida.
+    zona: null,
     blocchi: [],
     creataIl: oraIniziale,
     modificataIl: oraIniziale,
@@ -448,6 +450,12 @@ function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
       if (p.sedeProduzione) testo += ` - Prodotto in: ${p.sedeProduzione}`;
       return { righe: rigaTesto(testo, corpo, larghezzaUtileMm) };
     }
+    case "dataProduzione":
+      // Sempre presente (e' la data di oggi): non dipende dal prodotto.
+      return { righe: rigaTesto("Prodotto il " + dataLocale(new Date()), corpo, larghezzaUtileMm) };
+    case "sigla":
+      if (!prodotto.siglaOperatore) return null;
+      return { righe: rigaTesto("Preparato da " + prodotto.siglaOperatore, corpo, larghezzaUtileMm) };
     case "testo":
       return { righe: rigaTesto(b.testo || "Testo libero", corpo, larghezzaUtileMm) };
     case "testoGrande":
@@ -1178,6 +1186,10 @@ const server = http.createServer(async (req, res) => {
       if (!etichettaBozza || !Array.isArray(etichettaBozza.blocchi)) return erroreJson(res, 400, "Manca l'etichetta da rendere");
       let prodotto = corpo.prodottoId ? trovaProdotto(Number(corpo.prodottoId)) : undefined;
       if (!prodotto) prodotto = prodotti[0]; // "Senza prodottoId si usa un prodotto di esempio" (docs/api.md)
+      // "prodotto" (revisione di questo giro): il prodotto in modifica, non
+      // ancora salvato, stessa forma di PUT /api/prodotti. Senza, l'anteprima
+      // di Etichette si aggiornerebbe solo per i blocchi, non per i suoi campi.
+      if (corpo.prodotto && typeof corpo.prodotto === "object") prodotto = { ...prodotto, ...corpo.prodotto };
       const rotolo = corpo.rotolo === 102 ? 102 : 62;
       const scala = Number(corpo.scala) > 0 ? Number(corpo.scala) : 1;
       return rispondiPng(res, renderEtichettaPng(prodotto, etichettaBozza, { rotolo, scala }));

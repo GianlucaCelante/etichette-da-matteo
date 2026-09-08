@@ -26,7 +26,8 @@ public final class Contratto {
 
     /** Famiglia "dati": il contenuto viene dal prodotto. */
     public static final Set<String> TIPI_BLOCCO_DATI = Set.of(
-            "titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "lotto", "quantita", "valori", "produttore");
+            "titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "lotto", "quantita", "valori", "produttore",
+            "dataProduzione", "sigla");
 
     /** Famiglia "liberi": il contenuto non viene dal prodotto. */
     public static final Set<String> TIPI_BLOCCO_LIBERI = Set.of(
@@ -37,6 +38,9 @@ public final class Contratto {
     public static final Set<String> COLONNE = Set.of("piena", "sx", "dx");
 
     public static final Set<String> FRAZIONI_ZONA = Set.of("1/4", "1/3", "1/2", "2/3");
+
+    /** Default quando {@code zona} manca (in scrittura) o non e' mai stata impostata (in lettura): docs/api.md, "Il servizio restituisce sempre zona". */
+    public static final String ZONA_LARGHEZZA_DESTRA_DEFAULT = "1/3";
 
     public static final Set<String> FORMATI_DATA = Set.of("GG/MM/AAAA", "GG/MM/AA", "GG.MM.AAAA");
 
@@ -57,6 +61,8 @@ public final class Contratto {
             case "quantita" -> "Quantità";
             case "valori" -> "Valori nutrizionali";
             case "produttore" -> "Produttore";
+            case "dataProduzione" -> "Data di produzione";
+            case "sigla" -> "Sigla di chi l'ha fatta";
             case "testo" -> "Testo libero";
             case "testoGrande" -> "Testo grande";
             case "riga" -> "Riga separatrice";

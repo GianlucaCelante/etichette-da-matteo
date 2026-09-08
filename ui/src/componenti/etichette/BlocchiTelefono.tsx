@@ -1,0 +1,61 @@
+import { useCallback, useState } from "react";
+import type { TipoBlocco } from "../../api/tipi";
+import { IconaPiu } from "../Icone";
+import type { BloccoBozza } from "./bozza";
+import { nuovaChiave } from "./bozza";
+import { corpoIniziale } from "./corpoBlocco";
+import { PannelloTavolozza } from "./BlocchiEditor";
+import RigaBloccoTelefono from "./RigaBloccoTelefono";
+
+interface ProprietaBlocchiTelefono {
+  blocchi: BloccoBozza[];
+  onCambiaBlocchi: (nuovi: BloccoBozza[]) => void;
+}
+
+// Il vassoio dei blocchi sul telefono (revisione di questo giro): stesso
+// elenco e stessa tavolozza per aggiungerne di nuovi del vassoio PC
+// (BlocchiEditor.tsx), ma righe semplificate (RigaBloccoTelefono) e senza
+// trascinamento: sul telefono l'ordine e la colonna sx/dx restano quelli
+// gia' decisi al PC.
+export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaBlocchiTelefono) {
+  const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
+
+  const onToggleAcceso = useCallback(
+    (chiave: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, acceso: !b.acceso } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
+  const onCambiaCorpo = useCallback(
+    (chiave: string, corpo: number) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, corpo } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
+  const onRimuovi = useCallback((chiave: string) => onCambiaBlocchi(blocchi.filter((b) => b.chiave !== chiave)), [blocchi, onCambiaBlocchi]);
+  const onCambiaTesto = useCallback(
+    (chiave: string, testo: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
+
+  const aggiungiBlocco = useCallback(
+    (tipo: TipoBlocco) => {
+      const nuovo: BloccoBozza = { chiave: nuovaChiave(), tipo, acceso: true, corpo: corpoIniziale(tipo), colonna: "piena" };
+      if (tipo === "testo" || tipo === "testoGrande") nuovo.testo = "";
+      onCambiaBlocchi([...blocchi, nuovo]);
+      setTavolozzaAperta(false);
+    },
+    [blocchi, onCambiaBlocchi],
+  );
+
+  const apriChiudiTavolozza = useCallback(() => setTavolozzaAperta((a) => !a), []);
+
+  return (
+    <div className="vassoio">
+      {blocchi.map((b) => (
+        <RigaBloccoTelefono key={b.chiave} blocco={b} onToggleAcceso={onToggleAcceso} onCambiaCorpo={onCambiaCorpo} onRimuovi={onRimuovi} onCambiaTesto={onCambiaTesto} />
+      ))}
+      <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
+        <IconaPiu larghezza={20} spessoreTratto={2.2} />
+        <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi un blocco"}</span>
+      </button>
+      {tavolozzaAperta && <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />}
+    </div>
+  );
+}
