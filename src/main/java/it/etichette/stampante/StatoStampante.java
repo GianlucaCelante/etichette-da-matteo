@@ -18,7 +18,11 @@ public record StatoStampante(String stato, String messaggio, Integer rotolo, Lis
     public static final String MODELLO = "Brother QL-1100c";
 
     public static StatoStampante scollegata() {
-        return new StatoStampante(SCOLLEGATA, "Stampante spenta o scollegata", null, List.of(),
-                MODELLO, LocalDateTime.now());
+        return scollegata("Stampante spenta o scollegata");
+    }
+
+    /** Come {@link #scollegata()} ma con un messaggio specifico (es. disattivata da configurazione, non solo "non trovata"). */
+    public static StatoStampante scollegata(String messaggio) {
+        return new StatoStampante(SCOLLEGATA, messaggio, null, List.of(), MODELLO, LocalDateTime.now());
     }
 }

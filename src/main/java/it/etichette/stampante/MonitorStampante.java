@@ -5,6 +5,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -31,6 +33,9 @@ import java.util.Optional;
  *       ristampa automatica (mai vista in TRE prove hardware) e infine cancella il buffer, espelle
  *       il pezzo di nastro stampato a meta' e rimanda la copia (vedi
  *       {@link #gestisciErroreAMetaCopia}).</li>
+ *   <li>se {@code etichette.stampante.abilitata=false} (application.yml) non cerca ne' apre MAI
+ *       la porta: resta sempre "scollegata" - serve a far girare una seconda istanza sullo stesso
+ *       PC senza contendersi la USB col servizio installato.</li>
  * </ul>
  */
 @Component
@@ -51,16 +56,26 @@ public class MonitorStampante {
     private final Porta porta;
     private final CodaDiStampa coda;
     private final ApplicationEventPublisher eventi;
+    /**
+     * {@code etichette.stampante.abilitata} (default {@code true}): se {@code false},
+     * {@link #tentaConnessione} non chiama MAI {@link RicercaPorta#cerca} ne' apre mai la porta -
+     * lo stato resta "scollegata" con un messaggio dedicato. Serve a far girare una seconda
+     * istanza di sviluppo/revisione sullo stesso PC senza contendersi la USB col servizio
+     * installato (mandato del 2026-09-08).
+     */
+    private final boolean abilitata;
 
     /**
-     * Lunghezza (in righe raster = "dot" lungo l'avanzamento) della pagina di espulsione: 300 dot
-     * a 300 dpi = 25,4 mm, la lunghezza minima del nastro continuo (docs/mappatura-brother-ql-1100c.md,
-     * "Limiti nastro continuo"). Serve SOLO a far avanzare e tagliare il pezzo di nastro gia'
-     * stampato a meta' (3a prova hardware del 2026-09-08: dopo l'errore la stampante non lo fa
-     * avanzare ne' lo taglia da sola, e la copia rimandata usciva SOPRA il pezzo rovinato) - il
-     * contenuto e' tutto bianco, non e' un'etichetta vera.
+     * Lunghezza MINIMA (in righe raster = "dot" lungo l'avanzamento) della pagina di espulsione:
+     * 300 dot a 300 dpi = 25,4 mm, la lunghezza minima del nastro continuo
+     * (docs/mappatura-brother-ql-1100c.md, "Limiti nastro continuo"). La lunghezza VERA usata e'
+     * {@code max(righe della copia interrotta, questo minimo)}: la 4a prova hardware del
+     * 2026-09-08 ha mostrato che dopo un errore la stampante riporta il nastro all'INIZIO della
+     * pagina interrotta (non solo non la fa avanzare/tagliare: la 3a prova) - un'espulsione piu'
+     * corta della pagina rovinata taglia dentro la stampa vecchia invece che dopo. Il contenuto e'
+     * tutto bianco, non e' un'etichetta vera.
      */
-    private static final int RIGHE_ESPULSIONE = 300;
+    private static final int RIGHE_ESPULSIONE_MINIMO = 300;
 
     /**
      * Dopo che lo stato e' tornato pulito a meta' copia, quanto si ascolta in PASSIVO (nessun
@@ -71,8 +86,8 @@ public class MonitorStampante {
      * notifica spontanea di ristampa quando l'errore rientra da solo - la ristampa vista nella 1a
      * prova era innescata dai nostri stessi comandi ESC i S dell'allora-attivo ascolto attivo.
      * L'ascolto resta solo per prudenza, accorciato a 5 s: la vera ripresa e' interrogazione
-     * attiva + cancella buffer + espelli il pezzo rovinato ({@link #RIGHE_ESPULSIONE}) + rimanda
-     * la copia (vedi {@link #cancellaBufferEspelliERimanda}).
+     * attiva + cancella buffer + espelli il pezzo rovinato ({@link #RIGHE_ESPULSIONE_MINIMO}) +
+     * rimanda la copia (vedi {@link #cancellaBufferEspelliERimanda}).
      */
     private volatile long attesaRistampaBaseMs = 5_000L;
     private volatile long attesaRistampaMassimaMs = 60_000L;
@@ -81,11 +96,19 @@ public class MonitorStampante {
     private volatile boolean attivo = true;
     private Thread thread;
 
+    /** Comodo per i test diretti (PortaFinta): stampante sempre abilitata. */
     public MonitorStampante(RicercaPorta ricerca, Porta porta, CodaDiStampa coda, ApplicationEventPublisher eventi) {
+        this(ricerca, porta, coda, eventi, true);
+    }
+
+    @Autowired
+    public MonitorStampante(RicercaPorta ricerca, Porta porta, CodaDiStampa coda, ApplicationEventPublisher eventi,
+                             @Value("${etichette.stampante.abilitata:true}") boolean abilitata) {
         this.ricerca = ricerca;
         this.porta = porta;
         this.coda = coda;
         this.eventi = eventi;
+        this.abilitata = abilitata;
     }
 
     @PostConstruct
@@ -139,6 +162,12 @@ public class MonitorStampante {
     }
 
     private boolean tentaConnessione() {
+        if (!abilitata) {
+            // etichette.stampante.abilitata=false: mai cercare ne' aprire la porta (niente
+            // contesa della USB con un'altra istanza gia' in esecuzione sullo stesso PC).
+            pubblicaStato(StatoStampante.scollegata("Stampante disattivata dalla configurazione"));
+            return false;
+        }
         List<String> percorsi = ricerca.cerca();
         if (percorsi.isEmpty()) {
             pubblicaStato(StatoStampante.scollegata());
@@ -471,10 +500,13 @@ public class MonitorStampante {
      *   <li>{@link #cancellaBufferEspelliERimanda}: se in {@link #attesaRistampaBaseMs} non e'
      *       arrivato nulla (il caso ormai atteso), si cancella un'eventuale pagina residua nel
      *       buffer (invalidate + {@code ESC @}, mappatura §6);</li>
-     *   <li>{@link #espelliPezzoAMetaStampato}: si manda una pagina vuota da
-     *       {@link #RIGHE_ESPULSIONE} righe (25,4 mm) con taglio, per far uscire ed espellere il
-     *       pezzo di nastro rovinato, e SOLO DOPO si rimanda la copia interrotta come una pagina
-     *       normale (si torna all'ascolto ordinario).</li>
+     *   <li>{@link #espelliPezzoAMetaStampato}: si manda una pagina vuota lunga QUANTO LA COPIA
+     *       interrotta (minimo {@link #RIGHE_ESPULSIONE_MINIMO} righe = 25,4 mm) con taglio, per
+     *       far uscire ed espellere l'intero pezzo di nastro rovinato - non solo i primi 25 mm
+     *       (4a prova hardware: la stampante riporta il nastro all'inizio della pagina interrotta
+     *       dopo un errore, quindi un'espulsione piu' corta della pagina taglia dentro la stampa
+     *       vecchia) - e SOLO DOPO si rimanda la copia interrotta come una pagina normale (si
+     *       torna all'ascolto ordinario).</li>
      * </ol>
      */
     private EsitoCopia gestisciErroreAMetaCopia(LavoroStampa lavoro, EsitoStato erroreIniziale) {
@@ -633,20 +665,29 @@ public class MonitorStampante {
     }
 
     /**
-     * Manda una pagina vuota (tutta bianca, {@link #RIGHE_ESPULSIONE} righe = 25,4 mm, con lo
-     * stesso taglio automatico e margine del lavoro in corso) per far avanzare e tagliare il pezzo
-     * di nastro stampato a meta' PRIMA di rimandare la copia interrotta. Aspetta la stessa
-     * sequenza di stati di una copia normale ({@link #ascoltaEsitoCopia}: in stampa -> completata
-     * -> tornata in ricezione, timeout 60 s); se arriva un errore anche durante l'espulsione,
-     * quel metodo torna gia' da solo alla fase di interrogazione attiva (fase a, tramite
+     * Manda una pagina vuota (tutta bianca, lunga quanto la copia interrotta - minimo
+     * {@link #RIGHE_ESPULSIONE_MINIMO} righe = 25,4 mm - con lo stesso taglio automatico e
+     * margine del lavoro in corso) per far avanzare e tagliare l'INTERO pezzo di nastro stampato
+     * a meta' PRIMA di rimandare la copia interrotta (4a prova hardware del 2026-09-08: la
+     * stampante riporta il nastro all'inizio della pagina interrotta, quindi un'espulsione piu'
+     * corta della pagina taglia dentro la stampa vecchia). Aspetta la stessa sequenza di stati di
+     * una copia normale ({@link #ascoltaEsitoCopia}: in stampa -> completata -> tornata in
+     * ricezione, timeout 60 s); se arriva un errore anche durante l'espulsione, quel metodo torna
+     * gia' da solo alla fase di interrogazione attiva (fase a, tramite
      * {@link #gestisciErroreAMetaCopia}) prima di ritentare.
      */
     private EsitoCopia espelliPezzoAMetaStampato(LavoroStampa lavoro) {
         int colonne = ProtocolloQl.ROTOLI_CONTINUI.get(lavoro.rotoloMm)[1];
-        boolean[][] biancoTutto = new boolean[RIGHE_ESPULSIONE][colonne];
-        byte[] jobEspulsione = ProtocolloQl.costruisciLavoro(biancoTutto, RIGHE_ESPULSIONE, colonne,
+        // Lunga quanto la copia interrotta (mai piu' corta del minimo): la stampante riporta il
+        // nastro all'inizio della pagina interrotta dopo un errore (4a prova hardware), quindi
+        // un'espulsione piu' corta della pagina taglierebbe dentro la stampa vecchia.
+        int righeEspulsione = Math.max(lavoro.immagine.getHeight(), RIGHE_ESPULSIONE_MINIMO);
+        boolean[][] biancoTutto = new boolean[righeEspulsione][colonne];
+        byte[] jobEspulsione = ProtocolloQl.costruisciLavoro(biancoTutto, righeEspulsione, colonne,
                 lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico);
-        log.info("Espello il pezzo stampato a meta': pagina vuota da 25 mm con taglio ({} byte).", jobEspulsione.length);
+        double lunghezzaMm = righeEspulsione / ProtocolloQl.PUNTI_PER_MM;
+        log.info("Espello il pezzo stampato a meta': pagina vuota da {} mm con taglio ({} byte).",
+                String.format("%.1f", lunghezzaMm), jobEspulsione.length);
         try {
             inviaJob(jobEspulsione);
         } catch (IOException e) {

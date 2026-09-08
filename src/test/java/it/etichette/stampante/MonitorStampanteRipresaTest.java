@@ -30,14 +30,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       ristampa automatica ("in stampa" -> "completata" -> "in ricezione"): se la vede, la
  *       copia conta come fatta;</li>
  *   <li>se non vede nulla, cancella un'eventuale pagina residua nel buffer (invalidate +
- *       {@code ESC @}), ESPELLE il pezzo di nastro stampato a meta' (pagina vuota da 300 righe =
- *       25,4 mm con taglio) e solo allora rimanda la stessa copia come una pagina normale.</li>
+ *       {@code ESC @}), ESPELLE l'intero pezzo di nastro stampato a meta' (pagina vuota lunga
+ *       QUANTO LA COPIA interrotta, minimo 300 righe = 25,4 mm, con taglio - 4a prova hardware:
+ *       un'espulsione piu' corta della pagina taglia dentro la stampa vecchia, perche' la
+ *       stampante riporta il nastro all'inizio della pagina interrotta) e solo allora rimanda la
+ *       stessa copia come una pagina normale.</li>
  * </ol>
- * Quattro test con la porta finta: ristampa automatica rilevata (1 sola scrittura del job,
- * nessuna cancellazione/espulsione), nessuna ristampa (cancellazione + espulsione da 300 righe +
- * 2a scrittura del job, in quest'ordine), un errore anche durante l'espulsione (si torna a
- * interrogare e si riprova l'intero passaggio cancellazione+espulsione), annullamento durante la
- * pausa (nessuna scrittura ulteriore, evento annullata).
+ * Cinque test con la porta finta: ristampa automatica rilevata (1 sola scrittura del job, nessuna
+ * cancellazione/espulsione), nessuna ristampa (cancellazione + espulsione da 300 righe + 2a
+ * scrittura del job, in quest'ordine), un errore anche durante l'espulsione (si torna a
+ * interrogare e si riprova l'intero passaggio cancellazione+espulsione), una copia piu' lunga del
+ * minimo (500 righe) espulsa per intero e non fermata a 300, annullamento durante la pausa
+ * (nessuna scrittura ulteriore, evento annullata).
  */
 class MonitorStampanteRipresaTest {
 
@@ -196,6 +200,59 @@ class MonitorStampanteRipresaTest {
     }
 
     @Test
+    void unaCopiaPiuLungaDelMinimoVieneEspulsaPerIntero() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        // 4a prova hardware del 2026-09-08: la stampante riporta il nastro all'INIZIO della
+        // pagina interrotta dopo un errore (non solo non la taglia: la 3a prova), quindi
+        // un'espulsione ferma al minimo di 300 righe taglierebbe dentro la stampa vecchia se la
+        // copia e' piu' lunga - qui la copia e' di 500 righe, ben oltre il minimo.
+        int righeCopia = 500;
+        coda.accoda(immagineDiProva(righeCopia), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // errore
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1: subito pulita
+        // fase 2: nessun dato precaricato, scade da sola come negli altri test.
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(50, 200);
+        monitor.avvia();
+
+        new Thread(() -> {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // fase 3: cancella il buffer -> pulito
+            porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione: "in stampa"
+            porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione: "completata"
+            porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione: "tornata in ricezione"
+            porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+            porta.accodaRisposta(stato(0x06, 0x00, 0));
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+        }, "supplier-fase3-copia-lunga").start();
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(4);
+        assertThat(numeroLineeJob(grandi.get(0))).isEqualTo(righeCopia); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (invalidate + ESC @)
+        // il job di espulsione e' lungo QUANTO LA COPIA (500 righe), non fermo al minimo di 300.
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(righeCopia);
+        assertThat(numeroLineeJob(grandi.get(3))).isEqualTo(righeCopia); // job copia 1 di nuovo (rimandata)
+    }
+
+    @Test
     void unAnnullamentoDuranteLaPausaNonRimandaNulla() throws InterruptedException {
         PortaFinta porta = new PortaFinta();
         CodaDiStampa coda = new CodaDiStampa();
@@ -288,11 +345,16 @@ class MonitorStampanteRipresaTest {
 
     /** Immagine minima ma valida per un lavoro sul rotolo 102 mm (larghezza esatta richiesta da ProtocolloQl). */
     private static BufferedImage immagineDiProva() {
+        return immagineDiProva(2);
+    }
+
+    /** Come sopra ma con l'altezza (in righe raster) indicata, per verificare l'espulsione con copie piu' lunghe del minimo. */
+    private static BufferedImage immagineDiProva(int altezza) {
         int larghezza = ProtocolloQl.ROTOLI_CONTINUI.get(102)[1];
-        BufferedImage img = new BufferedImage(larghezza, 2, BufferedImage.TYPE_BYTE_BINARY);
+        BufferedImage img = new BufferedImage(larghezza, altezza, BufferedImage.TYPE_BYTE_BINARY);
         Graphics2D g = img.createGraphics();
         g.setColor(Color.WHITE);
-        g.fillRect(0, 0, larghezza, 2);
+        g.fillRect(0, 0, larghezza, altezza);
         g.dispose();
         return img;
     }
