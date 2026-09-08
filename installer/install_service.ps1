@@ -13,8 +13,13 @@
 #      SYSTEM/Administratos in scrittura e Users in sola lettura.
 #   2. Apre la porta 8765 nel firewall di Windows (profili Privato e Dominio,
 #      mai Pubblico: il PC di un negozio/ristorante e' su rete privata).
-#   3. Registra il servizio "Etichette" con WinSW (o lo riavvia se e' gia'
-#      registrato), ripristina l'avvio automatico ritardato e lo fa partire.
+#   3. Registra il servizio "Etichette" con WinSW se non esiste ancora,
+#      altrimenti lo ferma e basta (idempotente: "install" su un servizio
+#      gia' esistente fa scrivere a WinSW un FATAL nel log anche se poi il
+#      servizio parte comunque; WinSW rilegge Etichette.xml da solo a ogni
+#      avvio, non serve nessun comando apposta per farlo), ripristina
+#      l'avvio automatico ritardato e le azioni di ripristino, e lo fa
+#      partire.
 #   4. Crea il collegamento "Etichette" sul desktop pubblico e in
 #      "Esecuzione automatica" di tutti gli utenti: Edge in modalita' app
 #      su http://localhost:8765/.
@@ -224,6 +229,21 @@ function Install-OrRestart-EtichetteService {
             throw "winsw install ha fallito (codice $installExit)."
         }
     } else {
+        # Idempotente: NON richiamare "install" su un servizio gia'
+        # registrato. Osservato l'8 settembre 2026 nel log del wrapper dopo
+        # un aggiornamento "installa sopra" reale: WinSW risponde con
+        # "FATAL - Failed to install the service. Servizio specificato gia'
+        # esistente". Non blocca lo script (il servizio parte comunque), ma
+        # sporca il log e sembra un fallimento a chi lo legge.
+        # Niente "refresh" al posto di "install": WinSW 2.12 non ha quel
+        # comando ("--help" elenca install/uninstall/start/stop/stopwait/
+        # restart/restart!/status/test/testwait), la prova reale del 9
+        # settembre 2026 ha scritto "FATAL - Unhandled exception: Unknown
+        # command: refresh" nel log. Non serve comunque nulla al posto di
+        # "install": WinSW rilegge Etichette.xml da solo a ogni avvio del
+        # servizio, quindi il semplice fermo+riavvio sotto (Stop-Service qui,
+        # Start-Service piu' in basso nella funzione) basta gia' a far
+        # ripartire il servizio con la configurazione aggiornata.
         Write-Host "  Servizio gia' registrato: fermo e riavvio per applicare eventuali modifiche..."
         if ($existingService.Status -eq "Running") {
             Stop-Service -Name "Etichette" -Force -ErrorAction SilentlyContinue
@@ -240,9 +260,12 @@ function Install-OrRestart-EtichetteService {
     }
 
     # Ripristina l'avvio automatico ritardato e le azioni di ripristino: un
-    # "uninstall -StopOnly" precedente (fatto da update.ps1) potrebbe averle
-    # disattivate per evitare che la SCM riavviasse il servizio a meta'
-    # aggiornamento.
+    # "uninstall -StopOnly" o un arresto per nome precedente (fatto da
+    # update.ps1) potrebbero averle disattivate per evitare che la SCM
+    # riavviasse il servizio a meta' aggiornamento. Esplicito con sc.exe
+    # invece di delegarlo a "winsw install", che sopra non viene piu'
+    # richiamato su un servizio gia' registrato (vedi commento sopra) - va
+    # bene rieseguirlo anche dopo una registrazione nuova, e' idempotente.
     $sc = Join-Path $env:SystemRoot "System32\sc.exe"
     if (Test-Path $sc) {
         & $sc config "Etichette" start= delayed-auto 2>&1 | Out-Null
@@ -254,10 +277,14 @@ function Install-OrRestart-EtichetteService {
                 Write-Warning "Set-Service AutomaticDelayedStart ha fallito: $($_.Exception.Message)"
             }
         }
+        # Azioni di ripristino: riavvio a 10s/30s/120s, contatore azzerato
+        # dopo un'ora senza errori - stessi valori di <onfailure> in
+        # Etichette.xml.
+        & $sc failure "Etichette" reset= 3600 actions= restart/10000/restart/30000/restart/120000 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "sc.exe failure ha restituito $LASTEXITCODE; le azioni di ripristino potrebbero non essere state ripristinate."
+        }
     }
-    # Re-invocare "install" su un servizio gia' registrato e' idempotente in
-    # WinSW e riscrive le azioni di ripristino da <onfailure> in Etichette.xml.
-    & $WinswExe install 2>&1 | Out-Null
 
     Write-Host "  Avvio il servizio..."
     $maxStartAttempts = 3

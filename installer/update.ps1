@@ -10,13 +10,26 @@
 #   2. Copia il database (e i file -wal/-shm collegati) in
 #      ProgramData\Etichette\backup\pre-aggiornamento-<data>\, cosi' un
 #      aggiornamento andato male non parte da un database gia' toccato.
-#   3. Ferma il servizio (uninstall_service.ps1 -StopOnly): libera i file
-#      dell'app prima che msiexec ci scriva sopra, evitando il prompt di
-#      riavvio di Windows.
+#   3. Chiude eventuali finestre di Edge in modalita' app aperte verso
+#      l'indirizzo locale del servizio (tengono aperta una connessione, per
+#      esempio agli aggiornamenti in tempo reale via SSE, che puo' impedire
+#      allo spegnimento pulito di completarsi in tempo), poi ferma il
+#      servizio "Etichette" PER NOME tramite la SCM (Get-Service /
+#      Stop-Service), non tramite un binario WinSW locale: funziona
+#      indipendentemente dalla cartella da cui viene lanciato questo script
+#      (repository, Desktop, chiavetta), a differenza della versione
+#      precedente che delegava a "uninstall_service.ps1 -StopOnly" e quindi
+#      dipendeva dal trovare Etichette.exe accanto a se stesso - vedi la nota
+#      nella funzione Stop-EtichetteServiceByName sotto per il bug osservato.
 #   4. Esegue "msiexec /i" con /norestart (il banco etichette non deve mai
-#      riavviarsi da solo). L'azione dell'MSI (vedi installer\wix) registra
-#      e riavvia il servizio da sola sulla nuova versione.
-#   5. Se msiexec fallisce, richiama install_service.ps1 -Silent per
+#      riavviarsi da solo) e MSIRESTARTMANAGERCONTROL=Disable, cosi' Windows
+#      Installer non mostra MAI la finestra "file in uso" (che comunque non
+#      dovrebbe piu' presentarsi, avendo gia' fermato servizio e Edge sopra:
+#      e' una seconda rete di sicurezza, non la prima). L'azione dell'MSI
+#      (vedi installer\wix) registra e riavvia il servizio da sola sulla
+#      nuova versione.
+#   5. Riapre la finestra dell'app (se ne era stata chiusa una al passo 3).
+#   6. Se msiexec fallisce, richiama install_service.ps1 -Silent per
 #      rimettere in piedi il servizio: l'MSI di jpackage, fallendo, ripristina
 #      i file della versione precedente (rollback di Windows Installer), quindi
 #      questo passo riparte sulla versione precedente invece di lasciare il
@@ -43,10 +56,19 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$UninstallScript = Join-Path $ScriptDir "uninstall_service.ps1"
-$InstallScript   = Join-Path $ScriptDir "install_service.ps1"
+$InstallScript = Join-Path $ScriptDir "install_service.ps1"
 $DataDir   = "C:\ProgramData\Etichette"
 $BackupDir = Join-Path $DataDir "backup"
+
+# Helper di basso livello (Get-ServiceProcessId, Stop-ProcessTree,
+# Stop-ServiceProcessTree, Wait-ForServiceStopped): tutti basati sul NOME del
+# servizio o su Get-CimInstance, non su un percorso di file, quindi
+# funzionano da qualunque cartella sia lanciato questo script.
+$ServiceCommonScript = Join-Path $ScriptDir "service_common.ps1"
+if (-not (Test-Path $ServiceCommonScript)) {
+    throw "service_common.ps1 non trovato in $ServiceCommonScript."
+}
+. $ServiceCommonScript
 
 function Test-IsAdministrator {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -85,14 +107,138 @@ function Backup-Database {
     Write-Host "Backup del database salvato in $target ($($dbFiles.Count) file)."
 }
 
-function Invoke-PreMsiexecStop {
-    if (-not (Test-Path $UninstallScript)) {
-        Write-Warning "uninstall_service.ps1 non trovato in $UninstallScript; salto l'arresto preventivo."
-        Write-Warning "L'MSI potrebbe chiedere il riavvio se il servizio e' in esecuzione."
+function Get-EdgePath {
+    # Copia locale (come in install_service.ps1): update.ps1 deve restare
+    # eseguibile da solo, senza dipendere da un altro script per poche righe.
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
+        (Join-Path ${env:ProgramFiles} "Microsoft\Edge\Application\msedge.exe")
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Get-EtichetteAppWindowProcesses {
+    <#
+      Trova i processi di Microsoft Edge aperti in modalita' app verso
+      l'indirizzo locale del servizio, qualunque porta (l'app puo' finire su
+      una porta diversa da quella di default se e' occupata - vedi
+      Impostazioni): riga di comando che contiene "--app=http://localhost:<porta>".
+      Una finestra cosi' aperta tiene una connessione attiva verso il
+      servizio (per esempio un canale SSE per gli aggiornamenti in tempo
+      reale), che puo' impedire allo spegnimento pulito di Spring Boot di
+      completarsi entro il timeout.
+    #>
+    Get-CimInstance -ClassName Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match '--app=http://localhost:\d+' }
+}
+
+function Close-EtichetteAppWindows {
+    param([array]$Processes)
+    if (-not $Processes -or $Processes.Count -eq 0) {
         return
     }
-    Write-Host "Fermo il servizio Etichette prima dell'installazione..."
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $UninstallScript -StopOnly
+    Write-Host "Chiudo $($Processes.Count) finestra/e di Edge in modalita' app (Etichette)..."
+    foreach ($proc in $Processes) {
+        try {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Impossibile chiudere il processo Edge PID $($proc.ProcessId): $($_.Exception.Message)"
+        }
+    }
+}
+
+function Open-EtichetteAppWindows {
+    # Riapre le finestre chiuse da Close-EtichetteAppWindows, allo stesso
+    # indirizzo (porta inclusa): $Processes e' l'elenco catturato PRIMA
+    # della chiusura, quindi la loro CommandLine e' ancora leggibile qui.
+    param([array]$Processes)
+    if (-not $Processes -or $Processes.Count -eq 0) {
+        return
+    }
+    $edgePath = Get-EdgePath
+    if (-not $edgePath) {
+        Write-Warning "Microsoft Edge non trovato; non riapro la finestra dell'app. Apri manualmente l'indirizzo del servizio."
+        return
+    }
+    $urls = @()
+    foreach ($proc in $Processes) {
+        if ($proc.CommandLine -match '--app=(http://localhost:\d+/?)') {
+            $urls += $Matches[1]
+        }
+    }
+    foreach ($url in ($urls | Select-Object -Unique)) {
+        Write-Host "Riapro $url ..."
+        Start-Process -FilePath $edgePath -ArgumentList "--app=$url"
+    }
+}
+
+function Disable-EtichetteServiceAutoStart {
+    # Come in uninstall_service.ps1: disattiva l'avvio automatico e le azioni
+    # di ripristino PRIMA di fermare il servizio, cosi' WinSW non lo fa
+    # ripartire da solo mentre msiexec sta sostituendo i file.
+    # install_service.ps1 (eseguito dall'MSI) ripristina tutto a fine
+    # installazione.
+    try {
+        Set-Service -Name "Etichette" -StartupType Disabled -ErrorAction Stop
+    } catch {
+        Write-Warning "Impossibile disattivare l'avvio automatico di Etichette: $($_.Exception.Message)"
+    }
+    $sc = Join-Path $env:SystemRoot "System32\sc.exe"
+    if (Test-Path $sc) {
+        & $sc failure "Etichette" reset= 0 actions= "" 2>&1 | Out-Null
+    }
+}
+
+function Stop-EtichetteServiceByName {
+    <#
+      Ferma il servizio "Etichette" per NOME, tramite la SCM (Get-Service /
+      Stop-Service / Get-CimInstance Win32_Service in service_common.ps1):
+      funziona indipendentemente da dove sia lanciato questo script.
+
+      Bug osservato l'8 settembre 2026, log in
+      C:\ProgramData\Etichette\log\Etichette.wrapper.log: lanciato dalla
+      cartella del repository (non da C:\Program Files\Etichette\app\), lo
+      script prima di questa correzione delegava l'arresto a
+      "uninstall_service.ps1 -StopOnly", che cerca Etichette.exe (WinSW)
+      accanto a se stesso. Etichette.exe non e' nel repository (e' scaricato
+      e staged solo dentro l'MSI costruito), quindi l'arresto veniva saltato
+      in silenzio (solo un avviso) e msiexec partiva con il servizio ancora
+      attivo: Windows Installer mostrava la finestra "Etichette sta usando
+      file...". Fermare per nome tramite la SCM invece che tramite un
+      binario locale toglie del tutto questa dipendenza dalla cartella.
+    #>
+    param(
+        [int]$TimeoutSeconds = 40
+    )
+
+    $svc = Get-Service -Name "Etichette" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+        Write-Host "Il servizio Etichette non e' registrato; nessun arresto necessario."
+        return
+    }
+    if ($svc.Status -eq "Stopped") {
+        Write-Host "Il servizio Etichette e' gia' fermo."
+        return
+    }
+
+    Disable-EtichetteServiceAutoStart
+
+    Write-Host "Fermo il servizio Etichette (timeout ${TimeoutSeconds}s)..."
+    Stop-Service -Name "Etichette" -Force -ErrorAction SilentlyContinue
+
+    if (Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds $TimeoutSeconds) {
+        Write-Host "Servizio fermato."
+        return
+    }
+
+    Write-Warning "Il servizio Etichette non si e' fermato entro ${TimeoutSeconds}s; termino il suo albero di processi."
+    Stop-ServiceProcessTree -Name "Etichette"
+    [void](Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds 5)
 }
 
 function Invoke-Msiexec {
@@ -103,8 +249,14 @@ function Invoke-Msiexec {
     # /qb! = barra di avanzamento senza pulsante Annulla (un Annulla a meta'
     # aggiornamento e' il momento peggiore per un rollback). /norestart +
     # REBOOT=ReallySuppress: il banco etichette non si riavvia mai da solo.
+    # MSIRESTARTMANAGERCONTROL=Disable: disattiva del tutto la scansione
+    # della Restart Manager sui file in uso, cosi' la finestra "Etichette
+    # sta usando file..." non puo' comparire nemmeno come effetto
+    # collaterale di qualcos'altro che tiene un handle aperto - i passi sopra
+    # (chiusura di Edge, arresto del servizio) sono gia' la prima difesa,
+    # questa e' la seconda.
     $process = Start-Process -FilePath "msiexec.exe" `
-        -ArgumentList @("/i", "`"$Msi`"", "/qb!", "/norestart", "/L*v", "`"$logPath`"", "REBOOT=ReallySuppress") `
+        -ArgumentList @("/i", "`"$Msi`"", "/qb!", "/norestart", "/L*v", "`"$logPath`"", "REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=Disable") `
         -Wait -PassThru
     return $process.ExitCode
 }
@@ -184,7 +336,11 @@ $MsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
 Write-Host "=== Etichette: aggiornamento a $MsiPath ==="
 
 Backup-Database
-Invoke-PreMsiexecStop
+
+$appWindows = Get-EtichetteAppWindowProcesses
+Close-EtichetteAppWindows -Processes $appWindows
+
+Stop-EtichetteServiceByName -TimeoutSeconds 40
 
 $exitCode = Invoke-Msiexec -Msi $MsiPath
 Write-Host "msiexec e' uscito con codice $exitCode."
@@ -194,9 +350,11 @@ if ($exitCode -eq 0 -or $exitCode -eq 3010) {
     if ($exitCode -eq 3010) {
         Write-Host "Windows Installer segnala un riavvio in sospeso (3010); e' stato soppresso (/norestart). Il servizio e' gia' stato registrato e riavviato dall'installer."
     }
+    Open-EtichetteAppWindows -Processes $appWindows
     exit 0
 }
 
 Restore-ServiceAfterFailedInstall
+Open-EtichetteAppWindows -Processes $appWindows
 Write-Error "msiexec ha fallito (codice $exitCode). Il servizio e' stato rimesso in funzione sulla versione presente sul disco."
 exit 3

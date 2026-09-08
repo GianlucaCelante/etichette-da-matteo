@@ -62,14 +62,19 @@ Build normale, dalla radice del repository:
 
 ```powershell
 cd installer
-.\Build-Setup.ps1 -Version "1.0.0"
+.\Build-Setup.ps1
 ```
 
-Produce `..\target\installer\Etichette-1.0.0.msi`. Varianti:
+Senza `-Version`, la versione si legge da `..\pom.xml` (`<version>` del
+progetto, tolto l'eventuale `-SNAPSHOT`): jar Maven, MSI e quello che
+`/api/versione` restituisce dicono sempre la stessa cosa senza scriverla in
+due posti. Produce `..\target\installer\Etichette-<versione>.msi`. Per
+forzare una versione diversa da quella nel pom (per esempio in prova):
 
 ```powershell
-.\Build-Setup.ps1 -Version "1.0.0" -SkipMaven     # jar gia' costruito, ripacchettizza solo
-.\Build-Setup.ps1 -Version "1.0.0" -CodeSign       # firma l'MSI (richiede SIGNING_CERT_PATH/SIGNING_CERT_PASSWORD)
+.\Build-Setup.ps1 -Version "1.0.0"                # forza la versione invece di leggerla dal pom
+.\Build-Setup.ps1 -SkipMaven                       # jar gia' costruito (versione dal pom), ripacchettizza solo
+.\Build-Setup.ps1 -CodeSign                        # firma l'MSI (richiede SIGNING_CERT_PATH/SIGNING_CERT_PASSWORD)
 ```
 
 L'MSI non e' firmato per la prima versione (deciso in
@@ -77,9 +82,14 @@ L'MSI non e' firmato per la prima versione (deciso in
 va avanti, va bene finche' installa Gianluca in assistenza remota o di
 persona. `-CodeSign` c'e' gia', pronto per quando ci sara' un certificato.
 
-Versione dell'app, dell'MSI e tag git devono coincidere: `-Version` e' anche
-la versione scritta nell'MSI (`--app-version` di jpackage) e nel suo
-`ProductVersion`.
+Versione dell'app, dell'MSI e tag git devono coincidere: la versione risolta
+(dal pom o da `-Version`) e' quella scritta nell'MSI (`--app-version` di
+jpackage, `ProductVersion`) e nel nome del jar cercato in `target\`
+(`etichette-<versione>.jar`, nome esatto: se `target\` contiene jar di
+build precedenti con un'altra versione, vengono ignorati).
+
+**Prima di taggare una release**, aggiorna `<version>` in `pom.xml` (root)
+alla versione da rilasciare, poi costruisci senza passare `-Version`.
 
 ## Come si installa
 
@@ -108,17 +118,28 @@ cd "cartella dove hai copiato il nuovo MSI"
 & "C:\Program Files\Etichette\app\update.ps1" ".\Etichette-1.1.0.msi"
 ```
 
-`update.ps1`:
+`update.ps1` puo' essere lanciato da qualunque cartella (la copia nel
+repository, una copiata sul Desktop, una chiavetta): non dipende dal trovare
+`Etichette.exe` (WinSW) accanto a se stesso, vedi il problema descritto sotto.
 
 1. si autoeleva (UAC) se non e' gia' in una shell da amministratore;
 2. copia il database (e i file `-wal`/`-shm`) in
    `ProgramData\Etichette\backup\pre-aggiornamento-<data-ora>\`;
-3. ferma il servizio, cosi' `msiexec` non trova i file occupati e Windows
-   non chiede il riavvio;
+3. chiude eventuali finestre di Edge aperte in modalita' app verso
+   l'indirizzo locale del servizio (tengono aperta una connessione, per
+   esempio un canale SSE per gli aggiornamenti in tempo reale, che puo'
+   impedire allo spegnimento pulito di completarsi in tempo), poi ferma il
+   servizio "Etichette" **per nome** tramite la SCM (`Get-Service` /
+   `Stop-Service`, fino a 40s; se resta bloccato in "Stopping" termina
+   l'albero di processi del servizio), cosi' `msiexec` non trova ne' i file
+   ne' Edge a tenere occupata la sessione;
 4. lancia `msiexec /i` con `/norestart` (il banco etichette non si riavvia
-   mai da solo): l'azione dentro l'MSI registra e riavvia il servizio sulla
-   nuova versione;
-5. se `msiexec` fallisce, richiama `install_service.ps1 -Silent` per
+   mai da solo) e `MSIRESTARTMANAGERCONTROL=Disable` (Windows Installer non
+   scansiona nemmeno i file in uso: una seconda rete di sicurezza, non la
+   prima, dato il passo 3 sopra): l'azione dentro l'MSI registra e riavvia
+   il servizio sulla nuova versione;
+5. riapre la finestra dell'app, se ne era stata chiusa una al passo 3;
+6. se `msiexec` fallisce, richiama `install_service.ps1 -Silent` per
    rimettere in piedi il servizio sulla versione ancora presente sul disco
    (Windows Installer ripristina i file precedenti quando un'installazione
    fallisce), invece di lasciare il banco etichette spento.
@@ -293,6 +314,32 @@ data/valuta), togli quello che risulta inutile per tenere la JRE ridotta.
   (`JpUpgradeVersionOnlyDetectDowngrade="yes"` fisso). Verificato
   decompilando l'MSI con `dark.exe`: `JpDisallowDowngrade` e' presente e
   agganciato a `JP_DOWNGRADABLE_FOUND`.
+- **Aggiornamento reale 0.1.0 -> 0.1.1 (8 settembre 2026), due bug trovati
+  sul PC di sviluppo**: `update.ps1` era stato lanciato dalla cartella del
+  repository (non da `C:\Program Files\Etichette\app\`); il suo tentativo di
+  fermare il servizio delegava a `uninstall_service.ps1 -StopOnly`, che
+  cerca `Etichette.exe` (WinSW) accanto a se stesso - non presente nel
+  repository (solo dentro l'MSI costruito) - quindi l'arresto veniva
+  saltato in silenzio e `msiexec` partiva col servizio ancora attivo,
+  facendo comparire la finestra "Etichette sta usando file..." di Windows
+  Installer. **Risolto** fermando il servizio per nome tramite la SCM
+  (`Stop-Service`), che non dipende da alcun percorso di file, piu' la
+  chiusura delle finestre Edge in modalita' app e
+  `MSIRESTARTMANAGERCONTROL=Disable` come reti di sicurezza aggiuntive (vedi
+  "Come si aggiorna" sopra). Secondo bug, nello stesso log: il passo di
+  registrazione del servizio richiamava sempre `Etichette.exe install`
+  anche quando il servizio esisteva gia', e WinSW scriveva un
+  `FATAL - Servizio specificato gia' esistente` nel log (non bloccante, ma
+  fuorviante). **Risolto** rendendo la registrazione idempotente:
+  `install_service.ps1` chiama `install` solo per un servizio nuovo; per uno
+  gia' esistente si limita a fermarlo e a farlo ripartire piu' sotto, senza
+  richiamare `install` ne' alcun altro comando WinSW al suo posto - un primo
+  tentativo di sostituirlo con `Etichette.exe refresh` e' stato tolto lo
+  stesso giorno: quel comando non esiste in WinSW 2.12 (`--help` elenca
+  install/uninstall/start/stop/stopwait/restart/restart!/status/test/testwait)
+  e scriveva un secondo FATAL, `Unknown command: refresh`, nel log. Non
+  serve comunque nulla al posto di "install": WinSW rilegge `Etichette.xml`
+  da solo a ogni avvio del servizio.
 
 ## Cosa resta da provare
 
@@ -303,10 +350,14 @@ data/valuta), togli quello che risulta inutile per tenere la JRE ridotta.
       `java.awt.headless=true` basti a far partire il rendering Java 2D in
       un servizio senza sessione grafica (Sessione 0) e che l'elenco moduli
       jlink sia davvero sufficiente (vedi jdeps sopra).
-- [ ] Aggiornamento reale "installa sopra" con `update.ps1`, compreso il
-      caso di fallimento (per esempio disconnettendo la rete a meta'
-      installazione) per controllare che il servizio si rimetta davvero in
-      piedi sulla versione precedente.
+- [ ] Ripetere l'aggiornamento reale "installa sopra" con la versione
+      corretta di `update.ps1` (fermata per nome, chiusura di Edge,
+      `MSIRESTARTMANAGERCONTROL`): il primo tentativo (0.1.0 -> 0.1.1, 8
+      settembre 2026) ha trovato i due bug descritti sopra, corretti ma non
+      ancora riverificati con un aggiornamento reale sul servizio installato.
+      Include il caso di fallimento (per esempio disconnettendo la rete a
+      meta' installazione) per controllare che il servizio si rimetta
+      davvero in piedi sulla versione precedente.
 - [ ] Espansione di `%BASE%` dentro `<arguments>` in `Etichette.xml`: usata
       per il percorso del jar (`%BASE%\etichette.jar`), e' documentata nel
       file XML come "da verificare"; se non dovesse funzionare come negli

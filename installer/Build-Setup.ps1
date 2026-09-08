@@ -2,7 +2,7 @@
 # Etichette - script di build: Maven -> jlink -> jpackage -> MSI
 # =============================================================================
 # Uso:
-#   .\Build-Setup.ps1                              # versione 0.1.0 di default
+#   .\Build-Setup.ps1                              # versione letta da ..\pom.xml (<version>, senza -SNAPSHOT)
 #   .\Build-Setup.ps1 -Version "1.0.0"
 #   .\Build-Setup.ps1 -Version "1.0.0" -SkipMaven   # ripacchettizza solo, jar gia' costruito
 #   .\Build-Setup.ps1 -Version "1.0.0" -CodeSign    # firma l'MSI alla fine
@@ -33,7 +33,10 @@
 # =============================================================================
 
 param(
-    [string]$Version = "0.1.0",
+    # Se omessa, viene letta da ..\pom.xml (<version> del progetto, senza
+    # l'eventuale suffisso -SNAPSHOT) - cosi' jar, MSI e /api/versione
+    # dicono sempre la stessa versione senza doverla scrivere in due posti.
+    [string]$Version = "",
     [string]$JdkHome = $env:JAVA_HOME,
     [switch]$SkipMaven,
 
@@ -71,6 +74,31 @@ $WinswCacheDir  = Join-Path $TargetDir "winsw-cache"
 $WixResourceDir = Join-Path $TargetDir "wix-resources"
 $StageDir       = Join-Path $TargetDir "stage"
 $IconFile       = Join-Path $ScriptDir "etichette.ico"
+
+function Get-PomVersion {
+    # Legge <version> dal <project> di primo livello del pom.xml (non quello
+    # dentro <parent>, che e' la versione di spring-boot-starter-parent).
+    # pom.xml dichiara il namespace Maven come default: serve un
+    # XmlNamespaceManager anche per un elemento senza prefisso esplicito.
+    param([string]$PomPath)
+    if (-not (Test-Path $PomPath)) {
+        throw "pom.xml non trovato in $PomPath - passa -Version esplicitamente."
+    }
+    [xml]$pomXml = Get-Content -LiteralPath $PomPath -Raw
+    $ns = New-Object System.Xml.XmlNamespaceManager($pomXml.NameTable)
+    $ns.AddNamespace("m", "http://maven.apache.org/POM/4.0.0")
+    $versionNode = $pomXml.SelectSingleNode("/m:project/m:version", $ns)
+    if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+        throw "Impossibile leggere <version> da $PomPath - passa -Version esplicitamente."
+    }
+    return ($versionNode.InnerText.Trim() -replace '-SNAPSHOT$', '')
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $PomPath = Join-Path $ProjectRoot "pom.xml"
+    $Version = Get-PomVersion -PomPath $PomPath
+    Write-Host "  Versione (da pom.xml, -Version non passato): $Version" -ForegroundColor Gray
+}
 
 if (-not $JdkHome -or -not (Test-Path $JdkHome)) {
     throw "JAVA_HOME non impostato o non valido. Passa -JdkHome 'C:\Program Files\Java\jdk-17' oppure imposta JAVA_HOME."
@@ -111,11 +139,13 @@ if ($JarPath) {
     $JarFile = Get-Item $JarPath
     Write-Host "       Jar (da -JarPath): $($JarFile.Name)" -ForegroundColor Gray
 } else {
-    $JarFile = Get-ChildItem -Path $TargetDir -Filter "etichette-*.jar" -ErrorAction SilentlyContinue `
-        | Where-Object { $_.Name -notlike "*sources*" -and $_.Name -notlike "*javadoc*" } `
-        | Select-Object -First 1
+    # Nome esatto atteso dalla versione risolta sopra (parametro o pom.xml),
+    # non un wildcard generico: un target\ con jar di versioni precedenti
+    # lasciati da build passate non deve far scegliere quello sbagliato.
+    $expectedJarName = "etichette-$Version.jar"
+    $JarFile = Get-ChildItem -Path $TargetDir -Filter $expectedJarName -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $JarFile) {
-        throw "Nessun jar etichette-*.jar trovato in $TargetDir. Esegui Maven (senza -SkipMaven) oppure passa -JarPath."
+        throw "Jar atteso non trovato: $TargetDir\$expectedJarName (versione $Version). Esegui Maven (senza -SkipMaven) oppure passa -JarPath."
     }
     Write-Host "       Jar: $($JarFile.Name)" -ForegroundColor Gray
 }
