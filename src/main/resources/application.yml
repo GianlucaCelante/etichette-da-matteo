@@ -11,8 +11,20 @@ spring:
     # di QUALSIASI colonna data scritta da Hibernate fallisce con "Error parsing time stamp"
     # (scoperto in fase 2, mai esercitato in fase 1: nessun test rileggeva prima una colonna
     # data attraverso JPA). Con date_class=TEXT scrittura e lettura usano lo stesso formato.
-    url: jdbc:sqlite:${etichette.dati}/etichette.db?journal_mode=WAL&date_class=TEXT&date_string_format=yyyy-MM-dd HH:mm:ss.SSS
+    # busy_timeout=10000: se un'altra connessione sta scrivendo, aspetta fino a 10 s prima di
+    # rispondere SQLITE_BUSY invece di fallire subito (osservato nel log del servizio installato:
+    # "SQL Error: 5" con risposte 500 quando il browser apre l'app e parte con piu' richieste in
+    # parallelo, quasi certamente scritture concorrenti di ultimo_accesso in DispositivoInterceptor).
+    url: jdbc:sqlite:${etichette.dati}/etichette.db?journal_mode=WAL&date_class=TEXT&date_string_format=yyyy-MM-dd HH:mm:ss.SSS&busy_timeout=10000
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      # SQLite ha un solo scrittore alla volta: con piu' connessioni nel pool ognuna crede di
+      # poter scrivere e si arriva comunque a SQLITE_BUSY (busy_timeout aiuta ma non elimina il
+      # rischio con scritture concorrenti lunghe). Con una sola connessione tutto l'accesso al
+      # database - letture comprese - passa da un'unica coda: piu' lento in teoria, ma per il
+      # carico di questo servizio (poche richieste al secondo da una rete locale) e' la scelta
+      # piu' robusta, e in pratica non misurabile.
+      maximum-pool-size: 1
   jpa:
     open-in-view: false
     hibernate:

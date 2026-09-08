@@ -4,6 +4,8 @@ import it.etichette.dati.Dispositivo;
 import it.etichette.dati.DispositivoRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,8 @@ import java.util.Set;
  */
 @Component
 public class DispositiviService {
+
+    private static final Logger log = LoggerFactory.getLogger(DispositiviService.class);
 
     public static final String COOKIE = "dispositivo";
     static final String ATTRIBUTO_RICHIESTA = "it.etichette.dispositivo";
@@ -84,11 +88,21 @@ public class DispositiviService {
         return INDIRIZZI_LOOPBACK.contains(request.getRemoteAddr());
     }
 
+    /**
+     * Al massimo una scrittura al minuto per dispositivo (non a ogni richiesta API). Se la
+     * scrittura fallisce (es. SQLITE_BUSY sotto piu' richieste concorrenti) si logga a WARN e si
+     * continua: sapere quando un dispositivo si e' visto l'ultima volta non vale la pena far
+     * fallire la richiesta che lo ha causato.
+     */
     private void aggiornaUltimoAccessoSeServe(Dispositivo d) {
         LocalDateTime adesso = LocalDateTime.now();
         if (d.getUltimoAccesso() == null || ChronoUnit.SECONDS.between(d.getUltimoAccesso(), adesso) >= SOGLIA_AGGIORNAMENTO.toSeconds()) {
-            d.setUltimoAccesso(adesso);
-            dispositivi.save(d);
+            try {
+                d.setUltimoAccesso(adesso);
+                dispositivi.save(d);
+            } catch (RuntimeException e) {
+                log.warn("impossibile aggiornare ultimoAccesso per il dispositivo {}: {}", d.getId(), e.getMessage());
+            }
         }
     }
 

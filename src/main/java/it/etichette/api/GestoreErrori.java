@@ -4,6 +4,7 @@ import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,7 +14,14 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 
-/** Ogni errore delle API risponde con {@code {"errore": "..."}} e il codice HTTP adeguato. */
+/**
+ * Ogni errore delle API risponde con {@code {"errore": "..."}} e il codice HTTP adeguato.
+ * Tutte le risposte forzano esplicitamente {@code Content-Type: application/json}: un endpoint
+ * che aveva gia' impostato un Content-Type diverso prima di lanciare l'eccezione (es. un
+ * controller PNG) altrimenti fa fallire la negoziazione di Spring con "Failure in
+ * @ExceptionHandler", che a sua volta arriva al browser come un errore ancora peggiore (visto nel
+ * log del servizio installato).
+ */
 @RestControllerAdvice
 public class GestoreErrori {
 
@@ -24,7 +32,7 @@ public class GestoreErrori {
         Map<String, Object> corpo = new java.util.LinkedHashMap<>();
         corpo.put("errore", e.getMessage());
         corpo.putAll(e.getDettagli());
-        return ResponseEntity.status(e.getStato()).body(corpo);
+        return ResponseEntity.status(e.getStato()).contentType(MediaType.APPLICATION_JSON).body(corpo);
     }
 
     /**
@@ -34,12 +42,13 @@ public class GestoreErrori {
      */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Map<String, String>> gestisciRisorsaMancante(NoResourceFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("errore", "risorsa non trovata: " + e.getResourcePath()));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("errore", "risorsa non trovata: " + e.getResourcePath()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> gestisciArgomentoNonValido(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(Map.of("errore", e.getMessage()));
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(Map.of("errore", e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -48,7 +57,7 @@ public class GestoreErrori {
                 .findFirst()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .orElse("dati non validi");
-        return ResponseEntity.badRequest().body(Map.of("errore", messaggio));
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(Map.of("errore", messaggio));
     }
 
     /**
@@ -64,7 +73,7 @@ public class GestoreErrori {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> gestisciErroreGenerico(Exception e) {
         log.error("errore non gestito in una richiesta API", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("errore", "errore interno: " + e.getMessage()));
     }
 }
