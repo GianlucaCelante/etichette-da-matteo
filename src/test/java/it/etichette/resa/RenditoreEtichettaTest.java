@@ -1,7 +1,7 @@
 package it.etichette.resa;
 
 import it.etichette.api.BloccoDto;
-import it.etichette.api.EtichettaDto;
+import it.etichette.api.EtichettaProdottoDto;
 import it.etichette.api.ProdottoDto;
 import it.etichette.api.ProduttoreDto;
 import it.etichette.api.ValoreNutrizionaleDto;
@@ -27,7 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * allergeni negli ingredienti, blocco logo. Non richiede il contesto Spring: {@link Caratteri} si
  * costruisce a mano e si inizializza chiamando {@code carica()} (di norma un @PostConstruct);
  * idem per {@link LogoService}, senza nessun file (il blocco "logo" non stampa nulla) a meno che
- * un test non ne salvi uno apposta (vedi {@code ilBloccoLogoSiStampaConDithering}).
+ * un test non ne salvi uno apposta (vedi {@code ilBloccoLogoSiStampaConDithering}). Dal
+ * 2026-09-08 l'etichetta vive DENTRO il prodotto ({@link ProdottoDto#etichetta}): {@link
+ * RenditoreEtichetta#rendi} prende un solo {@link ProdottoDto}, non piu' un'etichetta separata.
  */
 class RenditoreEtichettaTest {
 
@@ -41,8 +43,8 @@ class RenditoreEtichettaTest {
         renderer = new RenditoreEtichetta(caratteri, senzaLogo);
     }
 
-    /** Blocchi della "Completa" cosi' come seminati (docs/api.md). */
-    private EtichettaDto etichettaCompleta() {
+    /** Blocchi della "Completa" cosi' come seminati (docs/api.md), dentro il prodotto "Base pizza low carb". */
+    private EtichettaProdottoDto etichettaCompleta() {
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("titolo", true, 18, "piena", null),
                 new BloccoDto("ingredienti", true, 7, "piena", null),
@@ -55,12 +57,11 @@ class RenditoreEtichettaTest {
                 new BloccoDto("produttore", true, 7, "piena", null));
         ProduttoreDto produttore = new ProduttoreDto("Michi s.n.c. di Michele Alberto Crivellari",
                 "Via Brigata Marche 257 - 31030 Carbonera (TV)", "Via Trieste 4/II - 31020 Fontane di Villorba (TV)");
-        return new EtichettaDto(1L, "Completa", true, "da consumare entro", "GG/MM/AAAA", produttore,
-                new ZonaDto("1/3"), blocchi, null, null, null);
+        return new EtichettaProdottoDto("da consumare entro", "GG/MM/AAAA", produttore, new ZonaDto("1/3"), blocchi);
     }
 
     private ProdottoDto prodottoBase() {
-        return new ProdottoDto(1L, "Base pizza low carb", "BASE PIZZA LOW CARB ARTIGIANALE", 1L,
+        return new ProdottoDto(1L, "Base pizza low carb", "BASE PIZZA LOW CARB ARTIGIANALE", etichettaCompleta(),
                 "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO], "
                         + "Olio di girasole, Sale iodato.",
                 List.of("Latte", "Soia", "Uova"), "3 modi per prepararle al meglio.", 7, "Fuori dal frigo", "2148 g",
@@ -74,7 +75,7 @@ class RenditoreEtichettaTest {
 
     @Test
     void completaSulRotolo62HaLaLarghezzaGiustaEContienePixelNeri() {
-        RisultatoResa r = renderer.rendi(etichettaCompleta(), prodottoBase(), parametriDiProva(), 62, 1.0);
+        RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
 
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
         assertThat(r.immagine().getHeight()).isGreaterThan(0);
@@ -85,7 +86,7 @@ class RenditoreEtichettaTest {
 
     @Test
     void completaSulRotolo102HaLaLarghezzaGiustaEContienePixelNeri() {
-        RisultatoResa r = renderer.rendi(etichettaCompleta(), prodottoBase(), parametriDiProva(), 102, 1.0);
+        RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 102, 1.0);
 
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]);
         assertThat(r.immagine().getHeight()).isGreaterThan(0);
@@ -99,9 +100,9 @@ class RenditoreEtichettaTest {
         ProdottoDto prodottoConTitoloLunghissimo = new ProdottoDto(1L, "Prodotto", (
                 "UN NOME DI PRODOTTO DAVVERO MOLTO MOLTO LUNGO CHE NON PUO' STARE SU UNA SOLA RIGA "
                         + "DELL'ETICHETTA PER QUANTO SI PROVI A COMPRIMERLO, SERVE A FORZARE IL RITORNO A CAPO")
-                .repeat(1), 1L, "Acqua, Sale.", List.of(), null, 7, "In frigo", "100 g", List.of(), null, 0, null, null, null);
+                .repeat(1), etichettaCompleta(), "Acqua, Sale.", List.of(), null, 7, "In frigo", "100 g", List.of(), null, 0, null, null, null);
 
-        RisultatoResa r = renderer.rendi(etichettaCompleta(), prodottoConTitoloLunghissimo, parametriDiProva(), 62, 1.0);
+        RisultatoResa r = renderer.rendi(prodottoConTitoloLunghissimo, parametriDiProva(), 62, 1.0);
 
         assertThat(r.avvisi()).contains("Il titolo è stato mandato a capo");
     }
@@ -116,14 +117,14 @@ class RenditoreEtichettaTest {
                 // un blocco sx con contenuto vero: se restasse vuoto la zona renderebbe "dx" a
                 // piena larghezza (niente colonna stretta da testare, vedi disegnaZona).
                 new BloccoDto("testo", true, 7, "sx", "x"));
-        EtichettaDto etichetta = new EtichettaDto(1L, "Prova", false, null, null, null, new ZonaDto("1/4"), blocchi, null, null, null);
-        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, 1L, null, List.of(), null, null, null, null,
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, new ZonaDto("1/4"), blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
                 List.of(new ValoreNutrizionaleDto(
                         "Una voce nutrizionale scritta apposta con un nome lunghissimo che non puo' stare su una sola riga di una colonna stretta",
                         "12345 kcal")),
                 null, 0, null, null, null);
 
-        RisultatoResa r = renderer.rendi(etichetta, prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
 
         assertThat(contienePixelNeri(r.immagine())).isTrue();
         // una singola riga a 7pt e' alta pochi mm; con la voce andata a capo su piu' righe
@@ -157,7 +158,7 @@ class RenditoreEtichettaTest {
     }
 
     /** Blocchi veri della "Cucina" dopo la revisione contro il mockup del 2026-09-08 (v2-semi.yaml, 18-etichette-blocchi-cucina-dati). */
-    private EtichettaDto etichettaCucina() {
+    private EtichettaProdottoDto etichettaCucina() {
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("titolo", true, 14, "piena", null),
                 new BloccoDto("dataProduzione", true, 8, "piena", null),
@@ -165,40 +166,38 @@ class RenditoreEtichettaTest {
                 new BloccoDto("lotto", true, 7, "piena", null),
                 new BloccoDto("sigla", true, 7, "piena", null));
         ProduttoreDto produttore = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null);
-        return new EtichettaDto(2L, "Cucina", true, "Scade il", "GG/MM/AAAA", produttore,
-                new ZonaDto("1/2"), blocchi, null, null, null);
+        return new EtichettaProdottoDto("Scade il", "GG/MM/AAAA", produttore, new ZonaDto("1/2"), blocchi);
     }
 
     /** "Impasto classico 24h" (v2-semi.yaml, 17-seed-prodotti + 19-prodotti-cucina-sigla-operatore: siglaOperatore = "M.C."). */
     private ProdottoDto impastoClassico24h() {
-        return new ProdottoDto(2L, "Impasto classico 24h", "IMPASTO CLASSICO 24H", 2L,
+        return new ProdottoDto(2L, "Impasto classico 24h", "IMPASTO CLASSICO 24H", etichettaCucina(),
                 "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", List.of("Soia"), "", 3,
                 "In frigo", "250 g", List.of(), "M.C.", 8, null, null, null);
     }
 
     @Test
     void laCucinaDiImpastoClassico24hContieneDataDiProduzioneESigla() {
-        RisultatoResa r = renderer.rendi(etichettaCucina(), impastoClassico24h(), parametriDiProva(), 102, 1.0);
+        ProdottoDto prodotto = impastoClassico24h();
+        RisultatoResa r = renderer.rendi(prodotto, parametriDiProva(), 102, 1.0);
 
         assertThat(contienePixelNeri(r.immagine())).isTrue();
         // la riga di "dataProduzione" (data della stampa: cambia ogni giorno, non si confronta un
         // valore fisso) inizia sempre con "Prodotto il " nel formatoData dell'etichetta.
-        assertThat(renderer.testoDataProduzione(etichettaCucina().formatoData())).startsWith("Prodotto il ");
+        assertThat(renderer.testoDataProduzione(prodotto.etichetta().formatoData())).startsWith("Prodotto il ");
         // la riga di "sigla" e' esattamente "Preparato da " + siglaOperatore del prodotto.
-        assertThat(renderer.testoSigla(impastoClassico24h())).isEqualTo("Preparato da M.C.");
+        assertThat(renderer.testoSigla(prodotto)).isEqualTo("Preparato da M.C.");
     }
 
     @Test
     void ilBloccoSiglaNonOccupaSpazioSeSiglaOperatoreEVuota() {
-        ProdottoDto senzaSigla = new ProdottoDto(2L, "Impasto classico 24h", null, 2L,
+        List<BloccoDto> soloSigla = List.of(new BloccoDto("sigla", true, 7, "piena", null));
+        EtichettaProdottoDto etichettaSoloSigla = new EtichettaProdottoDto(null, "GG/MM/AAAA", null, new ZonaDto("1/3"), soloSigla);
+        ProdottoDto senzaSigla = new ProdottoDto(2L, "Impasto classico 24h", null, etichettaSoloSigla,
                 "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", List.of(), "", 3,
                 "In frigo", "250 g", List.of(), "", 0, null, null, null); // siglaOperatore = ""
 
-        List<BloccoDto> soloSigla = List.of(new BloccoDto("sigla", true, 7, "piena", null));
-        EtichettaDto etichettaSoloSigla = new EtichettaDto(2L, "Prova sigla", false, null, "GG/MM/AAAA", null,
-                new ZonaDto("1/3"), soloSigla, null, null, null);
-
-        RisultatoResa r = renderer.rendi(etichettaSoloSigla, senzaSigla, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r = renderer.rendi(senzaSigla, ParametriStampa.VUOTI, 102, 1.0);
 
         // nessun contenuto: il blocco "sigla" e' l'unico e non si stampa (haContenuto -> false),
         // quindi l'etichetta resta vuota (solo il margine, nessun pixel nero).
@@ -208,10 +207,12 @@ class RenditoreEtichettaTest {
     @Test
     void ilBloccoDataProduzioneOccupaSempreSpazio() {
         List<BloccoDto> soloDataProduzione = List.of(new BloccoDto("dataProduzione", true, 8, "piena", null));
-        EtichettaDto etichetta = new EtichettaDto(2L, "Prova data", false, null, "GG/MM/AAAA", null,
-                new ZonaDto("1/3"), soloDataProduzione, null, null, null);
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, "GG/MM/AAAA", null, new ZonaDto("1/3"), soloDataProduzione);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Base pizza low carb", "BASE PIZZA LOW CARB ARTIGIANALE", etichetta,
+                prodottoBase().ingredienti(), prodottoBase().allergeni(), prodottoBase().modoUso(), 7, "Fuori dal frigo",
+                "2148 g", prodottoBase().valoriNutrizionali(), "M.C.", 12, null, null, null);
 
-        RisultatoResa r = renderer.rendi(etichetta, prodottoBase(), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
 
         // a differenza di "sigla", "dataProduzione" ha sempre contenuto (la data di oggi c'e' sempre).
         assertThat(contienePixelNeri(r.immagine())).isTrue();
@@ -238,9 +239,11 @@ class RenditoreEtichettaTest {
         RenditoreEtichetta rendererConLogo = new RenditoreEtichetta(caratteri, new LogoService(cartella.toString()));
 
         List<BloccoDto> blocchi = List.of(new BloccoDto("logo", true, 10, "piena", null));
-        EtichettaDto etichetta = new EtichettaDto(1L, "Prova logo", false, null, null, null, null, blocchi, null, null, null);
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prova logo", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
 
-        RisultatoResa r = rendererConLogo.rendi(etichetta, prodottoBase(), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r = rendererConLogo.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
 
         assertThat(contienePixelNeri(r.immagine())).isTrue();
         // margine (1,5 mm sopra) + logo alto 10 mm (corpo del blocco) + margine sotto

@@ -173,11 +173,12 @@ function indirizziLocali() {
   return trovati;
 }
 
-/* ============================ dati di partenza: etichette e prodotti ============================ */
-// Le quattro etichette pronte (docs/api.md, "Dati di partenza"), coi blocchi
-// del prototipo banco-etichette-2026-09-08.html. Tutte e quattro sono
-// "predefinita": non si eliminano dalla galleria. "Completa" resta la prima
-// dell'elenco, quindi quella proposta ai prodotti nuovi.
+/* ============================ dati di partenza: prodotti (con l'etichetta dentro) ============================ */
+// Decisione finale sul mockup (revisione di questo giro): non esistono piu'
+// tipi di etichetta ne' una galleria da cui sceglierli. Ogni prodotto ha la
+// SUA etichetta dentro di se' (dicituraScadenza, formatoData, produttore,
+// zona, blocchi), copiata all'origine da un preset ma poi indipendente: chi
+// modifica l'etichetta di un prodotto non tocca quella di nessun altro.
 const MICHI_COMPLETO = {
   ragioneSociale: "Michi s.n.c. di Michele Alberto Crivellari",
   sedeLegale: "Via Brigata Marche 257 - 31030 Carbonera (TV)",
@@ -191,16 +192,13 @@ const bl = (tipo, corpo, colonna = "piena", acceso = true, testo) => {
   return b;
 };
 
-let prossimoEtichettaId = 5;
-const oraIniziale = dataLocaleIso();
-const etichette = [
-  {
-    id: 1,
-    nome: "Completa",
-    predefinita: true,
+// I preset da cui nascono le etichette dei prodotti demo: ogni chiamata
+// ritorna un oggetto nuovo (produttore compreso), mai condiviso fra prodotti.
+function etichettaVendita() {
+  return {
     dicituraScadenza: "da consumare entro",
     formatoData: "GG/MM/AAAA",
-    produttore: MICHI_COMPLETO,
+    produttore: { ...MICHI_COMPLETO },
     zona: { larghezzaDestra: "1/3" },
     blocchi: [
       bl("titolo", 18),
@@ -213,64 +211,44 @@ const etichette = [
       bl("valori", 7, "dx"),
       bl("produttore", 7),
     ],
-    creataIl: oraIniziale,
-    modificataIl: oraIniziale,
-  },
-  {
-    id: 2,
-    nome: "Cucina",
-    predefinita: true,
+  };
+}
+function etichettaCucina() {
+  return {
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
-    produttore: MICHI_BREVE,
+    produttore: { ...MICHI_BREVE },
     zona: { larghezzaDestra: "1/2" },
-    blocchi: [
-      bl("titolo", 14),
-      bl("dataProduzione", 8),
-      bl("scadenza", 8),
-      bl("lotto", 7),
-      bl("sigla", 7),
-    ],
-    creataIl: oraIniziale,
-    modificataIl: oraIniziale,
-  },
-  {
-    id: 3,
-    nome: "Aperto il / Scade il",
-    predefinita: true,
+    blocchi: [bl("titolo", 14), bl("dataProduzione", 8), bl("scadenza", 8), bl("lotto", 7), bl("sigla", 7)],
+  };
+}
+function etichettaAperto() {
+  return {
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
-    produttore: MICHI_BREVE,
+    produttore: { ...MICHI_BREVE },
     zona: { larghezzaDestra: "1/2" },
     blocchi: [bl("testoGrande", 10, "piena", true, "APERTO IL"), bl("scadenza", 20), bl("lotto", 8)],
-    creataIl: oraIniziale,
-    modificataIl: oraIniziale,
-  },
-  {
-    id: 4,
-    nome: "Libera",
-    predefinita: true,
+  };
+}
+// L'etichetta che nasce con un prodotto nuovo: il minimo che serve al banco
+// (docs/api.md e prototipo banco-etichette-2026-09-08.html, "etichettaNuova").
+function etichettaNuova() {
+  return {
     dicituraScadenza: "Scade il",
     formatoData: "GG/MM/AAAA",
-    produttore: MICHI_BREVE,
-    // apposta null: verifica che l'interfaccia regga zona mancante (correzione
-    // di questo giro). Il servizio vero la manda sempre, ma non ci si affida.
-    zona: null,
-    blocchi: [],
-    creataIl: oraIniziale,
-    modificataIl: oraIniziale,
-  },
-];
-
-function trovaEtichetta(id) {
-  return etichette.find((e) => e.id === id);
+    produttore: { ...MICHI_BREVE },
+    zona: { larghezzaDestra: "1/2" },
+    blocchi: [bl("titolo", 14), bl("scadenza", 8), bl("lotto", 7)],
+  };
 }
 
 // I prodotti di esempio del prototipo, con testi, allergeni e valori veri.
 let prossimoProdottoId = 10;
+const oraIniziale = dataLocaleIso();
 const prodotti = [
   {
-    id: 1, nome: "Base pizza low carb", nomeStampa: "BASE PIZZA LOW CARB ARTIGIANALE", etichettaId: 1,
+    id: 1, nome: "Base pizza low carb", nomeStampa: "BASE PIZZA LOW CARB ARTIGIANALE", etichetta: etichettaVendita(),
     ingredienti: "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO, Lievito madre di farina di FRUMENTO in polvere, Lievito disattivato, Proteina di AVENA], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante in polvere per panificazione [Farina di GRANO tenero tipo 0, Enzimi], Miscela per spolvero [SEMOLA rimacinata di GRANO duro, Farina di riso, Farina di mais].",
     allergeni: ["Latte", "Lupini", "Senape", "Sesamo", "Soia", "Uova"],
     modoUso: "3 modi per prepararle al meglio: 1. Infornare a 250° per circa 5 minuti; 2. Mettere in padella a fuoco medio per circa 7 minuti; 3. Riscaldare in friggitrice ad aria.",
@@ -284,25 +262,25 @@ const prodotti = [
     siglaOperatore: "M.C.", usi: 12,
   },
   {
-    id: 2, nome: "Impasto classico 24h", nomeStampa: "IMPASTO CLASSICO 24H", etichettaId: 2,
+    id: 2, nome: "Impasto classico 24h", nomeStampa: "IMPASTO CLASSICO 24H", etichetta: etichettaCucina(),
     ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", allergeni: ["Soia"],
     modoUso: "", giorniScadenza: 3, conservazione: "In frigo", quantita: "250 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 8,
   },
   {
-    id: 3, nome: "Impasto integrale", nomeStampa: "IMPASTO INTEGRALE", etichettaId: 2,
+    id: 3, nome: "Impasto integrale", nomeStampa: "IMPASTO INTEGRALE", etichetta: etichettaCucina(),
     ingredienti: "Farina integrale di GRANO tenero, Acqua, Sale, Lievito di birra.", allergeni: [],
     modoUso: "", giorniScadenza: 3, conservazione: "In frigo", quantita: "250 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 7,
   },
   {
-    id: 4, nome: "Focaccia al rosmarino", nomeStampa: "FOCACCIA AL ROSMARINO", etichettaId: 1,
+    id: 4, nome: "Focaccia al rosmarino", nomeStampa: "FOCACCIA AL ROSMARINO", etichetta: etichettaVendita(),
     ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Olio extravergine di oliva, Rosmarino, Sale, Lievito di birra.", allergeni: [],
     modoUso: "", giorniScadenza: 2, conservazione: "Fuori dal frigo", quantita: "400 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 2,
   },
   {
-    id: 5, nome: "Salsa di pomodoro", nomeStampa: "SALSA DI POMODORO", etichettaId: 1,
+    id: 5, nome: "Salsa di pomodoro", nomeStampa: "SALSA DI POMODORO", etichetta: etichettaVendita(),
     ingredienti: "Pomodoro, Olio extravergine di oliva, Basilico, Sale.", allergeni: [],
     modoUso: "", giorniScadenza: 4, conservazione: "In frigo", quantita: "1000 g",
     valoriNutrizionali: [
@@ -312,7 +290,7 @@ const prodotti = [
     siglaOperatore: "M.C.", usi: 6,
   },
   {
-    id: 6, nome: "Pesto di basilico", nomeStampa: "PESTO DI BASILICO", etichettaId: 1,
+    id: 6, nome: "Pesto di basilico", nomeStampa: "PESTO DI BASILICO", etichetta: etichettaVendita(),
     ingredienti: "Basilico, Olio extravergine di oliva, ANACARDI, Sale, Aglio.", allergeni: ["Frutta a guscio", "Latte"],
     modoUso: "", giorniScadenza: 5, conservazione: "In frigo", quantita: "500 g",
     valoriNutrizionali: [
@@ -322,19 +300,19 @@ const prodotti = [
     siglaOperatore: "M.C.", usi: 3,
   },
   {
-    id: 7, nome: "Crema di zucca", nomeStampa: "CREMA DI ZUCCA", etichettaId: 2,
+    id: 7, nome: "Crema di zucca", nomeStampa: "CREMA DI ZUCCA", etichetta: etichettaCucina(),
     ingredienti: "Zucca, Patate, Cipolla, Olio extravergine di oliva, Sale.", allergeni: [],
     modoUso: "", giorniScadenza: 3, conservazione: "In frigo", quantita: "500 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 5,
   },
   {
-    id: 8, nome: "Ragù bianco", nomeStampa: "RAGÙ BIANCO", etichettaId: 2,
+    id: 8, nome: "Ragù bianco", nomeStampa: "RAGÙ BIANCO", etichetta: etichettaCucina(),
     ingredienti: "Carne di manzo, SEDANO, Carota, Cipolla, Olio extravergine di oliva, Sale.", allergeni: ["Sedano"],
     modoUso: "", giorniScadenza: 3, conservazione: "In frigo", quantita: "800 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 1,
   },
   {
-    id: 9, nome: "Mozzarella tagliata", nomeStampa: "MOZZARELLA TAGLIATA", etichettaId: 3,
+    id: 9, nome: "Mozzarella tagliata", nomeStampa: "MOZZARELLA TAGLIATA", etichetta: etichettaAperto(),
     ingredienti: "LATTE vaccino, Sale, Caglio.", allergeni: ["Latte"],
     modoUso: "", giorniScadenza: 2, conservazione: "In frigo", quantita: "1000 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 4,
@@ -561,13 +539,12 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
 /* ============================ storico ============================ */
 let prossimoStoricoId = 100;
 const storico = [];
-function registraStorico(prodotto, etichetta, { copie, quantita, scadenza, lotto, dispositivoNome, esito }) {
+function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, esito }) {
   const riga = {
     id: prossimoStoricoId++,
     stampatoIl: dataLocaleIso(),
     prodottoId: prodotto.id,
     prodottoNome: prodotto.nome,
-    etichettaNome: etichetta ? etichetta.nome : "—",
     lotto: lotto || "",
     quantita,
     scadenza,
@@ -593,7 +570,6 @@ function registraStorico(prodotto, etichetta, { copie, quantita, scadenza, lotto
   ];
   for (const s of semi.reverse()) {
     const p = trovaProdotto(s.prodottoId);
-    const et = trovaEtichetta(p.etichettaId);
     const quando = new Date(Date.now() - s.oraFa);
     const lotto = `L ${chiaveGiorno(s.giorno)}-${String(s.prog).padStart(3, "0")}`;
     const scadenza = dataLocale(piuGiorni(quando, p.giorniScadenza));
@@ -602,7 +578,6 @@ function registraStorico(prodotto, etichetta, { copie, quantita, scadenza, lotto
       stampatoIl: dataLocaleIso(quando),
       prodottoId: p.id,
       prodottoNome: p.nome,
-      etichettaNome: et.nome,
       lotto,
       quantita: p.quantita,
       scadenza,
@@ -811,11 +786,14 @@ function leggiDimensioniImmagine(buf, mime) {
 /* ============================ stampe: lavori attivi ============================ */
 const lavoriAttivi = new Map(); // lavoroId -> { annullato }
 
-function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, registraNelloStorico = true }) {
+// "prova" (revisione di questo giro): la "Stampa di prova" di Etichette
+// finisce comunque nello storico (per non perdere traccia di cosa e' uscito
+// dal banco), ma con esito "prova" invece di "completata", e non conta per
+// "usi"/"ultimoUso" del prodotto (altrimenti falserebbe "più usati").
+function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, prova = false }) {
   const lavoroId = "stampa-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const lavoro = { annullato: false, copiaCorrente: 0 };
   lavoriAttivi.set(lavoroId, lavoro);
-  const etichetta = trovaEtichetta(prodotto.etichettaId);
 
   stampante = { ...stampante, stato: "in_stampa", messaggio: "Stampa in corso" };
   mandaEvento("stampante", stampante);
@@ -824,17 +802,19 @@ function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, disposi
     lavoriAttivi.delete(lavoroId);
     stampante = { ...stampante, stato: "pronta", messaggio: "Pronta" };
     mandaEvento("stampante", stampante);
-    if (lavoro.copiaCorrente > 0 && registraNelloStorico) {
-      registraStorico(prodotto, etichetta, {
+    if (lavoro.copiaCorrente > 0) {
+      registraStorico(prodotto, {
         copie: lavoro.copiaCorrente,
         quantita,
         scadenza,
         lotto,
         dispositivoNome,
-        esito: stato === "errore" ? "errore" : "completata",
+        esito: stato === "errore" ? "errore" : prova ? "prova" : "completata",
       });
-      prodotto.usi += 1;
-      prodotto.ultimoUso = dataLocaleIso();
+      if (!prova) {
+        prodotto.usi += 1;
+        prodotto.ultimoUso = dataLocaleIso();
+      }
     }
     mandaEvento("stampa", {
       lavoroId,
@@ -967,15 +947,16 @@ const server = http.createServer(async (req, res) => {
       return rispondiJson(res, 200, { lavoroId });
     }
 
-    // La "Stampa di prova" della vista Etichette: prova l'etichetta COSI' COM'E'
-    // in modifica (anche non salvata), su una sola copia. Non tocca lo storico
-    // ne' "usi"/"ultimoUso" del prodotto: e' solo una prova, non una stampa vera.
-    if (percorso === "/api/stampe/prova-etichetta" && req.method === "POST") {
+    // La "Stampa di prova" della vista Etichette: prova il prodotto COSI'
+    // COM'E' in modifica (anche non salvato, etichetta compresa), su una sola
+    // copia. Finisce nello storico con esito "prova" (avviaLavoroStampa se ne
+    // occupa), non tocca "usi"/"ultimoUso".
+    if (percorso === "/api/stampe/prova-prodotto" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req);
-      if (!corpo.etichetta || !Array.isArray(corpo.etichetta.blocchi)) return erroreJson(res, 400, "Manca l'etichetta da provare");
-      let prodotto = corpo.prodottoId ? trovaProdotto(Number(corpo.prodottoId)) : undefined;
-      if (!prodotto) prodotto = prodotti[0];
-      if (!prodotto) return erroreJson(res, 400, "Nessun prodotto disponibile per la prova");
+      const prodotto = corpo.prodotto;
+      if (!prodotto || !prodotto.etichetta || !Array.isArray(prodotto.etichetta.blocchi)) {
+        return erroreJson(res, 400, "Manca il prodotto da provare");
+      }
       const dispositivo = identificaDispositivo(req, res);
       const lavoroId = avviaLavoroStampa(prodotto, {
         copie: 1,
@@ -983,7 +964,7 @@ const server = http.createServer(async (req, res) => {
         scadenza: dataLocale(piuGiorni(new Date(), prodotto.giorniScadenza)),
         lotto: "PROVA",
         dispositivoNome: dispositivo.nome,
-        registraNelloStorico: false,
+        prova: true,
       });
       return rispondiJson(res, 200, { lavoroId });
     }
@@ -1035,70 +1016,6 @@ const server = http.createServer(async (req, res) => {
     if (percorso === "/api/rete/qr.png" && req.method === "GET") return rispondiPng(res, QR_PNG);
     if (percorso === "/api/versione" && req.method === "GET") return rispondiJson(res, 200, versione);
 
-    /* ---- etichette ---- */
-    if (percorso === "/api/etichette" && req.method === "GET") {
-      const elenco = etichette.map((e) => ({ ...e, prodotti: prodotti.filter((p) => p.etichettaId === e.id).length }));
-      return rispondiJson(res, 200, elenco);
-    }
-    if (percorso === "/api/etichette" && req.method === "POST") {
-      const partiDa = url.searchParams.get("partiDa");
-      const corpo = await leggiCorpoJson(req);
-      const ora = dataLocaleIso();
-      if (partiDa) {
-        const origine = trovaEtichetta(Number(partiDa));
-        if (!origine) return erroreJson(res, 404, "Etichetta di partenza non trovata");
-        const nuova = {
-          ...JSON.parse(JSON.stringify(origine)),
-          id: prossimoEtichettaId++,
-          nome: corpo.nome || origine.nome + " (copia)",
-          predefinita: false,
-          creataIl: ora,
-          modificataIl: ora,
-        };
-        etichette.push(nuova);
-        return rispondiJson(res, 200, nuova);
-      }
-      if (!corpo.nome) return erroreJson(res, 400, "Manca il nome dell'etichetta");
-      const nuova = {
-        id: prossimoEtichettaId++,
-        nome: corpo.nome,
-        predefinita: false,
-        dicituraScadenza: corpo.dicituraScadenza || "Scade il",
-        formatoData: corpo.formatoData || "GG/MM/AAAA",
-        produttore: corpo.produttore || MICHI_BREVE,
-        zona: corpo.zona || { larghezzaDestra: "1/2" },
-        blocchi: Array.isArray(corpo.blocchi) ? corpo.blocchi : [],
-        creataIl: ora,
-        modificataIl: ora,
-      };
-      etichette.push(nuova);
-      return rispondiJson(res, 200, nuova);
-    }
-    const unaEtichetta = percorso.match(/^\/api\/etichette\/(\d+)$/);
-    if (unaEtichetta) {
-      const id = Number(unaEtichetta[1]);
-      const etichetta = trovaEtichetta(id);
-      if (req.method === "GET") {
-        if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
-        return rispondiJson(res, 200, etichetta);
-      }
-      if (req.method === "PUT") {
-        if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
-        const corpo = await leggiCorpoJson(req);
-        Object.assign(etichetta, corpo, { id, modificataIl: dataLocaleIso() });
-        return rispondiJson(res, 200, etichetta);
-      }
-      if (req.method === "DELETE") {
-        if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
-        if (etichetta.predefinita) return erroreJson(res, 409, "Le etichette pronte non si possono eliminare");
-        const usanti = prodotti.filter((p) => p.etichettaId === id);
-        if (usanti.length) return erroreJson(res, 409, "La usano ancora dei prodotti", { prodotti: usanti.map((p) => p.nome) });
-        etichette.splice(etichette.indexOf(etichetta), 1);
-        res.writeHead(204).end();
-        return;
-      }
-    }
-
     /* ---- prodotti ---- */
     if (percorso === "/api/prodotti" && req.method === "GET") {
       const q = (url.searchParams.get("q") || "").toLowerCase();
@@ -1113,22 +1030,25 @@ const server = http.createServer(async (req, res) => {
       });
       return rispondiJson(res, 200, elenco);
     }
+    // Senza corpo: il prodotto nuovo del prototipo, pronto da riscrivere
+    // subito (nome "Prodotto nuovo", 3 giorni, "In frigo", "500 g", etichetta
+    // minima). Con corpo: quello che manda il chiamante (revisione di questo
+    // giro: non c'e' piu' una galleria di etichette da cui pescarne una).
     if (percorso === "/api/prodotti" && req.method === "POST") {
-      const corpo = await leggiCorpoJson(req);
-      if (!corpo.nome) return erroreJson(res, 400, "Manca il nome del prodotto");
+      const corpo = await leggiCorpoJson(req).catch(() => ({}));
       const ora = dataLocaleIso();
-      const predefinita = etichette.find((e) => e.predefinita) || etichette[0];
+      const nome = corpo.nome || "Prodotto nuovo";
       const nuovo = {
         id: prossimoProdottoId++,
-        nome: corpo.nome,
-        nomeStampa: corpo.nomeStampa || String(corpo.nome).toUpperCase(),
-        etichettaId: Number(corpo.etichettaId) || predefinita.id,
+        nome,
+        nomeStampa: corpo.nomeStampa || (corpo.nome ? String(corpo.nome).toUpperCase() : "PRODOTTO NUOVO"),
+        etichetta: corpo.etichetta && Array.isArray(corpo.etichetta.blocchi) ? corpo.etichetta : etichettaNuova(),
         ingredienti: corpo.ingredienti || "",
         allergeni: Array.isArray(corpo.allergeni) ? corpo.allergeni : [],
         modoUso: corpo.modoUso || "",
         giorniScadenza: Number(corpo.giorniScadenza) || 3,
         conservazione: corpo.conservazione || "In frigo",
-        quantita: corpo.quantita || "",
+        quantita: corpo.quantita || "500 g",
         valoriNutrizionali: Array.isArray(corpo.valoriNutrizionali) ? corpo.valoriNutrizionali : [],
         siglaOperatore: corpo.siglaOperatore || "",
         usi: 0,
@@ -1138,6 +1058,30 @@ const server = http.createServer(async (req, res) => {
       };
       prodotti.push(nuovo);
       return rispondiJson(res, 200, nuovo);
+    }
+    // "Duplica prodotto": copia tutto, etichetta compresa (funzionalita' del
+    // prototipo, funzione duplicaProdotto). Il nome stampato segue quello in
+    // elenco solo se andavano insieme; se erano stati separati apposta, resta
+    // com'era.
+    const duplicaProdottoMatch = percorso.match(/^\/api\/prodotti\/(\d+)\/duplica$/);
+    if (duplicaProdottoMatch && req.method === "POST") {
+      const originale = trovaProdotto(Number(duplicaProdottoMatch[1]));
+      if (!originale) return erroreJson(res, 404, "Prodotto non trovato");
+      const ora = dataLocaleIso();
+      const insieme = originale.nomeStampa === originale.nome.toUpperCase();
+      const nome = originale.nome + " (copia)";
+      const copia = {
+        ...JSON.parse(JSON.stringify(originale)),
+        id: prossimoProdottoId++,
+        nome,
+        nomeStampa: insieme ? nome.toUpperCase() : originale.nomeStampa,
+        usi: 0,
+        ultimoUso: null,
+        creatoIl: ora,
+        modificatoIl: ora,
+      };
+      prodotti.push(copia);
+      return rispondiJson(res, 201, copia);
     }
     const unProdotto = percorso.match(/^\/api\/prodotti\/(\d+)$/);
     if (unProdotto) {
@@ -1166,42 +1110,37 @@ const server = http.createServer(async (req, res) => {
     if (resaProdottoPng && req.method === "GET") {
       const prodotto = trovaProdotto(Number(resaProdottoPng[1]));
       if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
-      const etichetta = trovaEtichetta(prodotto.etichettaId);
-      if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
       const rotolo = Number(url.searchParams.get("rotolo")) === 102 ? 102 : 62;
       const scala = Number(url.searchParams.get("scala")) || 1;
       const prodottoEffettivo = {
         ...prodotto,
         quantita: url.searchParams.get("quantita") || prodotto.quantita,
       };
-      return rispondiPng(res, renderEtichettaPng(prodottoEffettivo, etichetta, {
+      return rispondiPng(res, renderEtichettaPng(prodottoEffettivo, prodotto.etichetta, {
         rotolo, scala,
         scadenza: url.searchParams.get("scadenza") || undefined,
         lotto: url.searchParams.get("lotto") || undefined,
       }));
     }
+    // Il prodotto in modifica (anche non salvato, etichetta compresa): non
+    // c'e' piu' un "prodottoId" a parte, ne' un'etichetta separata da unire -
+    // revisione di questo giro, e' tutto dentro "prodotto".
     if (percorso === "/api/resa/anteprima.png" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req);
-      const etichettaBozza = corpo.etichetta;
-      if (!etichettaBozza || !Array.isArray(etichettaBozza.blocchi)) return erroreJson(res, 400, "Manca l'etichetta da rendere");
-      let prodotto = corpo.prodottoId ? trovaProdotto(Number(corpo.prodottoId)) : undefined;
-      if (!prodotto) prodotto = prodotti[0]; // "Senza prodottoId si usa un prodotto di esempio" (docs/api.md)
-      // "prodotto" (revisione di questo giro): il prodotto in modifica, non
-      // ancora salvato, stessa forma di PUT /api/prodotti. Senza, l'anteprima
-      // di Etichette si aggiornerebbe solo per i blocchi, non per i suoi campi.
-      if (corpo.prodotto && typeof corpo.prodotto === "object") prodotto = { ...prodotto, ...corpo.prodotto };
+      const prodotto = corpo.prodotto;
+      if (!prodotto || !prodotto.etichetta || !Array.isArray(prodotto.etichetta.blocchi)) {
+        return erroreJson(res, 400, "Manca il prodotto da rendere");
+      }
       const rotolo = corpo.rotolo === 102 ? 102 : 62;
       const scala = Number(corpo.scala) > 0 ? Number(corpo.scala) : 1;
-      return rispondiPng(res, renderEtichettaPng(prodotto, etichettaBozza, { rotolo, scala }));
+      return rispondiPng(res, renderEtichettaPng(prodotto, prodotto.etichetta, { rotolo, scala }));
     }
     const misureProdotto = percorso.match(/^\/api\/resa\/prodotti\/(\d+)\/misure$/);
     if (misureProdotto && req.method === "GET") {
       const prodotto = trovaProdotto(Number(misureProdotto[1]));
       if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
-      const etichetta = trovaEtichetta(prodotto.etichettaId);
-      if (!etichetta) return erroreJson(res, 404, "Etichetta non trovata");
       const rotolo = Number(url.searchParams.get("rotolo")) === 102 ? 102 : 62;
-      const geometria = calcolaGeometria(prodotto, etichetta, { rotolo });
+      const geometria = calcolaGeometria(prodotto, prodotto.etichetta, { rotolo });
       return rispondiJson(res, 200, {
         larghezzaMm: Math.round(geometria.larghezzaMm * 10) / 10,
         altezzaMm: Math.round(geometria.altezzaMm * 10) / 10,
@@ -1274,5 +1213,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORTA, () => {
   console.log(`Servizio finto "Etichette" in ascolto su http://localhost:${PORTA}`);
   console.log("Rotte: stampante, impostazioni, rete, versione, eventi (fase 1);");
-  console.log("       etichette, prodotti, resa, lotto, stampe, storico, dispositivi (fase 2)");
+  console.log("       prodotti (con l'etichetta dentro), resa, lotto, stampe, storico, dispositivi (fase 2)");
 });

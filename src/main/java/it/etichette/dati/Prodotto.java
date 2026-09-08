@@ -26,8 +26,14 @@ public class Prodotto {
     @Column(name = "nome_stampa")
     private String nomeStampa;
 
-    @Column(name = "etichetta_id")
-    private Long etichettaId;
+    /**
+     * JSON: l'etichetta di QUESTO prodotto (dicitura scadenza, formato data, produttore, zona,
+     * blocchi) - mandato del 2026-09-08, l'etichetta non e' piu' condivisa fra prodotti. La
+     * vecchia colonna {@code etichetta_id} resta nello schema (SQLite non fa comodamente un DROP
+     * COLUMN con vincoli) ma non e' piu' mappata ne' usata: la migrazione l'ha azzerata.
+     */
+    @Column(name = "etichetta")
+    private String etichetta;
 
     @Column(name = "ingredienti")
     private String ingredienti;
@@ -99,12 +105,12 @@ public class Prodotto {
         this.nomeStampa = nomeStampa;
     }
 
-    public Long getEtichettaId() {
-        return etichettaId;
+    public String getEtichetta() {
+        return etichetta;
     }
 
-    public void setEtichettaId(Long etichettaId) {
-        this.etichettaId = etichettaId;
+    public void setEtichetta(String etichetta) {
+        this.etichetta = etichetta;
     }
 
     public String getIngredienti() {

@@ -1,5 +1,8 @@
 package it.etichette.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import it.etichette.stampante.PortaFinta;
@@ -27,10 +30,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code POST /api/stampe/prova-etichetta} con la stampante FINTA "pronta" (mai con quella vera):
+ * {@code POST /api/stampe/prova-prodotto} con la stampante FINTA "pronta" (mai con quella vera):
  * una stampa di prova completa con successo ma NON deve aggiornare {@code usi}/{@code ultimoUso}
  * del prodotto (deciso dopo la fase 3: una prova non e' un uso vero). Lo storico viene comunque
- * scritto (verificato a parte in {@code StampeApiTest} per i percorsi di errore).
+ * scritto con {@code esito = "prova"} (mandato del 2026-09-08).
  *
  * <p>Override di {@link RicercaPorta} (di solito {@code RicercaPortaFinta}, che non trova mai
  * nulla) SOLO in questo contesto, cosi' {@link PortaFinta} si apre davvero: un thread separato
@@ -40,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class ProvaEtichettaNonAggiornaUsiTest {
+class ProvaProdottoNonAggiornaUsiTest {
 
     @TestConfiguration
     static class ConfigurazionePortaTrovata {
@@ -65,9 +68,11 @@ class ProvaEtichettaNonAggiornaUsiTest {
     private PortaFinta porta;
     @Autowired
     private ProdottoRepository prodotti;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
-    void unaProvaEtichettaCompletataNonAggiornaUsi() throws Exception {
+    void unaProvaProdottoCompletataNonAggiornaUsi() throws Exception {
         boolean[] continua = {true};
         Thread fornitore = new Thread(() -> {
             while (continua[0]) {
@@ -91,6 +96,14 @@ class ProvaEtichettaNonAggiornaUsiTest {
         Prodotto prodotto = prodotti.findById(1L).orElseThrow();
         int usiPrima = prodotto.getUsi();
 
+        // "Prodotto in modifica": si prende il prodotto 1 COSI' COM'E' salvato (etichetta
+        // compresa) e lo si manda come corpo di prova-prodotto - anche senza cambiare nulla, e'
+        // esattamente lo scenario "prodotto in modifica, anche non salvato".
+        String risposta = mockMvc.perform(get("/api/prodotti/1")).andReturn().getResponse().getContentAsString();
+        JsonNode prodottoSalvato = mapper.readTree(risposta);
+        ObjectNode corpo = mapper.createObjectNode();
+        corpo.set("prodotto", prodottoSalvato);
+
         // Sequenza per QUESTO lavoro: eventuale ultima lettura di controllaPrimaDiStampare, poi
         // "completata" + "in ricezione", poi l'aggiornaStato() finale.
         porta.accodaRisposta(statoPronta102());
@@ -99,8 +112,7 @@ class ProvaEtichettaNonAggiornaUsiTest {
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102());
 
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodottoId\":1}";
-        mockMvc.perform(post("/api/stampe/prova-etichetta").contentType("application/json").content(corpo))
+        mockMvc.perform(post("/api/stampe/prova-prodotto").contentType("application/json").content(mapper.writeValueAsString(corpo)))
                 .andExpect(status().isOk());
 
         assertThat(aspettaUsiInvariatoOAggiornato(usiPrima)).as("usi deve restare invariato dopo una prova").isEqualTo(usiPrima);

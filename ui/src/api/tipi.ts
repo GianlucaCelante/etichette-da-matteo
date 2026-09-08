@@ -92,25 +92,18 @@ export interface ZonaEtichetta {
   larghezzaDestra: LarghezzaDestra;
 }
 
-export interface Etichetta {
-  id: number;
-  nome: string;
-  predefinita: boolean;
+// L'etichetta vive dentro il prodotto (decisione finale sul mockup, revisione
+// di questo giro): non esistono piu' tipi di etichetta ne' una galleria da
+// cui sceglierli. Ogni prodotto ha la SUA etichetta, copiata all'origine da
+// un preset (o dal minimo di "etichettaNuova") ma poi indipendente dalle
+// altre: modificarla non tocca nessun altro prodotto.
+export interface EtichettaProdotto {
   dicituraScadenza: string;
   formatoData: FormatoData;
   produttore: Produttore;
   zona: ZonaEtichetta;
   blocchi: Blocco[];
-  creataIl: string;
-  modificataIl: string;
 }
-
-// GET /api/etichette: come Etichetta, con in piu' quanti prodotti la usano.
-export interface EtichettaElenco extends Etichetta {
-  prodotti: number;
-}
-
-export type NuovaEtichetta = Omit<Etichetta, "id" | "creataIl" | "modificataIl">;
 
 export interface ValoreNutrizionale {
   voce: string;
@@ -121,7 +114,7 @@ export interface Prodotto {
   id: number;
   nome: string;
   nomeStampa: string;
-  etichettaId: number;
+  etichetta: EtichettaProdotto;
   ingredienti: string;
   allergeni: string[];
   modoUso: string;
@@ -273,26 +266,29 @@ export interface LogoRisposta {
 
 /* ============================ stampa di prova (Etichette) ============================ */
 
-export interface ProvaEtichettaRichiesta {
-  etichetta: Etichetta | NuovaEtichetta;
-  prodottoId?: number;
+// Prova il prodotto COSI' COM'E' in modifica (anche non salvato, etichetta
+// compresa): tutto il prodotto, non piu' un'etichetta a parte piu' un
+// prodottoId facoltativo (revisione di questo giro).
+export interface ProvaProdottoRichiesta {
+  prodotto: Prodotto;
 }
 
-export interface ProvaEtichettaRisposta {
+export interface ProvaProdottoRisposta {
   lavoroId: string;
 }
 
 /* ============================ storico ============================ */
 
 export type PeriodoStorico = "oggi" | "7" | "30" | "tutto";
-export type EsitoStampa = "completata" | "annullata" | "errore";
+// "prova": la "Stampa di prova" di Etichette (revisione di questo giro,
+// mostrata in tono attenuato nello storico).
+export type EsitoStampa = "completata" | "annullata" | "errore" | "prova";
 
 export interface StoricoRiga {
   id: number;
   stampatoIl: string;
   prodottoId: number;
   prodottoNome: string;
-  etichettaNome: string;
   lotto: string;
   quantita: string;
   scadenza: string;
@@ -323,9 +319,7 @@ export interface Dispositivo {
 
 /* ============================ errori ============================ */
 
-// Corpo di errore del servizio: sempre {"errore":"…"}; DELETE /api/etichette/{id}
-// aggiunge "prodotti" (i nomi di chi la usa) quando risponde 409.
+// Corpo di errore del servizio: sempre {"errore":"…"}.
 export interface CorpoErrore {
   errore: string;
-  prodotti?: string[];
 }

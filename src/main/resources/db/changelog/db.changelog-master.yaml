@@ -5,3 +5,6 @@ databaseChangeLog:
   - include:
       file: v2-semi.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v3-etichetta-nel-prodotto.yaml
+      relativeToChangelogFile: true

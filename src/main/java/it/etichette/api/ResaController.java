@@ -1,7 +1,5 @@
 package it.etichette.api;
 
-import it.etichette.dati.Etichetta;
-import it.etichette.dati.EtichettaRepository;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import it.etichette.resa.ParametriStampa;
@@ -23,12 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.imageio.ImageIO;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 
 /**
  * {@code /api/resa}: anteprima e misure (docs/api.md). La resa avviene solo sul servizio, con
- * {@link RenditoreEtichetta} - lo stesso renderer usato da {@code POST /api/stampe}.
+ * {@link RenditoreEtichetta} - lo stesso renderer usato da {@code POST /api/stampe}. Dal
+ * 2026-09-08 l'etichetta viene dal prodotto stesso (non e' piu' una risorsa condivisa).
  */
 @RestController
 @RequestMapping("/api/resa")
@@ -37,20 +35,15 @@ public class ResaController {
     private static final int ROTOLO_DI_DEFAULT = 102;
 
     private final ProdottoRepository prodotti;
-    private final EtichettaRepository etichette;
     private final ProdottiConversioni prodottiConversioni;
-    private final EtichetteConversioni etichetteConversioni;
     private final RenditoreEtichetta renderer;
     private final Lotti lotti;
     private final Json json;
 
-    public ResaController(ProdottoRepository prodotti, EtichettaRepository etichette,
-                           ProdottiConversioni prodottiConversioni, EtichetteConversioni etichetteConversioni,
+    public ResaController(ProdottoRepository prodotti, ProdottiConversioni prodottiConversioni,
                            RenditoreEtichetta renderer, Lotti lotti, Json json) {
         this.prodotti = prodotti;
-        this.etichette = etichette;
         this.prodottiConversioni = prodottiConversioni;
-        this.etichetteConversioni = etichetteConversioni;
         this.renderer = renderer;
         this.lotti = lotti;
         this.json = json;
@@ -64,30 +57,26 @@ public class ResaController {
                                                @RequestParam(required = false) String scadenza,
                                                @RequestParam(required = false) String lotto) {
         Prodotto p = trovaProdotto(id);
-        Etichetta e = trovaEtichettaDelProdotto(p);
-        RisultatoResa risultato = renderer.rendi(etichetteConversioni.aDto(e), prodottiConversioni.aDto(p),
-                parametri(quantita, scadenza, lotto), rotolo, scala);
+        RisultatoResa risultato = renderer.rendi(prodottiConversioni.aDto(p), parametri(quantita, scadenza, lotto), rotolo, scala);
         return png(risultato.immagine());
     }
 
     /**
      * {@code prodotto}: stessa forma del corpo di {@code PUT /api/prodotti/{id}} (anche senza
-     * {@code id}) - se presente, la resa usa QUESTI dati al posto di quelli salvati, cosi'
-     * l'editor puo' aggiornare l'anteprima mentre si scrive, prima di salvare. Validato come per
-     * il PUT ({@link ProdottiConversioni#valida}). {@code prodottoId} resta per la
-     * retrocompatibilita' e per i dati proposti (quantita'/scadenza) quando {@code prodotto} manca.
+     * {@code id}), etichetta compresa - se presente, la resa usa QUESTI dati al posto di quelli
+     * salvati, cosi' l'editor puo' aggiornare l'anteprima mentre si scrive, prima di salvare.
+     * Validato come per il PUT ({@link ProdottiConversioni#valida}). {@code prodottoId} resta per
+     * la retrocompatibilita' e usa il prodotto salvato (con la SUA etichetta) quando {@code
+     * prodotto} manca. Uno dei due e' obbligatorio: non c'e' piu' un'etichetta indipendente da
+     * mandare a se stante.
      */
     @PostMapping(value = "/anteprima.png", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> anteprima(@RequestBody Map<String, Object> corpo) {
         CorpoAnteprima richiesta = json.converti(corpo, CorpoAnteprima.class);
-        if (richiesta.etichetta() == null) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta: obbligatoria");
-        }
-        EtichetteConversioni.valida(richiesta.etichetta());
         ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
         double scala = richiesta.scala() != null ? richiesta.scala() : 1.0;
-        RisultatoResa risultato = renderer.rendi(richiesta.etichetta(), prodottoDto, parametri(null, null, null), rotolo, scala);
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(null, null, null), rotolo, scala);
         return png(risultato.immagine());
     }
 
@@ -99,7 +88,7 @@ public class ResaController {
         if (richiesta.prodottoId() != null) {
             return prodottiConversioni.aDto(trovaProdotto(richiesta.prodottoId()));
         }
-        return prodottoDiEsempio();
+        throw new ErroreApi(HttpStatus.BAD_REQUEST, "prodotto o prodottoId: obbligatorio uno dei due");
     }
 
     @GetMapping("/prodotti/{id}/misure")
@@ -109,16 +98,14 @@ public class ResaController {
                                        @RequestParam(required = false) String scadenza,
                                        @RequestParam(required = false) String lotto) {
         Prodotto p = trovaProdotto(id);
-        Etichetta e = trovaEtichettaDelProdotto(p);
-        RisultatoResa risultato = renderer.rendi(etichetteConversioni.aDto(e), prodottiConversioni.aDto(p),
-                parametri(quantita, scadenza, lotto), rotolo, 1.0);
+        RisultatoResa risultato = renderer.rendi(prodottiConversioni.aDto(p), parametri(quantita, scadenza, lotto), rotolo, 1.0);
         return Map.of("larghezzaMm", arrotonda(risultato.larghezzaMm()), "altezzaMm", arrotonda(risultato.altezzaMm()),
                 "avvisi", risultato.avvisi());
     }
 
     // ---------------------------------------------------------------------------------------
 
-    private record CorpoAnteprima(EtichettaDto etichetta, Long prodottoId, ProdottoDto prodotto, Integer rotolo, Double scala) {
+    private record CorpoAnteprima(Long prodottoId, ProdottoDto prodotto, Integer rotolo, Double scala) {
     }
 
     private ParametriStampa parametri(String quantita, String scadenza, String lotto) {
@@ -129,24 +116,6 @@ public class ResaController {
 
     private Prodotto trovaProdotto(Long id) {
         return prodotti.findById(id).orElseThrow(() -> new ErroreApi(HttpStatus.NOT_FOUND, "prodotto non trovato: " + id));
-    }
-
-    private Etichetta trovaEtichettaDelProdotto(Prodotto p) {
-        if (p.getEtichettaId() == null) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "il prodotto non ha un'etichetta assegnata");
-        }
-        return etichette.findById(p.getEtichettaId())
-                .orElseThrow(() -> new ErroreApi(HttpStatus.NOT_FOUND, "etichetta non trovata: " + p.getEtichettaId()));
-    }
-
-    /** Usato da {@code POST /api/resa/anteprima.png} quando il corpo non indica {@code prodottoId}. */
-    private ProdottoDto prodottoDiEsempio() {
-        return new ProdottoDto(null, "Prodotto di esempio", "PRODOTTO DI ESEMPIO", null,
-                "Acqua, farina di GRANO tenero, Sale, Lievito.", List.of("Glutine"),
-                "Conservare in luogo fresco e asciutto.", 5, "A temperatura ambiente", "500 g",
-                List.of(new ValoreNutrizionaleDto("Energia", "1000 kJ / 240 kcal"),
-                        new ValoreNutrizionaleDto("Grassi", "1 g"), new ValoreNutrizionaleDto("Proteine", "8 g")),
-                null, 0, null, null, null);
     }
 
     private static double arrotonda(double mm) {

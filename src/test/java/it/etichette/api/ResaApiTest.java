@@ -69,25 +69,23 @@ class ResaApiTest {
     }
 
     /**
-     * Mandato del 2026-09-08: {@code prodotto} (opzionale, stessa forma del corpo di
-     * {@code PUT /api/prodotti/{id}}, anche senza {@code id}) fa usare quei dati al posto di
-     * quelli salvati - serve all'editor per aggiornare l'anteprima mentre si scrive, prima di
-     * salvare. Qui il blocco "titolo" stampa {@code nomeStampa}: con un {@code nomeStampa} diverso
-     * nel corpo l'immagine deve cambiare rispetto a quella coi dati salvati del prodotto 1.
+     * Mandato del 2026-09-08 (cambio di modello: l'etichetta vive nel prodotto): {@code prodotto}
+     * (stessa forma del corpo di {@code PUT /api/prodotti/{id}}, id ignorato, etichetta compresa)
+     * fa usare quei dati al posto di quelli salvati - serve all'editor per aggiornare l'anteprima
+     * mentre si scrive, prima di salvare. Qui il blocco "titolo" stampa {@code nomeStampa}: con
+     * un {@code nomeStampa} diverso nel corpo l'immagine deve cambiare rispetto a quella coi dati
+     * salvati del prodotto 1 (letto tramite {@code prodottoId}).
      */
     @Test
     void anteprimaConProdottoInModificaUsaIlNomeStampaDiversoDaQuelloSalvato() throws Exception {
-        String etichettaConTitolo = "\"etichetta\":{\"nome\":\"Prova anteprima\",\"blocchi\":"
-                + "[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]}";
-
         byte[] pngSalvato = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json")
-                        .content("{" + etichettaConTitolo + ",\"prodottoId\":1}"))
+                        .content("{\"prodottoId\":1}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
 
-        byte[] pngInModifica = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json")
-                        .content("{" + etichettaConTitolo + ",\"prodottoId\":1,"
-                                + "\"prodotto\":{\"nome\":\"Base pizza low carb\",\"nomeStampa\":\"NOME DIVERSO IN MODIFICA\"}}"))
+        String corpoInModifica = "{\"prodotto\":{\"nome\":\"Base pizza low carb\",\"nomeStampa\":\"NOME DIVERSO IN MODIFICA\","
+                + "\"etichetta\":{\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]}}}";
+        byte[] pngInModifica = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpoInModifica))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
 
@@ -96,10 +94,8 @@ class ResaApiTest {
 
     @Test
     void anteprimaSenzaProdottoRestaIdenticaAPrima() throws Exception {
-        // Aggiungere il campo "prodotto" non deve cambiare NULLA quando manca: stessa richiesta
-        // (solo prodottoId, come prima di questo mandato) deve produrre esattamente lo stesso PNG.
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova anteprima\",\"blocchi\":"
-                + "[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]},\"prodottoId\":1}";
+        // Due chiamate identiche (solo prodottoId) devono produrre esattamente lo stesso PNG.
+        String corpo = "{\"prodottoId\":1}";
 
         byte[] primo = mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
                 .andExpect(status().isOk())
@@ -112,8 +108,15 @@ class ResaApiTest {
     }
 
     @Test
+    void anteprimaSenzaProdottoNeProdottoIdRispondeErrore() throws Exception {
+        mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
+    }
+
+    @Test
     void anteprimaConProdottoSenzaNomeRispondeErroreComeIlPut() throws Exception {
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodotto\":{\"nome\":\"\"}}";
+        String corpo = "{\"prodotto\":{\"nome\":\"\"}}";
         mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errore").exists());
@@ -121,9 +124,9 @@ class ResaApiTest {
 
     @Test
     void anteprimaConProdottoSenzaIdFunzionaComunque() throws Exception {
-        // "anche senza id": il corpo di prodotto non ha bisogno di id, la resa non lo usa.
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]},"
-                + "\"prodotto\":{\"nome\":\"Prodotto nuovo, mai salvato\"}}";
+        // "id ignorato": il corpo di prodotto non ha bisogno di id, la resa non lo usa.
+        String corpo = "{\"prodotto\":{\"nome\":\"Prodotto nuovo, mai salvato\",\"etichetta\":"
+                + "{\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\"}]}}}";
         mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content(corpo))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("image/png"));

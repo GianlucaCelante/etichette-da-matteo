@@ -41,7 +41,7 @@ function etichettaGiorno(iso: string): string {
   if (stessoGiorno(dataRiga, ieri)) return "Ieri · " + testo;
   return maiuscola;
 }
-const TESTO_ESITO: Record<string, string> = { annullata: "serie fermata", errore: "errore" };
+const TESTO_ESITO: Record<string, string> = { annullata: "serie fermata", errore: "errore", prova: "prova" };
 
 function FiltroBottone({ chiave, testo, attivo, onScegli }: { chiave: PeriodoStorico; testo: string; attivo: boolean; onScegli: (p: PeriodoStorico) => void }) {
   const clic = useCallback(() => onScegli(chiave), [onScegli, chiave]);
@@ -58,13 +58,14 @@ function IconaDispositivo({ nome }: { nome: string }) {
 
 function RigaStoricoPC({ riga, onRistampa, occupata }: { riga: StoricoRiga; onRistampa: (id: number) => void; occupata: boolean }) {
   const clic = useCallback(() => onRistampa(riga.id), [onRistampa, riga.id]);
+  const prova = riga.esito === "prova";
   return (
-    <div className="vocestorico grigliaStorico">
+    <div className={"vocestorico grigliaStorico" + (prova ? " opacity-60" : "")}>
       <div className="text-[14px] text-[var(--tenue)]">{formattaOra(riga.stampatoIl)}</div>
       <div className="min-w-0">
         <div className="text-[15px] font-bold truncate">{riga.prodottoNome}</div>
         <div className="text-[12.5px] text-[var(--tenue)] truncate">
-          {plurale(riga.copie, "copia", "copie")} · {riga.etichettaNome}
+          {plurale(riga.copie, "copia", "copie")}
           {riga.esito !== "completata" && ` · ${TESTO_ESITO[riga.esito] ?? riga.esito}`}
         </div>
       </div>
@@ -85,8 +86,9 @@ function RigaStoricoPC({ riga, onRistampa, occupata }: { riga: StoricoRiga; onRi
 
 function RigaStoricoTel({ riga, onRistampa, occupata }: { riga: StoricoRiga; onRistampa: (id: number) => void; occupata: boolean }) {
   const clic = useCallback(() => onRistampa(riga.id), [onRistampa, riga.id]);
+  const prova = riga.esito === "prova";
   return (
-    <button type="button" className="vocestorico tel" onClick={clic} disabled={occupata}>
+    <button type="button" className={"vocestorico tel" + (prova ? " opacity-60" : "")} onClick={clic} disabled={occupata}>
       <div className="n">{riga.prodottoNome}</div>
       <div className="d">
         {formattaOra(riga.stampatoIl)} · {plurale(riga.copie, "copia", "copie")} · {riga.dispositivoNome === "PC" ? "da PC" : "da telefono"}

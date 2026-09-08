@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code POST /api/stampe}, {@code /ultima} e {@code /prova-etichetta} col profilo "test"
+ * {@code POST /api/stampe}, {@code /ultima} e {@code /prova-prodotto} col profilo "test"
  * (stampante sempre "scollegata": {@link it.etichette.stampante.RicercaPortaFinta} non trova mai
  * nulla, quindi qui si verificano solo i percorsi di errore/validazione). Il percorso di
  * successo (stampa, ripresa dopo un errore a meta' copia, storico, usi aggiornato) e' verificato
@@ -57,25 +57,26 @@ class StampeApiTest {
     }
 
     @Test
-    void provaEtichettaSenzaEtichettaRispondeErrore() throws Exception {
-        mockMvc.perform(post("/api/stampe/prova-etichetta")
+    void provaProdottoSenzaProdottoRispondeErrore() throws Exception {
+        mockMvc.perform(post("/api/stampe/prova-prodotto")
                         .contentType("application/json")
-                        .content("{\"prodottoId\":1}"))
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errore").exists());
     }
 
     @Test
-    void provaEtichettaConProdottoInesistenteRispondeNonTrovato() throws Exception {
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodottoId\":9999}";
-        mockMvc.perform(post("/api/stampe/prova-etichetta").contentType("application/json").content(corpo))
-                .andExpect(status().isNotFound());
+    void provaProdottoSenzaNomeRispondeErrore() throws Exception {
+        String corpo = "{\"prodotto\":{\"nome\":\"\"}}";
+        mockMvc.perform(post("/api/stampe/prova-prodotto").contentType("application/json").content(corpo))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
     }
 
     @Test
-    void provaEtichettaConStampanteScollegataRispondeConflitto() throws Exception {
-        String corpo = "{\"etichetta\":{\"nome\":\"Prova\",\"blocchi\":[]},\"prodottoId\":1}";
-        mockMvc.perform(post("/api/stampe/prova-etichetta").contentType("application/json").content(corpo))
+    void provaProdottoConStampanteScollegataRispondeConflitto() throws Exception {
+        String corpo = "{\"prodotto\":{\"nome\":\"Prova\"}}";
+        mockMvc.perform(post("/api/stampe/prova-prodotto").contentType("application/json").content(corpo))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errore").value("Stampante spenta o scollegata"));
     }

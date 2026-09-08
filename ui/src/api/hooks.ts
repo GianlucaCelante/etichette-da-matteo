@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useDebounced } from "../hooks/useDebounced";
-import { anteprimaEtichettaBlob, api, caricaLogo, eliminaLogo, logoEsiste, percorsoResaProdotto } from "./client";
+import { anteprimaProdottoBlob, api, caricaLogo, eliminaLogo, logoEsiste, percorsoResaProdotto } from "./client";
 import type {
-  Etichetta,
   EventoStampa,
   Impostazioni,
-  NuovaEtichetta,
   NuovoProdotto,
   OrdineProdotti,
   ParametriResa,
   PeriodoStorico,
   Prodotto,
-  ProvaEtichettaRichiesta,
+  ProvaProdottoRichiesta,
   RistampaRichiesta,
   Rotolo,
   StampaRichiesta,
@@ -29,9 +27,6 @@ export const chiaviQuery = {
   rete: ["rete"] as QueryKey,
   versione: ["versione"] as QueryKey,
   lavoroStampa: ["lavoroStampa"] as QueryKey,
-
-  etichette: ["etichette"] as QueryKey,
-  etichetta: (id: number) => ["etichette", id] as QueryKey,
 
   prodotti: (opzioni?: { q?: string; ordine?: OrdineProdotti }) => ["prodotti", "elenco", opzioni ?? {}] as QueryKey,
   prodotto: (id: number) => ["prodotti", "uno", id] as QueryKey,
@@ -105,61 +100,6 @@ export function useLavoroStampa() {
   });
 }
 
-/* ============================ etichette ============================ */
-
-export function useEtichette() {
-  return useQuery({ queryKey: chiaviQuery.etichette, queryFn: api.etichette });
-}
-
-export function useEtichetta(id: number | undefined) {
-  return useQuery({
-    queryKey: chiaviQuery.etichetta(id ?? -1),
-    queryFn: () => api.etichetta(id as number),
-    enabled: id !== undefined,
-  });
-}
-
-function invalidaEtichette(client: ReturnType<typeof useQueryClient>) {
-  void client.invalidateQueries({ queryKey: chiaviQuery.etichette });
-}
-
-export function useCreaEtichetta() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (dati: NuovaEtichetta) => api.creaEtichetta(dati),
-    onSuccess: () => invalidaEtichette(client),
-  });
-}
-
-export function useDuplicaEtichetta() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ partiDa, nome }: { partiDa: number; nome: string }) => api.duplicaEtichetta(partiDa, nome),
-    onSuccess: () => invalidaEtichette(client),
-  });
-}
-
-export function useAggiornaEtichetta() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, dati }: { id: number; dati: Etichetta }) => api.aggiornaEtichetta(id, dati),
-    onSuccess: (_dati, variabili) => {
-      invalidaEtichette(client);
-      // un'etichetta condivisa cambia la resa di tutti i prodotti che la usano
-      void client.invalidateQueries({ queryKey: ["prodotti"] });
-      void client.invalidateQueries({ queryKey: chiaviQuery.etichetta(variabili.id) });
-    },
-  });
-}
-
-export function useEliminaEtichetta() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => api.eliminaEtichetta(id),
-    onSuccess: () => invalidaEtichette(client),
-  });
-}
-
 /* ============================ prodotti ============================ */
 
 export function useProdotti(opzioni?: { q?: string; ordine?: OrdineProdotti }) {
@@ -181,10 +121,21 @@ function invalidaProdotti(client: ReturnType<typeof useQueryClient>) {
   void client.invalidateQueries({ queryKey: ["prodotti"] });
 }
 
+// Senza argomento crea il prodotto nuovo del prototipo (il servizio decide i
+// valori di partenza: nome «Prodotto nuovo», etichetta minima...).
 export function useCreaProdotto() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (dati: NuovoProdotto) => api.creaProdotto(dati),
+    mutationFn: (dati?: NuovoProdotto) => api.creaProdotto(dati),
+    onSuccess: () => invalidaProdotti(client),
+  });
+}
+
+// «Duplica prodotto»: copia tutto il prodotto, etichetta compresa.
+export function useDuplicaProdotto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.duplicaProdotto(id),
     onSuccess: () => invalidaProdotti(client),
   });
 }
@@ -229,10 +180,11 @@ export function useRistampaUltima() {
   return useMutation({ mutationFn: (dati?: RistampaRichiesta) => api.ristampaUltima(dati) });
 }
 
-// "Stampa di prova" della vista Etichette: prova l'etichetta in modifica,
-// anche non salvata, riusando gli stessi eventi SSE "stampa" della vista Stampa.
-export function useProvaEtichetta() {
-  return useMutation({ mutationFn: (dati: ProvaEtichettaRichiesta) => api.provaEtichetta(dati) });
+// "Stampa di prova" della vista Etichette: prova il prodotto in modifica,
+// anche non salvato (etichetta compresa), riusando gli stessi eventi SSE
+// "stampa" della vista Stampa.
+export function useProvaProdotto() {
+  return useMutation({ mutationFn: (dati: ProvaProdottoRichiesta) => api.provaProdotto(dati) });
 }
 
 /* ============================ logo ============================ */
@@ -314,28 +266,26 @@ export function useAnteprimaProdottoSrc(id: number | undefined, opzioni: Paramet
 }
 
 interface BozzaAnteprima {
-  etichetta: Etichetta | NuovaEtichetta;
-  prodottoId?: number;
-  // Il prodotto in modifica, non ancora salvato (stessa forma di PUT
-  // /api/prodotti): senza, l'anteprima si aggiornerebbe solo per i blocchi,
-  // non per i campi del prodotto (revisione di questo giro).
-  prodotto?: Prodotto;
+  // Il prodotto in modifica, non ancora salvato, etichetta compresa (stessa
+  // forma di PUT /api/prodotti). Revisione di questo giro: non c'e' piu'
+  // un'etichetta a parte ne' un prodottoId facoltativo.
+  prodotto: Prodotto;
   rotolo?: Rotolo;
   scala?: number;
 }
 
-interface AnteprimaEtichetta {
+interface AnteprimaProdotto {
   src: string | undefined;
   caricando: boolean;
   errore: boolean;
 }
 
-// L'anteprima di un'etichetta in modifica (POST /api/resa/anteprima.png): un
+// L'anteprima di un prodotto in modifica (POST /api/resa/anteprima.png): un
 // vero fetch, quindi si scarica come blob e si tiene vivo un object URL,
 // revocando quello precedente cosi' da non perdere memoria mentre si compone.
-// ritardoMs: 400 per l'anteprima del prodotto in Stampa, 500 per quella
-// dell'etichetta in modifica in Etichette (revisione di questo giro).
-export function useAnteprimaEtichetta(bozza: BozzaAnteprima | null, ritardoMs = 400): AnteprimaEtichetta {
+// ritardoMs: 400 per l'anteprima del prodotto in Stampa, 500 per quella del
+// prodotto in modifica in Etichette (revisione di questo giro).
+export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, ritardoMs = 400): AnteprimaProdotto {
   const differita = useDebounced(bozza, ritardoMs);
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [caricando, setCaricando] = useState(false);
@@ -347,7 +297,7 @@ export function useAnteprimaEtichetta(bozza: BozzaAnteprima | null, ritardoMs = 
     let annullato = false;
     setCaricando(true);
     setErrore(false);
-    anteprimaEtichettaBlob(differita)
+    anteprimaProdottoBlob(differita)
       .then((blob) => {
         if (annullato) return;
         const url = URL.createObjectURL(blob);

@@ -3,6 +3,7 @@ package it.etichette.api;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,9 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
-/** {@code /api/prodotti}: CRUD sui prodotti (docs/api.md). */
+/** {@code /api/prodotti}: CRUD sui prodotti (docs/api.md). Ogni prodotto porta la sua etichetta. */
 @RestController
 @RequestMapping("/api/prodotti")
 public class ProdottiController {
@@ -47,10 +49,12 @@ public class ProdottiController {
         return conversioni.aDto(trova(id));
     }
 
+    /** Senza corpo o con campi mancanti: "Prodotto nuovo" con i valori di partenza del prototipo (docs/api.md). */
     @PostMapping
     @Transactional
-    public ProdottoDto crea(@RequestBody Map<String, Object> corpo) {
-        ProdottoDto dto = conversioni.converti(corpo);
+    public ProdottoDto crea(@RequestBody(required = false) Map<String, Object> corpo) {
+        ProdottoDto dto = conversioni.converti(corpo != null ? corpo : Map.of());
+        dto = conversioni.conValoriDiPartenza(dto);
         ProdottiConversioni.valida(dto);
         Prodotto entita = new Prodotto(dto.nome());
         conversioni.applicaCampi(entita, dto);
@@ -67,6 +71,24 @@ public class ProdottiController {
         conversioni.applicaCampi(entita, dto);
         entita.setModificatoIl(LocalDateTime.now());
         return conversioni.aDto(prodotti.save(entita));
+    }
+
+    /** "Duplica prodotto" (mandato del 2026-09-08): copia tutto, etichetta compresa; nome + " (copia)"; usi=0, ultimoUso=null. */
+    @PostMapping("/{id}/duplica")
+    @Transactional
+    public ResponseEntity<ProdottoDto> duplica(@PathVariable Long id) {
+        ProdottoDto origine = conversioni.aDto(trova(id));
+        String nomeCopia = origine.nome() + " (copia)";
+        // se nomeStampa era uguale al nome in maiuscolo, la copia lo segue (nuovo nome in
+        // maiuscolo); altrimenti resta com'era (docs/api.md).
+        String nomeStampaCopia = origine.nomeStampa() != null && origine.nomeStampa().equals(origine.nome().toUpperCase(Locale.ITALY))
+                ? nomeCopia.toUpperCase(Locale.ITALY) : origine.nomeStampa();
+        ProdottoDto dtoCopia = new ProdottoDto(null, nomeCopia, nomeStampaCopia, origine.etichetta(), origine.ingredienti(),
+                origine.allergeni(), origine.modoUso(), origine.giorniScadenza(), origine.conservazione(), origine.quantita(),
+                origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null);
+        Prodotto copia = new Prodotto(nomeCopia);
+        conversioni.applicaCampi(copia, dtoCopia);
+        return ResponseEntity.status(HttpStatus.CREATED).body(conversioni.aDto(prodotti.save(copia)));
     }
 
     @DeleteMapping("/{id}")

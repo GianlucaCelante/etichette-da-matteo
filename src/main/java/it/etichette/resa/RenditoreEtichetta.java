@@ -5,7 +5,7 @@ import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import it.etichette.api.BloccoDto;
-import it.etichette.api.EtichettaDto;
+import it.etichette.api.EtichettaProdottoDto;
 import it.etichette.api.ProdottoDto;
 import it.etichette.api.ProduttoreDto;
 import it.etichette.api.ValoreNutrizionaleDto;
@@ -68,7 +68,10 @@ public class RenditoreEtichetta {
         this.logo = logo;
     }
 
-    public RisultatoResa rendi(EtichettaDto etichetta, ProdottoDto prodotto, ParametriStampa parametri, int rotoloMm, double scala) {
+    /** L'etichetta viene dal prodotto stesso ({@link ProdottoDto#etichetta}): non e' piu' condivisa (mandato del 2026-09-08). */
+    public RisultatoResa rendi(ProdottoDto prodotto, ParametriStampa parametri, int rotoloMm, double scala) {
+        EtichettaProdottoDto etichetta = prodotto.etichetta() != null
+                ? prodotto.etichetta() : new EtichettaProdottoDto(null, null, null, null, List.of());
         int[] spec = ProtocolloQl.ROTOLI_CONTINUI.get(rotoloMm);
         if (spec == null) {
             throw new IllegalArgumentException("rotolo non gestito: " + rotoloMm + " mm");
@@ -119,7 +122,7 @@ public class RenditoreEtichetta {
     // =========================================================================================
 
     /** Blocchi accesi e con contenuto (i blocchi spenti o senza contenuto non occupano spazio). */
-    private List<BloccoDto> filtraRenderizzabili(EtichettaDto etichetta, ProdottoDto prodotto, ParametriStampa parametri) {
+    private List<BloccoDto> filtraRenderizzabili(EtichettaProdottoDto etichetta, ProdottoDto prodotto, ParametriStampa parametri) {
         List<BloccoDto> out = new ArrayList<>();
         if (etichetta.blocchi() == null) {
             return out;
@@ -132,7 +135,7 @@ public class RenditoreEtichetta {
         return out;
     }
 
-    private boolean haContenuto(BloccoDto b, EtichettaDto etichetta, ProdottoDto prodotto, ParametriStampa parametri) {
+    private boolean haContenuto(BloccoDto b, EtichettaProdottoDto etichetta, ProdottoDto prodotto, ParametriStampa parametri) {
         return switch (b.tipo()) {
             case "titolo", "riga", "spazio" -> true;
             case "ingredienti" -> nonVuoto(prodotto.ingredienti());
@@ -187,7 +190,7 @@ public class RenditoreEtichetta {
     // Disegno
     // =========================================================================================
 
-    private float disegnaZona(Graphics2D g, FontRenderContext frc, ZonaGruppo zg, EtichettaDto etichetta,
+    private float disegnaZona(Graphics2D g, FontRenderContext frc, ZonaGruppo zg, EtichettaProdottoDto etichetta,
                                ProdottoDto prodotto, ParametriStampa parametri, float x, float y, float larghezza,
                                List<String> avvisi) {
         if (zg.sx().isEmpty()) {
@@ -225,7 +228,7 @@ public class RenditoreEtichetta {
         return fondo;
     }
 
-    private float disegnaBlocco(Graphics2D g, FontRenderContext frc, BloccoDto b, EtichettaDto etichetta,
+    private float disegnaBlocco(Graphics2D g, FontRenderContext frc, BloccoDto b, EtichettaProdottoDto etichetta,
                                  ProdottoDto prodotto, ParametriStampa parametri, float x, float y, float larghezza,
                                  List<String> avvisi) {
         float corpoPt = b.corpo();

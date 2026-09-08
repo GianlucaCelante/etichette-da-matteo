@@ -9,13 +9,14 @@ Contratto fra servizio e interfaccia, deciso l'8 settembre 2026 a partire dal pr
 - Il dispositivo che chiama è identificato dal cookie `dispositivo` (vedi in fondo). Tutto è senza login, come deciso.
 - Gli identificativi di prodotti ed etichette sono numeri interi.
 
-## Etichetta
+## Etichetta (dentro il prodotto)
 
-L'etichetta è condivisa fra i prodotti che la usano. È un elenco ordinato di blocchi più qualche dato che vale per tutti i suoi prodotti.
+> **Deciso l'8 settembre 2026 sul prototipo finale:** l'etichetta non è un'entità condivisa. Ogni prodotto porta la sua, nel campo `etichetta`. Non esistono tipi, galleria né endpoint `/api/etichette`. La forma qui sotto è quella del campo `prodotto.etichetta` (senza `id`, `nome`, `predefinita`).
+
+L'etichetta è un elenco ordinato di blocchi più qualche dato che vale per il prodotto.
 
 ```json
 {
-  "id": 1, "nome": "Completa", "predefinita": true,
   "dicituraScadenza": "da consumare entro",
   "formatoData": "GG/MM/AAAA",
   "produttore": { "ragioneSociale": "Michi s.n.c. di Michele Alberto Crivellari",
@@ -32,8 +33,7 @@ L'etichetta è condivisa fra i prodotti che la usano. È un elenco ordinato di b
     { "tipo": "quantita",     "acceso": true,  "corpo": 28, "colonna": "sx" },
     { "tipo": "valori",       "acceso": true,  "corpo": 7,  "colonna": "dx" },
     { "tipo": "produttore",   "acceso": true,  "corpo": 7,  "colonna": "piena" }
-  ],
-  "creataIl": "2026-09-08T10:00:00", "modificataIl": "2026-09-08T10:00:00"
+  ]
 }
 ```
 
@@ -72,7 +72,7 @@ Il servizio restituisce sempre `zona` (default `{"larghezzaDestra":"1/3"}`) e `b
 ```json
 {
   "id": 1, "nome": "Base pizza low carb", "nomeStampa": "BASE PIZZA LOW CARB ARTIGIANALE",
-  "etichettaId": 1,
+  "etichetta": { "…": "vedi sopra" },
   "ingredienti": "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, …].",
   "allergeni": ["Latte", "Lupini", "Senape", "Sesamo", "Soia", "Uova"],
   "modoUso": "3 modi per prepararle al meglio: …",
@@ -89,24 +89,20 @@ Il servizio restituisce sempre `zona` (default `{"larghezzaDestra":"1/3"}`) e `b
 - `quantita` è testo libero («2148 g», «6 pezzi»): alla stampa si può cambiare senza toccare il prodotto.
 - `giorniScadenza`: la scadenza proposta alla stampa è oggi più questi giorni; anche quella si può cambiare al momento.
 - `usi` e `ultimoUso` li aggiorna il servizio a ogni stampa: servono per «più usati».
+- Un prodotto nuovo (`POST /api/prodotti` senza corpo) nasce come nel prototipo: nome «Prodotto nuovo», nome sull'etichetta «PRODOTTO NUOVO», 3 giorni, «In frigo», «500 g», etichetta minima: dicitura «Scade il», formato `GG/MM/AAAA`, produttore dell'ultimo prodotto salvato, zona `1/2`, blocchi titolo 14, scadenza 8, lotto 7.
 
 ## Endpoint
 
-### Etichette
-- `GET /api/etichette` → elenco (con `prodotti`: quanti prodotti la usano).
-- `GET /api/etichette/{id}`
-- `POST /api/etichette` → crea; corpo = etichetta senza `id`. Con `?partiDa={id}` il corpo può essere solo `{"nome": "…"}`: si duplica quella e si rinomina.
-- `PUT /api/etichette/{id}` → sostituisce.
-- `DELETE /api/etichette/{id}` → 409 se la usano dei prodotti, con `{"errore":"…","prodotti":[…nomi]}`.
-
 ### Prodotti
 - `GET /api/prodotti?q=testo&ordine=usati|nome` → elenco (`usati` = per `usi` decrescente, poi `ultimoUso`; `q` cerca nel nome senza distinguere maiuscole).
-- `GET /api/prodotti/{id}`, `POST /api/prodotti`, `PUT /api/prodotti/{id}`, `DELETE /api/prodotti/{id}`.
+- `GET /api/prodotti/{id}`, `POST /api/prodotti` (senza corpo: prodotto nuovo con l'etichetta minima), `PUT /api/prodotti/{id}` (sostituisce tutto, etichetta compresa), `DELETE /api/prodotti/{id}`.
+- `POST /api/prodotti/{id}/duplica` → 201 con la copia: uguale in tutto, etichetta compresa; nome «… (copia)»; se il nome sull'etichetta era il nome in maiuscolo, segue il nuovo nome; `usi` 0.
+- Non esistono endpoint `/api/etichette`.
 
 ### Resa (anteprima e misure)
 La resa avviene solo sul servizio, in Java 2D, con lo stesso renderer che manda la stampa.
 - `GET /api/resa/prodotti/{id}.png?rotolo=62|102&scala=0.35&quantita=…&scadenza=AAAA-MM-GG&lotto=…` → PNG dell'etichetta come uscirà, ridotta di `scala` (1 = 300 dpi, i punti veri). I parametri opzionali sostituiscono i valori proposti.
-- `POST /api/resa/anteprima.png` con corpo `{"etichetta": {…}, "prodottoId": 1, "prodotto": {…}, "rotolo": 62, "scala": 0.35}` → PNG; serve all'editor per un'etichetta e un prodotto non ancora salvati: `prodotto` (stessa forma del `PUT`) è opzionale e, se presente, vale al posto dei dati salvati. Senza `prodottoId` né `prodotto` si usa un prodotto di esempio.
+- `POST /api/resa/anteprima.png` con corpo `{"prodotto": {…con etichetta…}, "rotolo": 62, "scala": 0.35}` → PNG del prodotto in modifica, anche non salvato (stessa forma del `PUT`); in alternativa `"prodottoId": 1` per il prodotto salvato.
 - `GET /api/resa/prodotti/{id}/misure?rotolo=62` → `{"larghezzaMm": 58.9, "altezzaMm": 96.6, "avvisi": ["Il titolo è stato mandato a capo"]}`.
 
 Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le righe di testo attraversano il nastro e l'etichetta cresce lungo il nastro, senza rotazioni: righe larghe 58,9 mm (696 punti) sul 62 e 98,6 mm (1164 punti) sul 102, altezza dal contenuto, margine interno 1,5 mm. Sul 62 la «Completa» viene quindi lunga circa 100 mm con la colonna nutrizionale stretta, come misurato in `prova-corpi.md`: l'alternativa con il testo lungo il nastro (etichetta alta al massimo 58,9 mm, ruotata di 90° prima dell'invio) resta rinviata a quando si avrà l'etichetta originale del cliente da misurare. Font Arial (Liberation Sans di riserva), bilivello, 300 dpi.
@@ -122,7 +118,7 @@ Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le
 - L'avanzamento arriva dagli eventi SSE `stampa` già esistenti; a `completata` l'interfaccia rilegge lo storico.
 
 ### Storico
-- `GET /api/storico?periodo=oggi|7|30|tutto&q=testo` → elenco dal più recente: `[{"id": 12, "stampatoIl": "…", "prodottoId": 1, "prodottoNome": "…", "etichettaNome": "Completa", "lotto": "…", "quantita": "…", "scadenza": "…", "copie": 3, "dispositivoNome": "Telefono della cucina", "esito": "completata|annullata|errore"}]`. `q` cerca in prodotto e lotto.
+- `GET /api/storico?periodo=oggi|7|30|tutto&q=testo` → elenco dal più recente: `[{"id": 12, "stampatoIl": "…", "prodottoId": 1, "prodottoNome": "…", "lotto": "…", "quantita": "…", "scadenza": "…", "copie": 3, "dispositivoNome": "Telefono della cucina", "esito": "completata|annullata|errore|prova"}]`. `copie` sono quelle uscite davvero. `q` cerca in prodotto e lotto.
 - `POST /api/storico/{id}/ristampa` con `{"copie": 1}` opzionale → `{"lavoroId":"…"}` (stesso lotto e stessa scadenza della riga).
 - L'esportazione la fa l'interfaccia dai dati JSON (copia come tabella), come nel prototipo.
 
@@ -139,12 +135,12 @@ Geometria (decisa l'8 settembre, dopo la prima resa): su tutti e due i rotoli le
 - `DELETE /api/impostazioni/logo`.
 - Il blocco `logo` stampa il logo in bilivello con dithering, alto quanti mm dice `corpo` (5…30, default 10), proporzioni conservate, allineato a sinistra; senza logo caricato non occupa spazio.
 
-### Stampa di prova di un'etichetta in modifica
-- `POST /api/stampe/prova-etichetta` con `{"etichetta": {…}, "prodottoId": 1}` → `{"lavoroId":"…"}`: rende con l'etichetta ricevuta (anche non salvata) e il prodotto indicato, quantità/scadenza/lotto proposti (il lotto non viene consumato), una copia, riga di storico con `etichettaNome` = nome + « (prova)». 409 se la stampante non è pronta. Le stampe di prova (questa e quella delle Impostazioni) non aggiornano `usi` e `ultimoUso` del prodotto.
+### Stampa di prova del prodotto in modifica
+- `POST /api/stampe/prova-prodotto` con `{"prodotto": {…con etichetta…}}` → `{"lavoroId":"…"}`: rende il prodotto ricevuto (anche non salvato), quantità/scadenza/lotto proposti (il lotto non viene consumato), una copia, riga di storico con esito `prova`. 409 se la stampante non è pronta. Le stampe di prova (questa e quella delle Impostazioni) non aggiornano `usi` e `ultimoUso` del prodotto.
 
 ### Impostazioni (chiavi)
 `schema_lotto` (`data|giorno|continuo|mano`), `progressivo_continuo` (numero), `taglio_ogni_etichetta` (`true|false`), `margine_mm` (numero, minimo 3).
 
 ## Dati di partenza
 
-Alla prima esecuzione il servizio crea le quattro etichette pronte con i blocchi del prototipo (`Completa` = vendita, `Cucina`, `Aperto il / Scade il`, `Libera` vuota) e i prodotti di esempio del prototipo (Base pizza low carb, Impasto classico 24h, Impasto integrale, Focaccia al rosmarino, Salsa di pomodoro e gli altri), con il produttore Michi s.n.c. Così l'app si prova subito e si stampa un'etichetta vera al primo avvio.
+Alla prima esecuzione il servizio crea i prodotti di esempio del prototipo (Base pizza low carb, Impasto classico 24h, Impasto integrale, Focaccia al rosmarino, Salsa di pomodoro e gli altri), ognuno con la propria etichetta presa dai preset del prototipo (vendita, cucina, aperto, banco), con il produttore Michi s.n.c. Così l'app si prova subito e si stampa un'etichetta vera al primo avvio. Un database creato dalle versioni precedenti (etichette condivise) viene migrato copiando in ogni prodotto l'etichetta che usava.

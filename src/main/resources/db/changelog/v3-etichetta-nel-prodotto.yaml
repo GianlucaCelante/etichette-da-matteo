@@ -1,0 +1,55 @@
+databaseChangeLog:
+  # Cambio di modello (2026-09-08, decisione di Gianluca sul mockup finale): non esistono piu'
+  # tipi di etichetta condivisi ne' una galleria. Ogni prodotto porta la SUA etichetta (blocchi,
+  # zona, dicitura, formato data, produttore) dentro di se'. Changeset con id nuovi (eseguiti UNA
+  # VOLTA SOLA da Liquibase, tracciati in DATABASECHANGELOG): funzionano sia su un database creato
+  # da zero (v1+v2 seminano le etichette/i prodotti "vecchio stile", poi questi changeset copiano
+  # subito tutto nella colonna nuova) sia su un database gia' installato con dati veri.
+
+  - changeSet:
+      id: 20-prodotti-colonna-etichetta
+      author: etichette
+      comment: "Nuova colonna JSON prodotti.etichetta: l'etichetta del prodotto (non piu' condivisa). SQL diretto come per le altre addColumn (SQLite non supporta comodamente ALTER TABLE ... ALTER COLUMN su tabelle con chiave esterna)."
+      changes:
+        - sql:
+            sql: "ALTER TABLE prodotti ADD COLUMN etichetta TEXT;"
+
+  - changeSet:
+      id: 21-migra-etichetta-nel-prodotto
+      author: etichette
+      comment: >
+        Copia dentro prodotti.etichetta il contenuto dell'etichetta CONDIVISA a cui il prodotto
+        era collegato tramite etichetta_id (blocchi, zona - default 1/3 se mai impostata -,
+        dicitura scadenza, formato data, produttore), usando le funzioni JSON native di SQLite
+        (json_object/json): niente Java/JPA necessario, e nessun rischio di escaping manuale del
+        testo dei blocchi. Idempotente: tocca solo le righe con etichetta ancora NULL, quindi e'
+        sicura anche se rieseguita a mano. I prodotti senza etichetta_id (mai dovrebbe succedere
+        nel seme, ma possibile su un database reale) prendono un'etichetta minima vuota invece di
+        restare senza. Alla fine etichetta_id viene azzerato ovunque: non e' piu' usata (niente
+        DROP COLUMN comodo in SQLite con vincoli di chiave esterna) ma la tabella etichette resta
+        nello schema, non piu' esposta dall'API.
+      changes:
+        - sql:
+            sql: |
+              UPDATE prodotti
+              SET etichetta = (
+                SELECT json_object(
+                  'dicituraScadenza', e.dicitura_scadenza,
+                  'formatoData', e.formato_data,
+                  'produttore', CASE WHEN e.produttore_ragione_sociale IS NOT NULL OR e.produttore_sede_legale IS NOT NULL OR e.produttore_sede_produzione IS NOT NULL
+                    THEN json_object('ragioneSociale', e.produttore_ragione_sociale, 'sedeLegale', e.produttore_sede_legale, 'sedeProduzione', e.produttore_sede_produzione)
+                    ELSE NULL END,
+                  'zona', json_object('larghezzaDestra', COALESCE(e.zona_larghezza_destra, '1/3')),
+                  'blocchi', json(e.blocchi)
+                )
+                FROM etichette e WHERE e.id = prodotti.etichetta_id
+              )
+              WHERE prodotti.etichetta_id IS NOT NULL AND prodotti.etichetta IS NULL;
+        - sql:
+            sql: |
+              UPDATE prodotti
+              SET etichetta = json_object('dicituraScadenza', NULL, 'formatoData', NULL, 'produttore', NULL,
+                'zona', json_object('larghezzaDestra', '1/3'), 'blocchi', json('[]'))
+              WHERE prodotti.etichetta_id IS NULL AND prodotti.etichetta IS NULL;
+        - sql:
+            sql: "UPDATE prodotti SET etichetta_id = NULL;"

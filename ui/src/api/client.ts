@@ -2,20 +2,17 @@ import type {
   CorpoErrore,
   Dispositivo,
   DispositivoIo,
-  Etichetta,
-  EtichettaElenco,
   Impostazioni,
   LogoRisposta,
   Lotto,
   MisureRisposta,
-  NuovaEtichetta,
   NuovoProdotto,
   OrdineProdotti,
   ParametriResa,
   PeriodoStorico,
   Prodotto,
-  ProvaEtichettaRichiesta,
-  ProvaEtichettaRisposta,
+  ProvaProdottoRichiesta,
+  ProvaProdottoRisposta,
   ProvaStampaRisposta,
   Rete,
   RistampaRichiesta,
@@ -34,8 +31,7 @@ class ErroreRichiesta extends Error {
   constructor(
     public percorso: string,
     public stato: number,
-    // Il corpo JSON dell'errore, quando il servizio l'ha mandato: {"errore":"…"},
-    // con "prodotti" in piu' per il 409 di DELETE /api/etichette/{id}.
+    // Il corpo JSON dell'errore, quando il servizio l'ha mandato: {"errore":"…"}.
     public corpo?: CorpoErrore,
   ) {
     super(corpo?.errore ?? `Richiesta a ${percorso} fallita: ${stato}`);
@@ -81,21 +77,15 @@ export const api = {
   rete: () => richiedi<Rete>("/rete"),
   versione: () => richiedi<Versione>("/versione"),
 
-  /* ---- etichette ---- */
-  etichette: () => richiedi<EtichettaElenco[]>("/etichette"),
-  etichetta: (id: number) => richiedi<Etichetta>(`/etichette/${id}`),
-  creaEtichetta: (dati: NuovaEtichetta) => richiedi<Etichetta>("/etichette", { method: "POST", body: JSON.stringify(dati) }),
-  duplicaEtichetta: (partiDa: number, nome: string) =>
-    richiedi<Etichetta>(`/etichette${stringaQuery({ partiDa })}`, { method: "POST", body: JSON.stringify({ nome }) }),
-  aggiornaEtichetta: (id: number, dati: Etichetta) =>
-    richiedi<Etichetta>(`/etichette/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
-  eliminaEtichetta: (id: number) => richiedi<void>(`/etichette/${id}`, { method: "DELETE" }),
-
-  /* ---- prodotti ---- */
+  /* ---- prodotti (l'etichetta vive dentro ognuno, revisione di questo giro) ---- */
   prodotti: (opzioni?: { q?: string; ordine?: OrdineProdotti }) =>
     richiedi<Prodotto[]>(`/prodotti${stringaQuery({ q: opzioni?.q, ordine: opzioni?.ordine })}`),
   prodotto: (id: number) => richiedi<Prodotto>(`/prodotti/${id}`),
-  creaProdotto: (dati: NuovoProdotto) => richiedi<Prodotto>("/prodotti", { method: "POST", body: JSON.stringify(dati) }),
+  // Senza argomento: il prodotto nuovo del prototipo (nome "Prodotto nuovo",
+  // pronto da riscrivere). Con un NuovoProdotto: quello.
+  creaProdotto: (dati?: NuovoProdotto) =>
+    richiedi<Prodotto>("/prodotti", { method: "POST", body: dati ? JSON.stringify(dati) : undefined }),
+  duplicaProdotto: (id: number) => richiedi<Prodotto>(`/prodotti/${id}/duplica`, { method: "POST" }),
   aggiornaProdotto: (id: number, dati: Prodotto) =>
     richiedi<Prodotto>(`/prodotti/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
   eliminaProdotto: (id: number) => richiedi<void>(`/prodotti/${id}`, { method: "DELETE" }),
@@ -111,10 +101,10 @@ export const api = {
   stampa: (dati: StampaRichiesta) => richiedi<StampaRisposta>("/stampe", { method: "POST", body: JSON.stringify(dati) }),
   ristampaUltima: (dati?: RistampaRichiesta) =>
     richiedi<RistampaRisposta>("/stampe/ultima", { method: "POST", body: JSON.stringify(dati ?? {}) }),
-  // "Stampa di prova" della vista Etichette: prova l'etichetta in modifica,
-  // anche non ancora salvata, su una copia sola.
-  provaEtichetta: (dati: ProvaEtichettaRichiesta) =>
-    richiedi<ProvaEtichettaRisposta>("/stampe/prova-etichetta", { method: "POST", body: JSON.stringify(dati) }),
+  // "Stampa di prova" della vista Etichette: prova il prodotto in modifica,
+  // anche non ancora salvato (etichetta compresa), su una copia sola.
+  provaProdotto: (dati: ProvaProdottoRichiesta) =>
+    richiedi<ProvaProdottoRisposta>("/stampe/prova-prodotto", { method: "POST", body: JSON.stringify(dati) }),
 
   /* ---- storico ---- */
   storico: (opzioni?: { periodo?: PeriodoStorico; q?: string }) =>
@@ -147,20 +137,14 @@ export function percorsoResaProdotto(id: number, opzioni: ParametriResa): string
   })}`;
 }
 
-// L'anteprima di un'etichetta in modifica, non ancora salvata: il corpo (etichetta
-// completa) non entra in una query string, quindi e' un POST che rende un PNG.
-// Non e' utilizzabile direttamente come src di <img>: si scarica come blob (vedi
-// useAnteprimaEtichetta in hooks.ts) e si tiene vivo un URL locale.
-// "prodotto" (stessa forma di PUT /api/prodotti) manda anche il prodotto in
-// modifica, non ancora salvato: senza, l'anteprima si aggiornerebbe solo
-// quando cambiano i blocchi, non i campi del prodotto (revisione di questo giro).
-export async function anteprimaEtichettaBlob(corpo: {
-  etichetta: Etichetta | NuovaEtichetta;
-  prodottoId?: number;
-  prodotto?: Prodotto;
-  rotolo?: Rotolo;
-  scala?: number;
-}): Promise<Blob> {
+// L'anteprima di un prodotto in modifica, non ancora salvato (etichetta
+// compresa): il corpo (il prodotto intero) non entra in una query string,
+// quindi e' un POST che rende un PNG. Non e' utilizzabile direttamente come
+// src di <img>: si scarica come blob (vedi useAnteprimaProdottoInModifica in
+// hooks.ts) e si tiene vivo un URL locale. Revisione di questo giro: non c'e'
+// piu' un'etichetta a parte ne' un prodottoId facoltativo, e' tutto dentro
+// "prodotto" (stessa forma di PUT /api/prodotti).
+export async function anteprimaProdottoBlob(corpo: { prodotto: Prodotto; rotolo?: Rotolo; scala?: number }): Promise<Blob> {
   const risposta = await fetch(`${BASE}/resa/anteprima.png`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
