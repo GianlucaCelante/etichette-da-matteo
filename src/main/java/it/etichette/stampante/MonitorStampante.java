@@ -26,11 +26,11 @@ import java.util.Optional;
  *       spontanei durante la stampa (mai comandi, mappatura §4.1);</li>
  *   <li>se l'I/O fallisce o la stampante sparisce chiude la porta, segna "scollegata" e la
  *       ricerca ogni secondo con SetupApi finche' non ricompare;</li>
- *   <li>un errore a meta' copia (coperchio aperto, rotolo finito) mette il lavoro in pausa e
- *       resta in ASCOLTO PASSIVO (mai un comando durante la stampa, mappatura §4.1): se la
- *       stampante ristampa da sola la pagina interrotta (il flag di recovery di {@code ESC i z})
- *       la copia conta come fatta senza rimandarla; solo se torna "in ricezione" senza aver
- *       ristampato la si rimanda davvero (vedi {@link #gestisciErroreAMetaCopia}).</li>
+ *   <li>un errore a meta' copia (coperchio aperto, rotolo finito) mette il lavoro in pausa,
+ *       interroga attivamente finche' non torna pulita, poi ascolta brevemente un'eventuale
+ *       ristampa automatica (mai vista in TRE prove hardware) e infine cancella il buffer, espelle
+ *       il pezzo di nastro stampato a meta' e rimanda la copia (vedi
+ *       {@link #gestisciErroreAMetaCopia}).</li>
  * </ul>
  */
 @Component
@@ -53,15 +53,28 @@ public class MonitorStampante {
     private final ApplicationEventPublisher eventi;
 
     /**
+     * Lunghezza (in righe raster = "dot" lungo l'avanzamento) della pagina di espulsione: 300 dot
+     * a 300 dpi = 25,4 mm, la lunghezza minima del nastro continuo (docs/mappatura-brother-ql-1100c.md,
+     * "Limiti nastro continuo"). Serve SOLO a far avanzare e tagliare il pezzo di nastro gia'
+     * stampato a meta' (3a prova hardware del 2026-09-08: dopo l'errore la stampante non lo fa
+     * avanzare ne' lo taglia da sola, e la copia rimandata usciva SOPRA il pezzo rovinato) - il
+     * contenuto e' tutto bianco, non e' un'etichetta vera.
+     */
+    private static final int RIGHE_ESPULSIONE = 300;
+
+    /**
      * Dopo che lo stato e' tornato pulito a meta' copia, quanto si ascolta in PASSIVO (nessun
      * comando) prima di concludere che la stampante NON sta ristampando da sola la pagina
      * interrotta. Se nel frattempo arriva "in stampa" (0x06/01) l'attesa si estende fino a
-     * {@link #attesaRistampaMassimaMs}. Sovrascrivibili SOLO nei test (altrimenti 10 s / 60 s
-     * veri: la 2a prova hardware del 2026-09-08 ha mostrato che la stampante NON manda notifiche
-     * spontanee quando l'errore rientra da solo - la ristampa vista nella 1a prova era innescata
-     * dai nostri stessi comandi ESC i S dell'allora-attivo ascolto attivo).
+     * {@link #attesaRistampaMassimaMs}. Sovrascrivibile SOLO nei test (altrimenti 5 s / 60 s veri:
+     * TRE prove hardware, l'ultima l'8/9/2026, hanno mostrato che la stampante non manda MAI una
+     * notifica spontanea di ristampa quando l'errore rientra da solo - la ristampa vista nella 1a
+     * prova era innescata dai nostri stessi comandi ESC i S dell'allora-attivo ascolto attivo.
+     * L'ascolto resta solo per prudenza, accorciato a 5 s: la vera ripresa e' interrogazione
+     * attiva + cancella buffer + espelli il pezzo rovinato ({@link #RIGHE_ESPULSIONE}) + rimanda
+     * la copia (vedi {@link #cancellaBufferEspelliERimanda}).
      */
-    private volatile long attesaRistampaBaseMs = 10_000L;
+    private volatile long attesaRistampaBaseMs = 5_000L;
     private volatile long attesaRistampaMassimaMs = 60_000L;
 
     private volatile StatoStampante statoCorrente = StatoStampante.scollegata();
@@ -416,27 +429,35 @@ public class MonitorStampante {
     }
 
     /**
-     * Un errore spontaneo (0x02) e' arrivato A META' di una copia (2a prova hardware del
-     * 2026-09-08, dopo che la 1a versione - ascolto puramente passivo - e' rimasta in pausa per
-     * oltre un minuto senza che la stampante mandasse mai una notifica spontanea di rientro
-     * dall'errore: la ristampa automatica vista nella 1a prova era innescata dai nostri stessi
-     * comandi {@code ESC i S} di allora, non da un rientro spontaneo). Tre fasi:
+     * Un errore spontaneo (0x02) e' arrivato A META' di una copia. Storia (2026-09-08, TRE prove
+     * hardware): la 1a versione (ascolto puramente passivo) e' rimasta in pausa per oltre un
+     * minuto senza che la stampante mandasse mai una notifica spontanea di rientro dall'errore -
+     * la ristampa vista nella 1a prova era innescata dai nostri stessi comandi {@code ESC i S}
+     * dell'allora-attivo ascolto attivo, non da un rientro spontaneo. La 3a prova (con la logica
+     * qui sotto gia' attiva) ha confermato che la stampante non ristampa MAI da sola, ma ha
+     * rivelato un problema fisico nuovo: dopo l'errore la stampante non fa avanzare ne' taglia il
+     * pezzo di nastro gia' stampato a meta', quindi la copia rimandata usciva SOPRA quel pezzo.
+     * Quattro fasi:
      *
      * <ol>
      *   <li>{@link #attendiStatoPulitoAttivamente}: la stampante non sta stampando, quindi
      *       interrogarla con {@code ESC i S} ogni 2 s e' sicuro (mappatura §4.1) - si continua
      *       finche' non torna pulita o non si annulla, senza limite massimo;</li>
      *   <li>{@link #ascoltaRistampaAutomatica}: appena pulita, ascolto PASSIVO (nessun comando)
-     *       per {@link #attesaRistampaBaseMs} (10 s): se arriva "in stampa" (0x06/01) la
-     *       stampante sta ristampando da sola, l'attesa si estende fino a "completata" (0x01) e
-     *       poi "tornata in ricezione" (0x06/00), massimo {@link #attesaRistampaMassimaMs}
-     *       (60 s) - in tal caso la copia conta come FATTA, senza rimandarla (altrimenti sarebbe
-     *       una copia doppia: rischio 7, docs/stack-tecnologico.md); un nuovo errore (0x02)
-     *       durante l'ascolto fa ricominciare dalla fase 1;</li>
-     *   <li>{@link #cancellaBufferERimanda}: se in {@link #attesaRistampaBaseMs} non e' arrivato
-     *       nulla, la stampante NON sta ristampando da sola: si cancella un'eventuale pagina
-     *       residua nel buffer (invalidate + {@code ESC @}, mappatura §6) e si rimanda la stessa
-     *       copia come una pagina normale (si torna all'ascolto ordinario).</li>
+     *       per {@link #attesaRistampaBaseMs} (5 s, solo per prudenza: non e' mai stata vista in
+     *       nessuna delle tre prove): se arriva "in stampa" (0x06/01) la stampante starebbe
+     *       ristampando da sola, l'attesa si estende fino a "completata" (0x01) e poi "tornata in
+     *       ricezione" (0x06/00), massimo {@link #attesaRistampaMassimaMs} (60 s) - in tal caso la
+     *       copia conta come FATTA, senza rimandarla (altrimenti sarebbe una copia doppia: rischio
+     *       7, docs/stack-tecnologico.md); un nuovo errore (0x02) durante l'ascolto fa
+     *       ricominciare dalla fase 1;</li>
+     *   <li>{@link #cancellaBufferEspelliERimanda}: se in {@link #attesaRistampaBaseMs} non e'
+     *       arrivato nulla (il caso ormai atteso), si cancella un'eventuale pagina residua nel
+     *       buffer (invalidate + {@code ESC @}, mappatura §6);</li>
+     *   <li>{@link #espelliPezzoAMetaStampato}: si manda una pagina vuota da
+     *       {@link #RIGHE_ESPULSIONE} righe (25,4 mm) con taglio, per far uscire ed espellere il
+     *       pezzo di nastro rovinato, e SOLO DOPO si rimanda la copia interrotta come una pagina
+     *       normale (si torna all'ascolto ordinario).</li>
      * </ol>
      */
     private EsitoCopia gestisciErroreAMetaCopia(LavoroStampa lavoro, EsitoStato erroreIniziale) {
@@ -453,7 +474,7 @@ public class MonitorStampante {
         if (esitoAscolto != null) {
             return esitoAscolto;
         }
-        return cancellaBufferERimanda(lavoro);
+        return cancellaBufferEspelliERimanda(lavoro);
     }
 
     /** Interroga con {@code ESC i S} ogni 2 s finche' lo stato non ha piu' errori. Null = tornata pulita; altrimenti l'esito finale (annullato/errore IO). */
@@ -549,11 +570,17 @@ public class MonitorStampante {
         }
     }
 
-    /** Nessuna ristampa automatica: cancella un'eventuale pagina residua nel buffer e rimanda la stessa copia come una pagina normale. */
-    private EsitoCopia cancellaBufferERimanda(LavoroStampa lavoro) {
+    /**
+     * Nessuna ristampa automatica: cancella un'eventuale pagina residua nel buffer, ESPELLE il
+     * pezzo di nastro stampato a meta' (3a prova hardware del 2026-09-08: senza questo passaggio
+     * la copia rimandata usciva SOPRA il pezzo rovinato, perche' la stampante non lo fa avanzare
+     * ne' lo taglia da sola dopo un errore a meta' pagina) e solo allora rimanda la stessa copia
+     * come una pagina normale.
+     */
+    private EsitoCopia cancellaBufferEspelliERimanda(LavoroStampa lavoro) {
         try {
             inviaCancellazioneBuffer();
-            log.info("Cancello un'eventuale pagina residua nel buffer (invalidate + ESC @) e rimando la copia {} di {}.",
+            log.info("Cancello un'eventuale pagina residua nel buffer (invalidate + ESC @) prima di espellere il pezzo rovinato (copia {} di {}).",
                     lavoro.copiaCorrente + 1, lavoro.copieTotali);
             EsitoStato esito = ProtocolloQl.decodificaStato(richiediStato());
             pubblicaStato(descrivi(esito));
@@ -564,7 +591,43 @@ public class MonitorStampante {
         } catch (IOException e) {
             return EsitoCopia.ERRORE_IO;
         }
+
+        EsitoCopia esitoEspulsione = espelliPezzoAMetaStampato(lavoro);
+        if (esitoEspulsione != EsitoCopia.COMPLETATA) {
+            // errore di I/O, annullamento, o l'esito di un nuovo gestisciErroreAMetaCopia se
+            // l'espulsione stessa e' stata interrotta da un errore (quel metodo torna gia' da
+            // solo alla fase di interrogazione attiva prima di ritentare).
+            return esitoEspulsione;
+        }
+
+        log.info("Rimando la copia {} di {} dopo l'espulsione del pezzo rovinato.", lavoro.copiaCorrente + 1, lavoro.copieTotali);
         return EsitoCopia.ERRORE_RECUPERABILE;
+    }
+
+    /**
+     * Manda una pagina vuota (tutta bianca, {@link #RIGHE_ESPULSIONE} righe = 25,4 mm, con lo
+     * stesso taglio automatico e margine del lavoro in corso) per far avanzare e tagliare il pezzo
+     * di nastro stampato a meta' PRIMA di rimandare la copia interrotta. Aspetta la stessa
+     * sequenza di stati di una copia normale ({@link #ascoltaEsitoCopia}: in stampa -> completata
+     * -> tornata in ricezione, timeout 60 s); se arriva un errore anche durante l'espulsione,
+     * quel metodo torna gia' da solo alla fase di interrogazione attiva (fase a, tramite
+     * {@link #gestisciErroreAMetaCopia}) prima di ritentare.
+     */
+    private EsitoCopia espelliPezzoAMetaStampato(LavoroStampa lavoro) {
+        int colonne = ProtocolloQl.ROTOLI_CONTINUI.get(lavoro.rotoloMm)[1];
+        boolean[][] biancoTutto = new boolean[RIGHE_ESPULSIONE][colonne];
+        byte[] jobEspulsione = ProtocolloQl.costruisciLavoro(biancoTutto, RIGHE_ESPULSIONE, colonne,
+                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico);
+        log.info("Espello il pezzo stampato a meta': pagina vuota da 25 mm con taglio ({} byte).", jobEspulsione.length);
+        try {
+            inviaJob(jobEspulsione);
+        } catch (IOException e) {
+            log.info("Espulsione: errore di I/O durante l'invio.");
+            return EsitoCopia.ERRORE_IO;
+        }
+        EsitoCopia esito = ascoltaEsitoCopia(lavoro);
+        log.info("Espulsione: esito={}.", esito);
+        return esito;
     }
 
     /** Invalidate (400 byte a zero) + {@code ESC @}: cancella un'eventuale pagina residua nel buffer di ricezione (mappatura §6). */

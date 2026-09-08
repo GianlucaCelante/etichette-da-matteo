@@ -12,23 +12,32 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Ripresa dopo un errore A META' copia (mandato del 2026-09-08, dopo la 2a prova hardware di
- * Gianluca: coperchio aperto/richiuso, e per oltre un minuto NIENTE - nessuna notifica
- * spontanea di rientro. Conclusione: la stampante non manda notifiche spontanee quando l'errore
- * rientra da solo; la ristampa vista nella 1a prova era innescata dai comandi {@code ESC i S} di
- * allora). Il nuovo algoritmo (vedi {@link MonitorStampante#gestisciErroreAMetaCopia}):
+ * Ripresa dopo un errore A META' copia (mandato del 2026-09-08). TRE prove hardware:
+ * <ol>
+ *   <li>ascolto puramente passivo: in pausa per oltre un minuto, nessuna notifica spontanea di
+ *       rientro - la ristampa vista era innescata dai comandi {@code ESC i S} di allora;</li>
+ *   <li>coperchio richiuso, un minuto di silenzio assoluto: confermato, la stampante NON manda
+ *       mai notifiche spontanee quando l'errore rientra da solo;</li>
+ *   <li>con la logica di ripresa (interroga -> ascolta -> cancella+rimanda) gia' attiva: la
+ *       stampante non ristampa mai da sola, MA dopo l'errore non fa avanzare ne' taglia il pezzo
+ *       di nastro gia' stampato a meta' - la copia rimandata usciva SOPRA quel pezzo.</li>
+ * </ol>
+ * Il nuovo algoritmo (vedi {@link MonitorStampante#gestisciErroreAMetaCopia}):
  * <ol>
  *   <li>interroga attivamente ogni 2 s finche' non torna pulita (la stampante non sta
  *       stampando: sicuro), senza limite massimo;</li>
- *   <li>appena pulita, ascolta in PASSIVO per un tempo base (accorciato nei test) un'eventuale
+ *   <li>appena pulita, ascolta in PASSIVO per un tempo base (5 s, accorciato nei test) un'eventuale
  *       ristampa automatica ("in stampa" -> "completata" -> "in ricezione"): se la vede, la
  *       copia conta come fatta;</li>
  *   <li>se non vede nulla, cancella un'eventuale pagina residua nel buffer (invalidate +
- *       {@code ESC @}) e rimanda la stessa copia come una pagina normale.</li>
+ *       {@code ESC @}), ESPELLE il pezzo di nastro stampato a meta' (pagina vuota da 300 righe =
+ *       25,4 mm con taglio) e solo allora rimanda la stessa copia come una pagina normale.</li>
  * </ol>
- * Tre test con la porta finta, come chiesto: ristampa automatica rilevata (1 sola scrittura del
- * job), nessuna ristampa (cancellazione del buffer + 2a scrittura del job, in quest'ordine),
- * annullamento durante la pausa (nessuna scrittura ulteriore, evento annullata).
+ * Quattro test con la porta finta: ristampa automatica rilevata (1 sola scrittura del job,
+ * nessuna cancellazione/espulsione), nessuna ristampa (cancellazione + espulsione da 300 righe +
+ * 2a scrittura del job, in quest'ordine), un errore anche durante l'espulsione (si torna a
+ * interrogare e si riprova l'intero passaggio cancellazione+espulsione), annullamento durante la
+ * pausa (nessuna scrittura ulteriore, evento annullata).
  */
 class MonitorStampanteRipresaTest {
 
@@ -65,12 +74,12 @@ class MonitorStampanteRipresaTest {
 
         aspettaEvento(pubblicati, EventoStampa.COMPLETATA);
 
-        assertThat(scritturaDelJob(porta)).isEqualTo(1);
-        assertThat(scritturaCancellazione(porta)).isEqualTo(0);
+        assertThat(scrittureGrandi(porta)).hasSize(1); // solo il job, nessuna cancellazione/espulsione
+        assertThat(scrittureGrandi(porta).get(0).length).isEqualTo(445);
     }
 
     @Test
-    void senzaRistampaCancellaIlBufferEPoiRimandaLaCopia() throws InterruptedException {
+    void senzaRistampaCancellaIlBufferEspelleEPoiRimandaLaCopia() throws InterruptedException {
         PortaFinta porta = new PortaFinta();
         CodaDiStampa coda = new CodaDiStampa();
         List<Object> pubblicati = new CopyOnWriteArrayList<>();
@@ -85,11 +94,11 @@ class MonitorStampanteRipresaTest {
         // Fase 2 (ascolto passivo): NULLA precaricato qui apposta. Con PortaFinta che ora
         // blocca davvero fino a maxMs, se si precaricasse subito la risposta della fase 3 il
         // leggiPoll(400,...) della fase 2 la leggerebbe LUI (dato che i dati sono gia' li'),
-        // confondendo il test: deve prima scadere per davvero (video il timeout naturale di
+        // confondendo il test: deve prima scadere per davvero (vedi il timeout naturale di
         // 400 ms del suo stesso leggiPoll, oltre la soglia qui accorciata a 50 ms).
 
         monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
-        monitor.impostaAttesaRistampaPerTest(50, 200); // 50 ms/200 ms invece di 10 s/60 s veri
+        monitor.impostaAttesaRistampaPerTest(50, 200); // 50 ms/200 ms invece di 5 s/60 s veri
         monitor.avvia();
 
         new Thread(() -> {
@@ -101,6 +110,9 @@ class MonitorStampanteRipresaTest {
             }
             porta.accodaNessunDato();
             porta.accodaRisposta(statoPronta102()); // fase 3: cancella il buffer, poi rilegge -> pulito
+            porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione: "in stampa"
+            porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione: "completata"
+            porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione: "tornata in ricezione"
             porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
             porta.accodaRisposta(stato(0x06, 0x00, 0));
             porta.accodaNessunDato();
@@ -109,9 +121,78 @@ class MonitorStampanteRipresaTest {
 
         aspettaEvento(pubblicati, EventoStampa.COMPLETATA);
 
-        assertThat(scritturaCancellazione(porta)).isEqualTo(1);
-        assertThat(scritturaDelJob(porta)).isEqualTo(2);
-        assertThat(indiceScritturaCancellazione(porta)).isLessThan(indiceSecondaScritturaDelJob(porta));
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(4);
+        assertThat(grandi.get(0).length).isEqualTo(445); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (invalidate + ESC @)
+        assertThat(grandi.get(2).length).isEqualTo(743); // job di espulsione (300 righe tutte bianche)
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(300);
+        assertThat(grandi.get(3).length).isEqualTo(445); // job copia 1 di nuovo (rimandata)
+    }
+
+    @Test
+    void unErroreDuranteLEspulsioneTornaAInterrogareEPoiRiprovaLEspulsione() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // errore a meta' copia
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1 (1o giro): subito pulita
+        // fase 2 (1o giro): nessun dato precaricato, scade da sola come sopra.
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(50, 200);
+        monitor.avvia();
+
+        new Thread(() -> {
+            try {
+                Thread.sleep(500); // oltre il timeout naturale della fase 2 (1o giro)
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // fase 3 (1o giro): cancella il buffer -> pulito
+            porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione (1o tentativo): "in stampa"
+            porta.accodaRisposta(stato(0x02, 0, 0x10)); // NUOVO errore durante l'espulsione stessa
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // fase 1 (2o giro, per l'errore durante l'espulsione): subito pulita
+            // fase 2 (2o giro): scade di nuovo da sola (vedi il secondo thread piu' sotto).
+
+            try {
+                Thread.sleep(500); // oltre il timeout naturale della fase 2 (2o giro)
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // fase 3 (2o giro): cancella il buffer di nuovo -> pulito
+            porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione (2o tentativo): "in stampa"
+            porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione (2o tentativo): "completata"
+            porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione (2o tentativo): "tornata in ricezione" -> riuscita
+            porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+            porta.accodaRisposta(stato(0x06, 0x00, 0));
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+        }, "supplier-espulsione-fallita").start();
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(6);
+        assertThat(grandi.get(0).length).isEqualTo(445); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (1o tentativo)
+        assertThat(grandi.get(2).length).isEqualTo(743); // job di espulsione (1o tentativo, interrotto)
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(300);
+        assertThat(grandi.get(3).length).isEqualTo(402); // cancellazione (2o tentativo, dopo essere tornati a interrogare)
+        assertThat(grandi.get(4).length).isEqualTo(743); // job di espulsione (2o tentativo, riuscito)
+        assertThat(numeroLineeJob(grandi.get(4))).isEqualTo(300);
+        assertThat(grandi.get(5).length).isEqualTo(445); // job copia 1 di nuovo (rimandata)
     }
 
     @Test
@@ -147,8 +228,7 @@ class MonitorStampanteRipresaTest {
 
         aspettaEvento(pubblicati, EventoStampa.ANNULLATA);
 
-        assertThat(scritturaDelJob(porta)).isEqualTo(1); // solo il primo invio, nessun rinvio
-        assertThat(scritturaCancellazione(porta)).isEqualTo(0);
+        assertThat(scrittureGrandi(porta)).hasSize(1); // solo il primo invio, nessun rinvio ne' cancellazione/espulsione
     }
 
     // ---------------------------------------------------------------------------------------
@@ -167,38 +247,27 @@ class MonitorStampanteRipresaTest {
         throw new AssertionError("evento di stampa \"" + statoAtteso + "\" non arrivato entro 5 s. Eventi pubblicati: " + pubblicati);
     }
 
-    /** {@code porta.scritture} contiene anche le piccole {@code ESC i S} (3 byte): un job vero (anche minuscolo, come nei test) supera abbondantemente i 402 byte della cancellazione buffer. */
-    private static long scritturaDelJob(PortaFinta porta) {
-        return porta.scritture.stream().filter(b -> b.length > 402).count();
+    /**
+     * Tutte le scritture "grandi" (job di copia, job di espulsione, cancellazione buffer), nello
+     * stesso ordine in cui sono avvenute: esclude solo le piccole interrogazioni {@code ESC i S}
+     * (3 byte). Distinguibili per lunghezza esatta: cancellazione = 402, job copia (immagine di
+     * prova, 2 righe) = 445, job di espulsione (300 righe) = 743 - vedi {@link #numeroLineeJob}
+     * per la verifica indipendente del conteggio righe dentro {@code ESC i z}.
+     */
+    private static List<byte[]> scrittureGrandi(PortaFinta porta) {
+        return porta.scritture.stream().filter(b -> b.length > 3).toList();
     }
 
-    /** Invalidate (400 zeri) + {@code ESC @}: esattamente 402 byte, distinguibile sia dalle ESC i S (3 byte) sia dal job (molto piu' grande). */
-    private static long scritturaCancellazione(PortaFinta porta) {
-        return porta.scritture.stream().filter(b -> b.length == 402).count();
-    }
-
-    private static int indiceScritturaCancellazione(PortaFinta porta) {
-        List<byte[]> s = porta.scritture;
-        for (int i = 0; i < s.size(); i++) {
-            if (s.get(i).length == 402) {
-                return i;
+    /** Cerca {@code ESC i z} nel job e ne legge il conteggio righe (4 byte little-endian subito dopo n1/notifica/rotolo/0). */
+    private static int numeroLineeJob(byte[] job) {
+        for (int i = 0; i + 2 < job.length; i++) {
+            if (job[i] == 0x1B && job[i + 1] == 'i' && job[i + 2] == 'z') {
+                int base = i + 3 + 4; // salta n1, notifica(0x0A), rotoloMm, 0x00
+                return (job[base] & 0xFF) | ((job[base + 1] & 0xFF) << 8)
+                        | ((job[base + 2] & 0xFF) << 16) | ((job[base + 3] & 0xFF) << 24);
             }
         }
-        throw new AssertionError("nessuna scrittura di cancellazione trovata");
-    }
-
-    private static int indiceSecondaScritturaDelJob(PortaFinta porta) {
-        List<byte[]> s = porta.scritture;
-        int viste = 0;
-        for (int i = 0; i < s.size(); i++) {
-            if (s.get(i).length > 402) {
-                viste++;
-                if (viste == 2) {
-                    return i;
-                }
-            }
-        }
-        throw new AssertionError("meno di due scritture del job trovate");
+        throw new AssertionError("ESC i z non trovato nel job (" + job.length + " byte)");
     }
 
     private static byte[] statoPronta102() {
