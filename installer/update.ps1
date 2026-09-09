@@ -156,13 +156,15 @@ function Open-EtichetteAppWindows {
     # Riapre le finestre chiuse da Close-EtichetteAppWindows, allo stesso
     # indirizzo (porta inclusa): $Processes e' l'elenco catturato PRIMA
     # della chiusura, quindi la loro CommandLine e' ancora leggibile qui.
+    #
+    # Importante: Edge non va avviato come figlio diretto di questo script
+    # (Start-Process -FilePath msedge.exe lo terrebbe agganciato al suo
+    # albero di processi). Anche col fix sopra (WaitForExit invece di
+    # -Wait), un Edge rimasto figlio dello script elevato e' fragile;
+    # explorer.exe e "cmd /c start" avviano Edge e terminano subito,
+    # staccandolo del tutto dall'albero di questo processo.
     param([array]$Processes)
     if (-not $Processes -or $Processes.Count -eq 0) {
-        return
-    }
-    $edgePath = Get-EdgePath
-    if (-not $edgePath) {
-        Write-Warning "Microsoft Edge non trovato; non riapro la finestra dell'app. Apri manualmente l'indirizzo del servizio."
         return
     }
     $urls = @()
@@ -171,9 +173,35 @@ function Open-EtichetteAppWindows {
             $urls += $Matches[1]
         }
     }
-    foreach ($url in ($urls | Select-Object -Unique)) {
+    $urls = $urls | Select-Object -Unique
+    if (-not $urls -or $urls.Count -eq 0) {
+        return
+    }
+
+    $publicDesktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
+    $shortcut = Join-Path $publicDesktop "Etichette.lnk"
+
+    if (Test-Path -LiteralPath $shortcut) {
+        # Il collegamento pubblico punta gia' all'indirizzo giusto (stessa
+        # porta configurata per il servizio): lo apriamo con explorer.exe,
+        # che avvia Edge come proprio figlio e termina subito, staccandolo
+        # dall'albero di processi di questo script.
+        Write-Host "Riapro l'app tramite il collegamento pubblico $shortcut ..."
+        Start-Process -FilePath "explorer.exe" -ArgumentList ('"' + $shortcut + '"')
+        return
+    }
+
+    $edgePath = Get-EdgePath
+    if (-not $edgePath) {
+        Write-Warning "Microsoft Edge non trovato e nessun collegamento pubblico; non riapro la finestra dell'app. Apri manualmente l'indirizzo del servizio."
+        return
+    }
+    foreach ($url in $urls) {
         Write-Host "Riapro $url ..."
-        Start-Process -FilePath $edgePath -ArgumentList "--app=$url"
+        # Ripiego se manca il collegamento pubblico: "cmd /c start" avvia
+        # Edge tramite il proprio meccanismo di avvio e termina subito,
+        # quindi anche qui Edge non resta figlio di questo script.
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", '""', ('"' + $edgePath + '"'), ("--app=$url")) -WindowStyle Hidden
     }
 }
 
@@ -303,7 +331,17 @@ if (-not (Test-IsAdministrator)) {
         "-Elevated"
     )
     try {
-        $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -PassThru -ArgumentList $argumentList
+        # NON usare -Wait qui: PowerShell, quando -Verb RunAs richiede
+        # ShellExecute, implementa -Wait con un Job object che aspetta
+        # l'INTERO albero di processi del figlio, non solo il processo
+        # elevato. Lo script elevato, a fine aggiornamento, riapre Edge
+        # (Open-EtichetteAppWindows): con -Wait questo lanciatore restava
+        # bloccato finche' l'utente non chiudeva anche quella finestra di
+        # Edge - bug osservato l'8 settembre 2026 (oltre dieci minuti dopo
+        # la fine reale dell'aggiornamento). Process.WaitForExit() aspetta
+        # invece SOLO il PID del processo elevato, tramite il suo handle.
+        $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -PassThru -ArgumentList $argumentList
+        $process.WaitForExit()
         exit $process.ExitCode
     } catch {
         $inner = $_.Exception

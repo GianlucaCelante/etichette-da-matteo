@@ -343,6 +343,16 @@ data/valuta), togli quello che risulta inutile per tenere la JRE ridotta.
   e scriveva un secondo FATAL, `Unknown command: refresh`, nel log. Non
   serve comunque nulla al posto di "install": WinSW rilegge `Etichette.xml`
   da solo a ogni avvio del servizio.
+- **Lanciatore non elevato bloccato oltre dieci minuti dopo un aggiornamento
+  reale (9 settembre 2026)**: `Start-Process -Wait` nel ramo di
+  autoelevazione aspetta l'INTERO albero di processi del figlio quando usa
+  `-Verb RunAs` (ShellExecute), non solo il processo elevato; siccome lo
+  script elevato riapre poi Edge (`Open-EtichetteAppWindows`), il lanciatore
+  restava bloccato finche' l'utente non chiudeva anche quella finestra.
+  **Risolto** sostituendo `-Wait` con `Process.WaitForExit()` (aspetta solo
+  il PID elevato) e avviando Edge staccato dall'albero di processi
+  (`explorer.exe` sul collegamento pubblico, o in ripiego `cmd /c start`)
+  invece che come figlio diretto dello script.
 
 ## Cosa resta da provare
 
