@@ -107,6 +107,16 @@ public class MonitorStampante {
     private volatile long attesaRistampaBaseMs = 5_000L;
     private volatile long attesaRistampaMassimaMs = 60_000L;
 
+    /**
+     * Un errore a meta' copia DIVERSO dal coperchio aperto (tipicamente "supporto non alimentabile
+     * o rotolo finito") non fa ristampare da solo: non si puo' sapere se l'etichetta e' uscita
+     * intera (mandato del 2026-09-09 dopo un doppione reale, docs/api.md "Errore di nastro a meta'
+     * copia"). Si chiede all'utente e, appena la stampante torna pulita, si aspetta la sua
+     * decisione per al massimo questo tempo; scaduto senza risposta si ristampa (mai perdere
+     * un'etichetta). Sovrascrivibile SOLO nei test.
+     */
+    private volatile long attesaDecisioneNastroMs = 60_000L;
+
     private volatile StatoStampante statoCorrente = StatoStampante.scollegata();
     private volatile boolean attivo = true;
     private Thread thread;
@@ -159,6 +169,11 @@ public class MonitorStampante {
     void impostaAttesaRistampaPerTest(long baseMs, long massimaMs) {
         this.attesaRistampaBaseMs = baseMs;
         this.attesaRistampaMassimaMs = massimaMs;
+    }
+
+    /** SOLO per i test: i 60 s di attesa di una decisione sul nastro non sono testabili, qui si accorciano. */
+    void impostaAttesaDecisioneNastroPerTest(long ms) {
+        this.attesaDecisioneNastroMs = ms;
     }
 
     private void ciclo() {
@@ -258,12 +273,17 @@ public class MonitorStampante {
      * cosi' il lavoro resta in pausa e continua a interrogare invece di chiudersi in errore.
      */
     private boolean gestisciMancataRispostaDuranteLavoro(LavoroStampa lavoro) {
+        return gestisciMancataRispostaDuranteLavoro(lavoro, null);
+    }
+
+    /** Come sopra, con {@code domanda} (docs/api.md, "Errore di nastro a meta' copia") da propagare all'evento "in pausa" - null fuori da quel flusso. */
+    private boolean gestisciMancataRispostaDuranteLavoro(LavoroStampa lavoro, String domanda) {
         log.debug("la stampante non risponde durante il lavoro {}.", lavoro.id);
         if (incrementaEVerificaScollegata()) {
             return true;
         }
         String messaggio = mancateRisposteConsecutive >= SOGLIA_NON_RISPONDE ? MESSAGGIO_NON_RISPONDE : statoCorrente.messaggio();
-        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, messaggio);
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, messaggio, domanda);
         return false;
     }
 
@@ -622,14 +642,23 @@ public class MonitorStampante {
      *       vecchia) - e SOLO DOPO si rimanda la copia interrotta come una pagina normale (si
      *       torna all'ascolto ordinario).</li>
      * </ol>
+     *
+     * <p><b>SOLO per il coperchio aperto</b>: per qualunque ALTRO errore (tipicamente "supporto non
+     * alimentabile o rotolo finito") non si puo' sapere se l'etichetta e' uscita intera, quindi da
+     * qui si esce subito verso {@link #gestisciErroreNastroConDomanda} - si chiede all'utente,
+     * niente ristampa automatica (mandato del 2026-09-09 dopo un doppione reale, docs/api.md
+     * "Errore di nastro a meta' copia").
      */
     private EsitoCopia gestisciErroreAMetaCopia(LavoroStampa lavoro, EsitoStato erroreIniziale) {
         pubblicaStato(descrivi(erroreIniziale));
+        if (!tuttiGliErrori(erroreIniziale).contains("coperchio aperto")) {
+            return gestisciErroreNastroConDomanda(lavoro, erroreIniziale);
+        }
         pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(erroreIniziale).messaggio());
         log.info("Errore durante la copia {} di {}: {}. Interrogo ogni 2 s finche' non torna pulita.",
                 lavoro.copiaCorrente + 1, lavoro.copieTotali, descrivi(erroreIniziale).messaggio());
 
-        EsitoCopia esitoAttesa = attendiStatoPulitoAttivamente(lavoro);
+        EsitoCopia esitoAttesa = attendiStatoPulitoAttivamente(lavoro, null);
         if (esitoAttesa != null) {
             return esitoAttesa;
         }
@@ -640,8 +669,14 @@ public class MonitorStampante {
         return cancellaBufferEspelliERimanda(lavoro);
     }
 
-    /** Interroga con {@code ESC i S} ogni 2 s finche' lo stato non ha piu' errori. Null = tornata pulita; altrimenti l'esito finale (annullato/errore IO). */
-    private EsitoCopia attendiStatoPulitoAttivamente(LavoroStampa lavoro) {
+    /**
+     * Interroga con {@code ESC i S} ogni 2 s finche' lo stato non ha piu' errori. Null = tornata
+     * pulita; altrimenti l'esito finale (annullato/errore IO). {@code domanda} (docs/api.md,
+     * "Errore di nastro a meta' copia") accompagna ogni evento "in pausa" pubblicato QUI mentre si
+     * aspetta: {@link EventoStampa#DOMANDA_NASTRO} per il flusso che chiede all'utente, null per
+     * quello automatico del coperchio aperto.
+     */
+    private EsitoCopia attendiStatoPulitoAttivamente(LavoroStampa lavoro, String domanda) {
         long inizio = System.nanoTime();
         while (true) {
             if (lavoro.annullato.get()) {
@@ -655,7 +690,7 @@ public class MonitorStampante {
                 // Punto 2: una risposta vuota qui NON chiude il lavoro, si resta in pausa e si
                 // ritenta - solo se il dispositivo sparisce per davvero si esce come ERRORE_IO
                 // (la chiamante, eseguiLavoro, disconnette e pubblica l'esito).
-                if (gestisciMancataRispostaDuranteLavoro(lavoro)) {
+                if (gestisciMancataRispostaDuranteLavoro(lavoro, domanda)) {
                     return EsitoCopia.ERRORE_IO;
                 }
                 dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
@@ -665,13 +700,149 @@ public class MonitorStampante {
             }
             pubblicaStato(descrivi(esito));
             if (!esito.haErrori()) {
-                log.info("Stato tornato pulito dopo {} s: ascolto per un'eventuale ristampa automatica.",
-                        msTrascorsi(inizio) / 1000);
+                log.info("Stato tornato pulito dopo {} s.", msTrascorsi(inizio) / 1000);
                 return null;
             }
-            pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio());
+            pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio(), domanda);
             dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Errore di nastro a meta' copia (mandato del 2026-09-09, docs/api.md): un errore diverso dal
+    // coperchio aperto (tipicamente "supporto non alimentabile o rotolo finito") non fa ristampare
+    // da solo - non si puo' sapere se l'etichetta e' uscita intera - si chiede all'utente.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Chiede all'utente se l'etichetta interrotta e' uscita intera (evento IN_PAUSA con {@code
+     * domanda = "nastro"}) invece di ristampare da sola come per il coperchio aperto. Finche' resta
+     * in errore si aspetta come sempre ({@link #attendiStatoPulitoAttivamente}, MAI
+     * {@link #gestisciErroreAMetaCopia} di nuovo da qui: un nuovo errore, coperchio compreso, resta
+     * dentro questo stesso flusso "a domanda" - si e' gia' deciso che questo lavoro chiede prima di
+     * ristampare, non si torna al flusso automatico a meta' strada). Appena pulita si aspetta la
+     * decisione ({@link #attendiDecisioneOTornaInErrore}); se nel frattempo torna in errore si
+     * ricomincia da qui (il conteggio dei 60 s ripartira' alla prossima volta che torna pulita).
+     */
+    private EsitoCopia gestisciErroreNastroConDomanda(LavoroStampa lavoro, EsitoStato erroreIniziale) {
+        List<String> errori = tuttiGliErrori(erroreIniziale);
+        String messaggio = "Problema con il nastro: " + (errori.isEmpty() ? "errore" : errori.get(0));
+        log.info("Errore di nastro durante la copia {} di {} del lavoro {}: {}. Chiedo all'utente se l'etichetta e' uscita intera.",
+                lavoro.copiaCorrente + 1, lavoro.copieTotali, lavoro.id, messaggio);
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, messaggio, EventoStampa.DOMANDA_NASTRO);
+
+        lavoro.inAttesaDiDecisioneNastro = true;
+        try {
+            while (true) {
+                EsitoCopia esitoAttesaPulita = attendiStatoPulitoAttivamente(lavoro, EventoStampa.DOMANDA_NASTRO);
+                if (esitoAttesaPulita != null) {
+                    return esitoAttesaPulita; // annullato, o davvero scollegata
+                }
+                EsitoCopia esitoDecisione = attendiDecisioneOTornaInErrore(lavoro);
+                if (esitoDecisione != null) {
+                    return esitoDecisione;
+                }
+                // esitoDecisione == null: tornata in errore mentre si aspettava la decisione, si
+                // ricomincia dall'attesa dello stato pulito (il ciclo while sopra).
+            }
+        } finally {
+            lavoro.inAttesaDiDecisioneNastro = false;
+        }
+    }
+
+    /**
+     * La stampante e' pulita: aspetta la decisione dell'utente ({@link #decidiProsegui}/
+     * {@link #decidiRistampa}, impostata su {@link LavoroStampa#decisione} da un'altra richiesta
+     * HTTP) interrogando ogni 2 s finche' non arriva, scade {@link #attesaDecisioneNastroMs} (in
+     * quel caso si ristampa da sola, mai perdere un'etichetta), si annulla, o la stampante torna in
+     * errore. Null = tornata in errore (la chiamante ricomincia dall'attesa dello stato pulito);
+     * altrimenti l'esito finale (applicata la decisione, annullato, o errore IO).
+     */
+    private EsitoCopia attendiDecisioneOTornaInErrore(LavoroStampa lavoro) {
+        long inizio = System.nanoTime();
+        while (true) {
+            if (lavoro.annullato.get()) {
+                log.info("Lavoro {}: annullato mentre aspettava una decisione sul nastro.", lavoro.id);
+                return EsitoCopia.ANNULLATO;
+            }
+            LavoroStampa.Decisione decisione = lavoro.decisione;
+            if (decisione != null) {
+                lavoro.decisione = null;
+                log.info("Lavoro {}: decisione ricevuta ({}).", lavoro.id, decisione);
+                return applicaDecisione(lavoro, decisione);
+            }
+            if (msTrascorsi(inizio) >= attesaDecisioneNastroMs) {
+                log.info("Lavoro {}: nessuna decisione entro {} s da quando e' tornata pulita, ristampo.",
+                        lavoro.id, attesaDecisioneNastroMs / 1000);
+                return applicaDecisione(lavoro, LavoroStampa.Decisione.RISTAMPA);
+            }
+            EsitoStato esito;
+            try {
+                esito = ProtocolloQl.decodificaStato(richiediStato());
+            } catch (StampanteNonRispondeException e) {
+                if (gestisciMancataRispostaDuranteLavoro(lavoro, EventoStampa.DOMANDA_NASTRO)) {
+                    return EsitoCopia.ERRORE_IO;
+                }
+                dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
+                continue;
+            } catch (IOException e) {
+                return EsitoCopia.ERRORE_IO;
+            }
+            pubblicaStato(descrivi(esito));
+            if (esito.haErrori()) {
+                log.info("Lavoro {}: tornata in errore mentre aspettava una decisione, ricomincio a interrogare.", lavoro.id);
+                pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio(), EventoStampa.DOMANDA_NASTRO);
+                return null;
+            }
+            dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
+        }
+    }
+
+    /**
+     * PROSEGUI: l'etichetta era gia' uscita intera, la copia conta come completata senza mandare
+     * nulla. RISTAMPA (dall'utente o dai 60 s scaduti): come il recupero automatico del coperchio
+     * aperto da questo punto in poi - ascolto passivo di un'eventuale ristampa spontanea (mai vista
+     * nelle prove hardware, ma costa poco e protegge da una copia doppia) poi cancella il buffer,
+     * espelle il pezzo rovinato e rimanda la copia.
+     */
+    private EsitoCopia applicaDecisione(LavoroStampa lavoro, LavoroStampa.Decisione decisione) {
+        if (decisione == LavoroStampa.Decisione.PROSEGUI) {
+            log.info("Lavoro {}: prosegue senza rimandare la copia {} di {} (l'etichetta era gia' uscita).",
+                    lavoro.id, lavoro.copiaCorrente + 1, lavoro.copieTotali);
+            return EsitoCopia.COMPLETATA;
+        }
+        log.info("Lavoro {}: ristampa la copia {} di {} dopo il problema di nastro.",
+                lavoro.id, lavoro.copiaCorrente + 1, lavoro.copieTotali);
+        EsitoCopia esitoAscolto = ascoltaRistampaAutomatica(lavoro);
+        if (esitoAscolto != null) {
+            return esitoAscolto;
+        }
+        return cancellaBufferEspelliERimanda(lavoro);
+    }
+
+    /** Esito di {@link #decidiProsegui}/{@link #decidiRistampa} ({@code POST /api/stampe/{lavoroId}/prosegui} o {@code /ristampa}, docs/api.md). */
+    public enum EsitoDecisione {ACCETTATA, LAVORO_SCONOSCIUTO, NON_IN_ATTESA}
+
+    /** {@code POST /api/stampe/{lavoroId}/prosegui}: l'etichetta interrotta era gia' uscita intera, si prosegue con le copie rimanenti senza rimandarla. */
+    public EsitoDecisione decidiProsegui(String lavoroId) {
+        return decidi(lavoroId, LavoroStampa.Decisione.PROSEGUI);
+    }
+
+    /** {@code POST /api/stampe/{lavoroId}/ristampa}: espelle il pezzo di nastro rovinato e rimanda la copia, come il recupero automatico del coperchio aperto. */
+    public EsitoDecisione decidiRistampa(String lavoroId) {
+        return decidi(lavoroId, LavoroStampa.Decisione.RISTAMPA);
+    }
+
+    private EsitoDecisione decidi(String lavoroId, LavoroStampa.Decisione decisione) {
+        LavoroStampa lavoro = coda.trova(lavoroId);
+        if (lavoro == null) {
+            return EsitoDecisione.LAVORO_SCONOSCIUTO;
+        }
+        if (!lavoro.inAttesaDiDecisioneNastro) {
+            return EsitoDecisione.NON_IN_ATTESA;
+        }
+        lavoro.decisione = decisione;
+        return EsitoDecisione.ACCETTATA;
     }
 
     /**
@@ -772,7 +943,7 @@ public class MonitorStampante {
             // vero) e, tornata raggiungibile/pulita, si ripete l'intero passaggio cancellazione +
             // espulsione da capo (potrebbe essere di nuovo in errore, o solo stata lenta a rispondere).
             log.info("La stampante non risponde subito dopo la cancellazione del buffer: torno a interrogare attivamente.");
-            EsitoCopia esitoAttesa = attendiStatoPulitoAttivamente(lavoro);
+            EsitoCopia esitoAttesa = attendiStatoPulitoAttivamente(lavoro, null);
             if (esitoAttesa != null) {
                 return esitoAttesa;
             }
@@ -879,8 +1050,13 @@ public class MonitorStampante {
     private enum EsitoAttesa {PRONTA, ANNULLATA, SCOLLEGATA}
 
     private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio) {
+        pubblicaProgresso(lavoro, stato, messaggio, null);
+    }
+
+    /** Come sopra, con {@code domanda} (docs/api.md, "Errore di nastro a meta' copia") - null in tutti i casi tranne l'attesa di una decisione sul nastro. */
+    private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio, String domanda) {
         int copiaMostrata = lavoro.copiaCorrente + (EventoStampa.IN_CORSO.equals(stato) ? 1 : 0);
-        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio, lavoro.prova));
+        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio, lavoro.prova, domanda));
     }
 
     private static long msTrascorsi(long t0Nanos) {

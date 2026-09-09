@@ -21,6 +21,18 @@ class LavoroStampa {
     volatile int copiaCorrente = 0;
     final AtomicBoolean annullato = new AtomicBoolean(false);
 
+    /** Risposta a "l'etichetta e' uscita intera?" (docs/api.md, "Errore di nastro a meta' copia"). */
+    enum Decisione {PROSEGUI, RISTAMPA}
+
+    /**
+     * true SOLO mentre il monitor sta aspettando una decisione sul nastro per QUESTO lavoro (vedi
+     * MonitorStampante#gestisciErroreNastroConDomanda): usato da MonitorStampante#decidi per
+     * distinguere 404 (lavoro sconosciuto) da 409 (non sta aspettando una risposta).
+     */
+    volatile boolean inAttesaDiDecisioneNastro = false;
+    /** Impostata da MonitorStampante#decidi (chiamato da StampeController), letta e azzerata dal thread del monitor appena la applica. */
+    volatile Decisione decisione;
+
     LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali) {
         this(immagine, rotoloMm, copieTotali, false);
     }

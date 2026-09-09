@@ -3,6 +3,7 @@ package it.etichette.api;
 import it.etichette.dati.Dispositivo;
 import it.etichette.dispositivi.DispositiviService;
 import it.etichette.stampante.CodaDiStampa;
+import it.etichette.stampante.MonitorStampante;
 import it.etichette.stampe.RispostaStampa;
 import it.etichette.stampe.StampeService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,11 +25,13 @@ public class StampeController {
     private final CodaDiStampa coda;
     private final StampeService stampe;
     private final Json json;
+    private final MonitorStampante monitor;
 
-    public StampeController(CodaDiStampa coda, StampeService stampe, Json json) {
+    public StampeController(CodaDiStampa coda, StampeService stampe, Json json, MonitorStampante monitor) {
         this.coda = coda;
         this.stampe = stampe;
         this.json = json;
+        this.monitor = monitor;
     }
 
     private record RichiestaStampa(Long prodottoId, Integer copie, String quantita, String scadenza, String lotto) {
@@ -68,6 +71,29 @@ public class StampeController {
             throw new ErroreApi(HttpStatus.NOT_FOUND, "lavoro di stampa non trovato: " + lavoroId);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /** {@code POST /api/stampe/{lavoroId}/prosegui} (docs/api.md, "Errore di nastro a meta' copia"): l'etichetta interrotta era gia' uscita intera. */
+    @PostMapping("/{lavoroId}/prosegui")
+    public ResponseEntity<Void> prosegui(@PathVariable String lavoroId) {
+        return rispostaDecisione(monitor.decidiProsegui(lavoroId));
+    }
+
+    /** {@code POST /api/stampe/{lavoroId}/ristampa}: svuota il buffer, espelle un pezzo bianco lungo quanto la copia e la rimanda. */
+    @PostMapping("/{lavoroId}/ristampa")
+    public ResponseEntity<Void> ristampa(@PathVariable String lavoroId) {
+        return rispostaDecisione(monitor.decidiRistampa(lavoroId));
+    }
+
+    private static ResponseEntity<Void> rispostaDecisione(MonitorStampante.EsitoDecisione esito) {
+        switch (esito) {
+            case ACCETTATA -> {
+                return ResponseEntity.noContent().build();
+            }
+            case LAVORO_SCONOSCIUTO -> throw new ErroreApi(HttpStatus.NOT_FOUND, "lavoro di stampa non trovato");
+            case NON_IN_ATTESA -> throw new ErroreApi(HttpStatus.CONFLICT, "il lavoro non sta aspettando una decisione sul nastro");
+        }
+        throw new IllegalStateException("esito inatteso: " + esito);
     }
 
     private static Map<String, Object> corpoRisposta(RispostaStampa r) {

@@ -357,7 +357,7 @@ class MonitorStampanteRipresaTest {
     }
 
     @Test
-    void unaMancataRispostaDuranteLaRipresaDaUnErroreDiSupportoNonAlimentabileNonInterrompeIlRecupero() throws InterruptedException {
+    void unaMancataRispostaDuranteLaRipresaDaUnCoperchioApertoNonInterrompeIlRecupero() throws InterruptedException {
         PortaFinta porta = new PortaFinta();
         CodaDiStampa coda = new CodaDiStampa();
         List<Object> pubblicati = new CopyOnWriteArrayList<>();
@@ -366,7 +366,7 @@ class MonitorStampanteRipresaTest {
 
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
-        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' copia: "supporto non alimentabile o rotolo finito"
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // errore a meta' copia: coperchio aperto (automatico, non la domanda "nastro")
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102()); // fase 1 (1o giro): subito pulita
         // fase 2 (1o giro) disattivata (attesaRistampaBaseMs=0): nessuna leggiPoll reale, quindi
@@ -376,7 +376,7 @@ class MonitorStampanteRipresaTest {
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102()); // fase 3 (1o giro): cancella il buffer -> pulito
         porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione (1o tentativo): "in stampa"
-        porta.accodaRisposta(stato(0x02, 0, 0x40)); // NUOVO errore "supporto non alimentabile" durante l'espulsione stessa
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // NUOVO errore (coperchio aperto) durante l'espulsione stessa
         // fase 1 (2o giro): la stampante e' ancora bloccata e non risponde una volta, poi torna pulita.
         porta.accodaNessunDato();
         porta.accodaNessunDato(); // svuotaCoda + lettura vera vuota -> StampanteNonRispondeException
@@ -487,6 +487,233 @@ class MonitorStampanteRipresaTest {
         public boolean isAperta() {
             return delegato.isAperta();
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Errore di nastro a meta' copia (mandato del 2026-09-09 dopo un doppione reale, docs/api.md
+    // "Errore di nastro a meta' copia"): un errore DIVERSO dal coperchio aperto (tipicamente
+    // "supporto non alimentabile o rotolo finito") non ristampa da solo - si chiede all'utente
+    // (evento IN_PAUSA con domanda "nastro") e si applica la sua decisione (POST .../prosegui o
+    // .../ristampa, qui MonitorStampante#decidiProsegui/decidiRistampa direttamente) appena la
+    // stampante torna pulita; senza risposta entro un tempo configurabile si ristampa da sola. Il
+    // coperchio aperto resta tutto automatico come prima (test gia' sopra + uno dedicato qui sotto
+    // che verifica esplicitamente domanda == null).
+    // ---------------------------------------------------------------------------------------
+
+    /** (a) Un errore di nastro (non coperchio) pubblica IN_PAUSA con domanda "nastro" e un messaggio in chiaro, senza ristampare da solo. */
+    @Test
+    void unErroreDiNastroChiedeAllUtenteConDomandaNastro() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' copia: supporto non alimentabile o rotolo finito (NON coperchio)
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.IN_PAUSA);
+
+        EventoStampa domanda = pubblicati.stream()
+                .filter(e -> e instanceof EventoStampa ev && EventoStampa.IN_PAUSA.equals(ev.stato()))
+                .map(e -> (EventoStampa) e)
+                .findFirst().orElseThrow();
+        assertThat(domanda.domanda()).isEqualTo(EventoStampa.DOMANDA_NASTRO);
+        assertThat(domanda.messaggio()).isEqualTo("Problema con il nastro: supporto non alimentabile o rotolo finito");
+        // nessuna cancellazione/espulsione/rinvio finche' non arriva una decisione: solo il job iniziale.
+        assertThat(scrittureGrandi(porta)).hasSize(1);
+    }
+
+    /** (b) "Prosegui": la copia interrotta conta come completata SENZA rimandarla, e si prosegue con le copie rimanenti. */
+    @Test
+    void proseguiContaLaCopiaSenzaRimandarlaEContinuaConLeRestanti() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        String lavoroId = coda.accoda(immagineDiProva(), 102, 2); // 2 copie: verifica che si prosegua con la seconda
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' della copia 1: nastro
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // attesa stato pulito -> subito pulita
+        // Il monitor, appena pulita, controlla SUBITO se una decisione e' gia' arrivata: e'
+        // praticamente sempre piu' veloce del thread di test che chiama decidiProsegui() qui sotto
+        // (niente da leggere, tutto precaricato), quindi ritenta un paio di giri (un vero dormi(2 s)
+        // ciascuno) prima di trovarla - avanzo qualche lettura "ancora pulita" di scorta.
+        for (int i = 0; i < 3; i++) {
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102());
+        }
+        porta.accodaRisposta(stato(0x01, 0, 0)); // copia 2: "completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // copia 2: "tornata in ricezione"
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.IN_PAUSA);
+        assertThat(monitor.decidiProsegui(lavoroId)).isEqualTo(MonitorStampante.EsitoDecisione.ACCETTATA);
+
+        // la decisione si applica solo appena pulita: se il monitor la controlla prima che questo
+        // thread di test l'abbia impostata, ritenta ogni 2 s finche' non la trova - budget largo.
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA, 15_000);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(2); // job copia 1 (interrotta, MAI rimandata) + job copia 2
+        assertThat(grandi.get(0).length).isEqualTo(445);
+        assertThat(grandi.get(1).length).isEqualTo(445);
+    }
+
+    /** (c) "Ristampa": cancella il buffer, espelle il pezzo rovinato e rimanda la copia - come il recupero automatico del coperchio. */
+    @Test
+    void ristampaEspelleIlPezzoRovinatoERimandaLaCopiaComeIlCoperchio() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        String lavoroId = coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' copia: nastro (NON coperchio)
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // attesa stato pulito -> subito pulita
+        // Il monitor, appena pulita, controlla SUBITO se una decisione e' gia' arrivata (vedi il
+        // commento gemello in proseguiContaLaCopiaSenzaRimandarlaEContinuaConLeRestanti): quasi
+        // sempre arriva prima del decidiRistampa() del thread di test, quindi ritenta un paio di
+        // giri di scorta prima di trovarla.
+        for (int i = 0; i < 3; i++) {
+            porta.accodaNessunDato();
+            porta.accodaRisposta(statoPronta102());
+        }
+        // ascolto passivo dopo la decisione "ristampa" disattivato con impostaAttesaRistampaPerTest(0,0).
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // cancellazione buffer -> pulito
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione: "in stampa"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione: "completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione: "tornata in ricezione"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+        porta.accodaRisposta(stato(0x06, 0x00, 0));
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(0, 0);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.IN_PAUSA);
+        assertThat(monitor.decidiRistampa(lavoroId)).isEqualTo(MonitorStampante.EsitoDecisione.ACCETTATA);
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA, 15_000);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(4);
+        assertThat(grandi.get(0).length).isEqualTo(445); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (invalidate + ESC @)
+        assertThat(grandi.get(2).length).isEqualTo(743); // job di espulsione (300 righe tutte bianche)
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(300);
+        assertThat(grandi.get(3).length).isEqualTo(445); // job copia 1 di nuovo (rimandata)
+    }
+
+    /** (d) Nessuna decisione entro il tempo configurato: si ristampa da sola (mai perdere un'etichetta), esattamente come una "ristampa" esplicita. */
+    @Test
+    void nessunaDecisioneEntroIlTempoConfiguratoRistampaDaSola() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' copia: nastro
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // attesa stato pulito -> subito pulita
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // 1o giro dell'attesa decisione: non ancora scaduta, richiede di nuovo -> ancora pulita
+        // il 2o giro trova i 300 ms scaduti (il dormi(2 s) fra i due giri basta abbondantemente) e ristampa senza rileggere lo stato.
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // cancellazione buffer -> pulito
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione: "in stampa"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione: "completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione: "tornata in ricezione"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+        porta.accodaRisposta(stato(0x06, 0x00, 0));
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(0, 0);
+        monitor.impostaAttesaDecisioneNastroPerTest(300); // 300 ms invece di 60 s veri
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA, 10_000);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(4);
+        assertThat(grandi.get(0).length).isEqualTo(445);
+        assertThat(grandi.get(1).length).isEqualTo(402);
+        assertThat(grandi.get(2).length).isEqualTo(743);
+        assertThat(grandi.get(3).length).isEqualTo(445);
+    }
+
+    /** (e) Il coperchio aperto resta tutto automatico come prima: nessun evento porta la domanda "nastro". */
+    @Test
+    void ilCoperchioApertoRestaAutomaticoConDomandaSempreNulla() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // errore a meta' copia: coperchio aperto
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1: subito pulita
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // fase 2: "in stampa" (ristampa automatica)
+        porta.accodaRisposta(stato(0x01, 0, 0)); // "stampa completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // "tornata in ricezione"
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA);
+
+        assertThat(pubblicati).filteredOn(e -> e instanceof EventoStampa)
+                .map(e -> ((EventoStampa) e).domanda())
+                .allMatch(java.util.Objects::isNull);
+        assertThat(scrittureGrandi(porta)).hasSize(1); // ristampa automatica rilevata, nessun rinvio
+    }
+
+    /** (f, lato monitor) 404/409: lavoro sconosciuto, e lavoro che esiste ma non sta aspettando una decisione sul nastro. */
+    @Test
+    void decidiSuUnLavoroSconosciutoORestaInAttesaRispondeCoerentemente() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        // stampante mai trovata: il lavoro resta accodato ma non viene mai eseguito, quindi
+        // "esiste" (e' nel registro) ma non e' mai stato in attesa di una decisione sul nastro.
+        String lavoroId = coda.accoda(immagineDiProva(), 102, 1);
+
+        monitor = new MonitorStampante(List::of, porta, coda, pubblicati::add);
+        monitor.avvia();
+        Thread.sleep(200);
+
+        assertThat(monitor.decidiProsegui(lavoroId)).isEqualTo(MonitorStampante.EsitoDecisione.NON_IN_ATTESA);
+        assertThat(monitor.decidiRistampa(lavoroId)).isEqualTo(MonitorStampante.EsitoDecisione.NON_IN_ATTESA);
+        assertThat(monitor.decidiProsegui("lavoro-inesistente")).isEqualTo(MonitorStampante.EsitoDecisione.LAVORO_SCONOSCIUTO);
+        assertThat(monitor.decidiRistampa("lavoro-inesistente")).isEqualTo(MonitorStampante.EsitoDecisione.LAVORO_SCONOSCIUTO);
     }
 
     // ---------------------------------------------------------------------------------------

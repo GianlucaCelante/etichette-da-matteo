@@ -80,4 +80,23 @@ class StampeApiTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errore").value("Stampante spenta o scollegata"));
     }
+
+    /**
+     * {@code POST /api/stampe/{lavoroId}/prosegui} e {@code /ristampa} (docs/api.md, "Errore di
+     * nastro a meta' copia"): qui si verifica solo il 404 di un lavoro sconosciuto (la stampante e'
+     * sempre "scollegata" in questo profilo, quindi nessun lavoro arriva mai in coda per un 409 o
+     * un 204 veri - quei percorsi sono verificati con la porta finta in
+     * {@link it.etichette.stampante.MonitorStampanteRipresaTest}).
+     */
+    @Test
+    void proseguiDiUnLavoroSconosciutoRispondeNonTrovato() throws Exception {
+        mockMvc.perform(post("/api/stampe/lavoro-inesistente/prosegui"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ristampaDiUnLavoroSconosciutoRispondeNonTrovato() throws Exception {
+        mockMvc.perform(post("/api/stampe/lavoro-inesistente/ristampa"))
+                .andExpect(status().isNotFound());
+    }
 }

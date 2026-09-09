@@ -61,6 +61,11 @@ public class CodaDiStampa {
         return true;
     }
 
+    /** Solo per {@link MonitorStampante} (decisione sul nastro, docs/api.md): il lavoro registrato con questo id, o null se non c'e' (concluso o mai esistito). */
+    LavoroStampa trova(String lavoroId) {
+        return registro.get(lavoroId);
+    }
+
     /**
      * Solo per {@link MonitorStampante}: preleva il prossimo lavoro in attesa, aspettando fino a
      * {@code attesaMs} se la coda e' vuota. Bloccante (non un poll seguito da una pausa fissa):
