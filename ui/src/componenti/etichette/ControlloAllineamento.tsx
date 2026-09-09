@@ -70,6 +70,9 @@ const NOME_ALLINEAMENTO: Record<AllineamentoBlocco, string> = { sinistra: "sinis
 // bottoni senza troncare il nome del blocco, quindi qui e' un solo bottone
 // (stessa misura di ".lato", il bottone della colonna accanto) che mostra
 // l'icona dell'allineamento attuale e gira al prossimo a ogni clic.
+// Il bottone non e' mai "acceso" (scuro): lo stato lo dice l'icona, sempre nel colore del
+// testo. Evidenziare solo centro e destra lasciava sinistra spento e sembrava incoerente
+// (osservazione di Gianluca del 9 settembre 2026).
 export function ControlloAllineamentoCompatto({
   valore,
   nomeBlocco,
@@ -86,7 +89,7 @@ export function ControlloAllineamentoCompatto({
   return (
     <button
       type="button"
-      className={"lato" + (attuale !== "sinistra" ? " on" : "")}
+      className="lato allineamentoCompatto"
       onClick={clic}
       title={`Allineamento: ${NOME_ALLINEAMENTO[attuale]} · clicca per cambiare`}
       aria-label={`Allineamento di ${nomeBlocco}: ${NOME_ALLINEAMENTO[attuale]}. Clicca per passare a ${NOME_ALLINEAMENTO[prossimo]}.`}

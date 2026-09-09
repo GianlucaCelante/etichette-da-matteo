@@ -305,6 +305,7 @@ svg { display: block; flex-shrink: 0; }
 }
 .lato { width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
 .lato.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+.lato.allineamentoCompatto { color: var(--testo); }
 /* le tre icone dell'allineamento del blocco: stessa altezza/stile di .lato,
    ma un gruppo segmentato (come .quote) invece di un bottone solo che gira. */
 .allineamento { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
