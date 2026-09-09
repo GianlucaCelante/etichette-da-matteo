@@ -99,6 +99,25 @@ public class ResaController {
                                        @RequestParam(required = false) String lotto) {
         Prodotto p = trovaProdotto(id);
         RisultatoResa risultato = renderer.rendi(prodottiConversioni.aDto(p), parametri(quantita, scadenza, lotto), rotolo, 1.0);
+        return misureDi(risultato);
+    }
+
+    /**
+     * Le misure della bozza in modifica: stesso corpo di {@code POST /anteprima.png} ({@code scala}
+     * ignorata), stessa risposta di {@code GET /prodotti/{id}/misure}. Serve alla cornice
+     * dell'anteprima per sapere se l'etichetta e' corta o lunga anche prima di salvare.
+     */
+    @PostMapping("/anteprima/misure")
+    public Map<String, Object> misureAnteprima(@RequestBody Map<String, Object> corpo) {
+        CorpoAnteprima richiesta = json.converti(corpo, CorpoAnteprima.class);
+        ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
+        int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(null, null, null), rotolo, 1.0);
+        return misureDi(risultato);
+    }
+
+    /** Misure dell'etichetta in mano (docs/api.md): il lato sul nastro e' il rotolo nominale. */
+    private static Map<String, Object> misureDi(RisultatoResa risultato) {
         return Map.of("larghezzaMm", arrotonda(risultato.larghezzaMm()), "altezzaMm", arrotonda(risultato.altezzaMm()),
                 "avvisi", risultato.avvisi());
     }

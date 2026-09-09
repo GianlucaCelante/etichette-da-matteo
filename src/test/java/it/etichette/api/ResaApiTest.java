@@ -118,6 +118,26 @@ class ResaApiTest {
     }
 
     @Test
+    void misureDellaBozzaCoincidonoConQuelleDelProdottoSalvato() throws Exception {
+        String salvato = mockMvc.perform(get("/api/resa/prodotti/1/misure").param("rotolo", "62"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String bozza = mockMvc.perform(post("/api/resa/anteprima/misure").contentType("application/json")
+                        .content("{\"prodottoId\": 1, \"rotolo\": 62}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.larghezzaMm").isNumber())
+                .andExpect(jsonPath("$.altezzaMm").isNumber())
+                .andExpect(jsonPath("$.avvisi").isArray())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(bozza).isEqualTo(salvato);
+    }
+
+    @Test
+    void misureDellaBozzaSenzaProdottoNeProdottoIdRispondonoErrore() throws Exception {
+        mockMvc.perform(post("/api/resa/anteprima/misure").contentType("application/json").content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void anteprimaSenzaProdottoNeProdottoIdRispondeErrore() throws Exception {
         mockMvc.perform(post("/api/resa/anteprima.png").contentType("application/json").content("{}"))
                 .andExpect(status().isBadRequest())
