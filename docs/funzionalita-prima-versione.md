@@ -96,3 +96,5 @@ L'etichetta libera si costruisce **a blocchi, non a mano libera**: si scelgono i
 ## Nota del 9 settembre 2026 (pomeriggio): orientamento e allineamento
 
 Dopo le stampe di prova a confronto con l'etichetta di riferimento della pizzeria, l'orientamento dell'etichetta non è più una scelta: su entrambi i rotoli il servizio confronta la resa verticale (testo attraverso il nastro) e quella orizzontale (righe lungo il nastro, alta quanto il rotolo) e stampa quella che **consuma meno nastro**. I dettagli sono in `api.md`, sezione «Resa». Ogni blocco dell'etichetta ha inoltre un allineamento (sinistra, centro, destra), come il produttore centrato dell'etichetta di riferimento.
+
+Nota del 9 settembre sera: nell'editor dei blocchi i bottoni «sinistra»/«destra» dell'intestazione della zona (che coloravano i blocchi di un lato) sono stati tolti perché confondevano; la zona a due colonne si vede come un gruppo unico («Due colonne», con le quote della colonna destra), e ogni riga tiene il proprio bottone di colonna.

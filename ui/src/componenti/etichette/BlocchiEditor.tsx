@@ -16,7 +16,6 @@ import type { BloccoBozza } from "./bozza";
 import { nuovaChiave } from "./bozza";
 import { corpoIniziale } from "./corpoBlocco";
 import BloccoRiga from "./BloccoRiga";
-import IconaColonna from "./IconaColonna";
 
 function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; attivo: boolean; onScegli: (v: LarghezzaDestra) => void }) {
   const clic = useCallback(() => onScegli(valore), [onScegli, valore]);
@@ -27,33 +26,27 @@ function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; a
   );
 }
 
+// L'intestazione del gruppo "due colonne" (deciso da Gianluca): niente piu'
+// bottoni sinistra/destra (confondevano, e non servivano: il bottone ◧/◨ di
+// ogni riga basta gia' per spostare un blocco fra le colonne). Resta solo
+// l'etichetta e, a destra, le quote della colonna destra.
 function IntestazioneZona({
-  lato,
-  onCambiaLato,
   larghezzaDestra,
   onCambiaLarghezzaDestra,
 }: {
-  lato: "sx" | "dx";
-  onCambiaLato: (l: "sx" | "dx") => void;
   larghezzaDestra: LarghezzaDestra;
   onCambiaLarghezzaDestra: (v: LarghezzaDestra) => void;
 }) {
-  const scegliSx = useCallback(() => onCambiaLato("sx"), [onCambiaLato]);
-  const scegliDx = useCallback(() => onCambiaLato("dx"), [onCambiaLato]);
   return (
-    <div className="zona">
-      <button type="button" className={"corsia" + (lato === "sx" ? " on" : "")} onClick={scegliSx}>
-        <IconaColonna colonna="sx" larghezza={15} />
-        <span>sinistra</span>
-      </button>
-      <button type="button" className={"corsia" + (lato === "dx" ? " on" : "")} onClick={scegliDx}>
-        <IconaColonna colonna="dx" larghezza={15} />
+    <div className="zonaTesta">
+      <span className="etichettina">Due colonne</span>
+      <div className="zonaDestra">
         <span>destra</span>
-      </button>
-      <div className="quote">
-        {LARGHEZZE_DESTRA.map((v) => (
-          <BottoneQuota key={v} valore={v} attivo={larghezzaDestra === v} onScegli={onCambiaLarghezzaDestra} />
-        ))}
+        <div className="quote">
+          {LARGHEZZE_DESTRA.map((v) => (
+            <BottoneQuota key={v} valore={v} attivo={larghezzaDestra === v} onScegli={onCambiaLarghezzaDestra} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -108,7 +101,6 @@ interface ProprietaBlocchiEditor {
 // (anche su touch: la maniglia ha touch-action:none). Dove comincia una
 // zona a due colonne compare l'intestazione coi due lati e le quote.
 export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestra, onCambiaLarghezzaDestra }: ProprietaBlocchiEditor) {
-  const [lato, setLato] = useState<"sx" | "dx">("sx");
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
   const sensori = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -165,37 +157,49 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
 
   const apriChiudiTavolozza = useCallback(() => setTavolozzaAperta((a) => !a), []);
 
+  // I blocchi sx/dx consecutivi (la zona, come nel prototipo) vanno dentro
+  // un unico riquadro verde (.zonaGruppo) invece dei vecchi bottoni
+  // sinistra/destra: il gruppo segue la sequenza, quindi si chiude appena un
+  // blocco "piena" la interrompe e se ne apre uno nuovo dove ricomincia.
   const nodi: ReactNode[] = [];
-  let zonaAperta = false;
-  blocchi.forEach((b, indice) => {
-    if (b.colonna !== "piena" && !zonaAperta) {
-      zonaAperta = true;
-      nodi.push(
-        <IntestazioneZona
-          key={"zona-" + b.chiave}
-          lato={lato}
-          onCambiaLato={setLato}
-          larghezzaDestra={larghezzaDestra}
-          onCambiaLarghezzaDestra={onCambiaLarghezzaDestra}
-        />,
-      );
-    }
-    if (b.colonna === "piena") zonaAperta = false;
+  let gruppo: { chiavePrima: string; righe: ReactNode[] } | null = null;
+  const chiudiGruppo = () => {
+    if (!gruppo) return;
     nodi.push(
+      <div className="zonaGruppo" key={"zonaGruppo-" + gruppo.chiavePrima}>
+        {gruppo.righe}
+      </div>,
+    );
+    gruppo = null;
+  };
+  blocchi.forEach((b, indice) => {
+    const riga = (
       <BloccoRiga
         key={b.chiave}
         blocco={b}
         indice={indice}
-        latoAttivo={lato}
         onToggleAcceso={onToggleAcceso}
         onCambiaCorpo={onCambiaCorpo}
         onCicloColonna={onCicloColonna}
         onRimuovi={onRimuovi}
         onCambiaTesto={onCambiaTesto}
         onCambiaAllineamento={onCambiaAllineamento}
-      />,
+      />
     );
+    if (b.colonna === "piena") {
+      chiudiGruppo();
+      nodi.push(riga);
+      return;
+    }
+    if (!gruppo) {
+      gruppo = {
+        chiavePrima: b.chiave,
+        righe: [<IntestazioneZona key={"zona-" + b.chiave} larghezzaDestra={larghezzaDestra} onCambiaLarghezzaDestra={onCambiaLarghezzaDestra} />],
+      };
+    }
+    gruppo.righe.push(riga);
   });
+  chiudiGruppo();
 
   return (
     <div className="vassoio">

@@ -16,7 +16,6 @@ const ALTEZZE_LOGO_MM = Array.from({ length: 26 }, (_, i) => i + 5);
 interface ProprietaBloccoRiga {
   blocco: BloccoBozza;
   indice: number;
-  latoAttivo: "sx" | "dx";
   onToggleAcceso: (chiave: string) => void;
   onCambiaCorpo: (chiave: string, corpo: number) => void;
   onCicloColonna: (chiave: string) => void;
@@ -31,7 +30,6 @@ interface ProprietaBloccoRiga {
 export default function BloccoRiga({
   blocco,
   indice,
-  latoAttivo,
   onToggleAcceso,
   onCambiaCorpo,
   onCicloColonna,
@@ -47,7 +45,6 @@ export default function BloccoRiga({
 
   const libero = blocco.tipo === "testo" || blocco.tipo === "testoGrande";
   const eLogo = blocco.tipo === "logo";
-  const inZonaAttiva = blocco.colonna !== "piena" && blocco.colonna === latoAttivo;
   const { data: logoEsiste } = useLogoEsiste();
   const notaLogo = eLogo && !logoEsiste;
   // ".libero" mette la riga su due righe (testa sopra, il resto sotto): serve
@@ -77,7 +74,7 @@ export default function BloccoRiga({
     <div
       ref={setNodeRef}
       style={stile}
-      className={"blocco" + (inZonaAttiva ? " acceso" : "") + (blocco.acceso ? "" : " spento") + (suDueRighe ? " libero" : "") + (isDragging ? " trascina" : "")}
+      className={"blocco" + (blocco.acceso ? "" : " spento") + (suDueRighe ? " libero" : "") + (isDragging ? " trascina" : "")}
     >
       <div className="testa">
         <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${NOMIBLOCCO[blocco.tipo]}`}>

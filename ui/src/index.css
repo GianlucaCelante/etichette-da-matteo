@@ -277,10 +277,6 @@ svg { display: block; flex-shrink: 0; }
   border: 1px solid var(--bordo); border-left: 4px solid var(--verde); border-radius: 9px; background: var(--carta);
   box-shadow: 0 1px 3px rgba(58, 49, 40, .07); font-size: 12.5px; font-weight: 700;
 }
-/* ".acceso" qui non e' l'interruttore del blocco (quello e' ".sw"/".sw.off"):
-   dice che il blocco appartiene al lato sx/dx scelto nell'intestazione della
-   zona, come nel prototipo. ".spento" invece e' il blocco spento davvero. */
-.blocco.acceso { background: var(--verdechiaro); border-color: var(--verdebordo); border-left-color: var(--verde); }
 .blocco.spento { border-left-color: #C6B7A3; }
 .blocco.trascina { opacity: .4; }
 .blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -315,10 +311,15 @@ svg { display: block; flex-shrink: 0; }
 .allineamento button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; }
 .allineamento button.on { background: var(--testo); color: #fff; }
 .via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
-.zona { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 2px 2px; }
-.corsia { height: 28px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--bordo2); background: var(--carta); display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--tenue); white-space: nowrap; }
-.corsia.on { background: var(--testo); border-color: var(--testo); color: #fff; }
-.quote { margin-left: auto; display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
+/* Il gruppo "due colonne" (deciso da Gianluca, non nel mockup): i blocchi sx/dx
+   consecutivi stanno dentro questo riquadro verde, che li segnala come un
+   unico blocco a due colonne; le righe dentro restano bianche come le altre.
+   Su PC ha anche l'intestazione (.zonaTesta); sul telefono e' lo stesso
+   riquadro ma senza, solo per far vedere dove sta la zona. */
+.zonaGruppo { display: flex; flex-direction: column; gap: 6px; background: var(--verdechiaro); border: 1px solid var(--verdebordo); border-radius: 12px; padding: 6px; }
+.zonaTesta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px 2px; }
+.zonaDestra { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.quote { display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
 .quote button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
 .quote button.on { background: var(--verde); color: #fff; }
 .tavolozza { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); font-size: 13.5px; font-weight: 700; white-space: nowrap; width: 100%; }
