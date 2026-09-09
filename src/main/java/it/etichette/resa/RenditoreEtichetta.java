@@ -31,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -83,6 +84,16 @@ public class RenditoreEtichetta {
      * al team (vedi il report).
      */
     private static final int ALTEZZA_MINIMA_CASO_A_PT = 300;
+    /**
+     * Rotoli su cui l'etichetta e' SEMPRE verticale (caso A senza il vincolo "mai piu' alta che
+     * larga"): deciso il 2026-09-09 pomeriggio dopo la stampa di prova - sul 62 l'etichetta lunga
+     * consumava troppo nastro (300 mm per «Base pizza low carb»). Sul 102 resta la regola del
+     * prototipo (corta se sta in un quadrato, altrimenti lunga).
+     */
+    private static final Set<Integer> ROTOLI_SEMPRE_VERTICALI = Set.of(62);
+    /** Altezza massima dell'etichetta verticale (lungo il nastro): oltre, avviso e contenuto tagliato. */
+    private static final float ALTEZZA_MASSIMA_VERTICALE_MM = 500f;
+    private static final String AVVISO_CONTENUTO_NON_STA_VERTICALE = "Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi";
     /** Lunghezza massima lungo il nastro per la ricerca del caso B: 300 mm - oltre, avviso e contenuto tagliato. */
     private static final int LUNGHEZZA_MASSIMA_PT = 3543;
     private static final String AVVISO_CONTENUTO_NON_STA = "Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi";
@@ -125,12 +136,17 @@ public class RenditoreEtichetta {
         int larghezzaImmagine;
         int altezzaImmagine;
         boolean lungoIlNastro;
-        if (altezzaAH <= larghezzaUtile) {
-            // Caso A ("corta"): niente rotazione per la stampa, l'immagine e' gia' larga quanto il
-            // rotolo. Altezza tagliata al contenuto (mai spazio bianco fino a un quadrato), con un
-            // minimo hardware (vedi ALTEZZA_MINIMA_CASO_A_PT).
+        if (ROTOLI_SEMPRE_VERTICALI.contains(rotoloMm) || altezzaAH <= larghezzaUtile) {
+            // Caso A ("corta", o verticale senza limite sui rotoli di ROTOLI_SEMPRE_VERTICALI):
+            // niente rotazione per la stampa, l'immagine e' gia' larga quanto il rotolo. Altezza
+            // tagliata al contenuto (mai spazio bianco fino a un quadrato), con un minimo hardware
+            // (vedi ALTEZZA_MINIMA_CASO_A_PT) e un massimo oltre il quale si avvisa e si taglia.
+            int altezzaMassima = mmInPx(ALTEZZA_MASSIMA_VERTICALE_MM);
+            if (altezzaAH > altezzaMassima) {
+                avvisi.add(AVVISO_CONTENUTO_NON_STA_VERTICALE);
+            }
             larghezzaImmagine = larghezzaUtile;
-            altezzaImmagine = Math.max(altezzaAH, ALTEZZA_MINIMA_CASO_A_PT);
+            altezzaImmagine = Math.min(Math.max(altezzaAH, ALTEZZA_MINIMA_CASO_A_PT), altezzaMassima);
             lungoIlNastro = false;
         } else {
             // Caso B ("lunga"): il confine del caso A ("a L = H il contenuto sta") e' anche il

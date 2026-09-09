@@ -41,9 +41,9 @@ class ResaApiTest {
     /**
      * Geometria a due casi (correzione del 2026-09-09, allineata al prototipo): le misure sono
      * quelle dell'etichetta IN MANO, il lato sul nastro dichiarato col rotolo NOMINALE (62/102, non
-     * la larghezza utile 58,9/98,6). Il prodotto 1 ("Base pizza low carb") sul 62 e' caso B
-     * ("lunga": corre lungo il nastro, alta quanto il nominale) - sul 102 e' caso A ("corta": corre
-     * attraverso il nastro, larga quanto il nominale) - verificato con la resa diretta, non e'
+     * la larghezza utile 58,9/98,6). Sul 62 l'etichetta e' sempre verticale (larga quanto il
+     * nominale); il prodotto 1 ("Base pizza low carb") sul 102 e' caso A ("corta": corre attraverso
+     * il nastro, larga quanto il nominale) - verificato con la resa diretta, non e'
      * garantito restare cosi' per sempre se il contenuto seminato cambia, quindi qui si controlla
      * solo il lato che DEVE essere il nominale in ciascun caso, non l'altro (variabile col contenuto).
      */
@@ -51,8 +51,8 @@ class ResaApiTest {
     void misureSulRotolo62SonoCoerenti() throws Exception {
         mockMvc.perform(get("/api/resa/prodotti/1/misure").param("rotolo", "62"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.altezzaMm").value(62.0)) // caso B: il lato sul nastro e' il nominale
-                .andExpect(jsonPath("$.larghezzaMm").isNumber())
+                .andExpect(jsonPath("$.larghezzaMm").value(62.0)) // sul 62 sempre verticale: il lato sul nastro e' il nominale
+                .andExpect(jsonPath("$.altezzaMm").isNumber())
                 .andExpect(jsonPath("$.avvisi").isArray());
     }
 

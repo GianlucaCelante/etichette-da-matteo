@@ -82,15 +82,17 @@ class RenditoreEtichettaTest {
      * quel valore. Le misure sono quelle "in mano": il lato sul nastro e' il NOMINALE (62, non 58,9).
      */
     @Test
-    void completaSulRotolo62ECasoBConLunghezzaAlmenoLaLarghezzaUtileEMisureNominali() {
+    void completaSulRotolo62EVerticaleLargaQuantoIlRotoloEPiuAltaCheLarga() {
         RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
 
-        assertThat(r.lungoIlNastro()).isTrue();
-        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
-        assertThat(r.immagine().getWidth()).isGreaterThanOrEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
-        assertThat(r.altezzaMm()).isEqualTo(62.0); // il lato sul nastro: il rotolo NOMINALE, non 58,9
-        assertThat(r.larghezzaMm()).isBetween(120.0, 220.0); // il mockup: "164 × 62 mm"
-        assertThat(r.avvisi()).isEmpty();
+        // sul 62 l'etichetta e' SEMPRE verticale (decisione del 2026-09-09 pomeriggio): larga quanto
+        // il rotolo, alta quanto il contenuto, anche oltre il quadrato, nessuna rotazione
+        assertThat(r.lungoIlNastro()).isFalse();
+        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.immagine().getHeight()).isGreaterThan(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.larghezzaMm()).isEqualTo(62.0); // il lato sul nastro: il rotolo NOMINALE, non 58,9
+        assertThat(r.altezzaMm()).isBetween(60.0, 250.0);
+        assertThat(r.avvisi()).noneMatch(avviso -> avviso.contains("non sta"));
         assertThat(contienePixelNeri(r.immagine())).isTrue();
     }
 
@@ -121,12 +123,22 @@ class RenditoreEtichettaTest {
     /** L'immagine ruotata per la stampante (RenditoreEtichetta#ruotaPerStampa) e' larga esattamente quanto il rotolo e alta quanto la lunghezza trovata - usata SOLO nel caso B. */
     @Test
     void limmagineRuotataPerLaStampaEIntercambiaLarghezzaEAltezza() {
-        RisultatoResa r62 = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
-        assertThat(r62.lungoIlNastro()).isTrue(); // vedi completaSulRotolo62...: e' sempre caso B
+        // striscia 300 x 100 con un solo pixel nero in alto a sinistra (inizio del testo)
+        BufferedImage striscia = new BufferedImage(300, 100, BufferedImage.TYPE_BYTE_BINARY);
+        java.awt.Graphics2D g = striscia.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, 300, 100);
+        g.dispose();
+        striscia.setRGB(0, 0, 0xFF000000);
 
-        BufferedImage ruotata62 = RenditoreEtichetta.ruotaPerStampa(r62.immagine());
-        assertThat(ruotata62.getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
-        assertThat(ruotata62.getHeight()).isEqualTo(r62.immagine().getWidth());
+        BufferedImage ruotata = RenditoreEtichetta.ruotaPerStampa(striscia);
+
+        assertThat(ruotata.getWidth()).isEqualTo(100);
+        assertThat(ruotata.getHeight()).isEqualTo(300);
+        // rotazione oraria: l'inizio del testo (sinistra della striscia) esce per primo dalla
+        // stampante (prima riga), il lato alto della striscia finisce a destra
+        assertThat(ruotata.getRGB(99, 0) & 0xFFFFFF).isEqualTo(0);
+        assertThat(ruotata.getRGB(0, 0) & 0xFFFFFF).isEqualTo(0xFFFFFF);
     }
 
     /**
@@ -151,22 +163,34 @@ class RenditoreEtichettaTest {
     /** Un titolo a 48 pt piu' ingredienti lunghissimi non stanno nell'altezza del rotolo nemmeno alla lunghezza massima (caso B): avviso e contenuto tagliato, non un errore. */
     @Test
     void unContenutoTroppoAltoProduceLavvisoDiNonStareEVieneTagliato() {
+        ProdottoDto prodotto = prodottoEnorme();
+
+        // sul 102 (regola del prototipo) si finisce nel caso B alla lunghezza massima, tagliato in altezza
+        RisultatoResa r102 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
+        assertThat(r102.avvisi()).contains("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
+        assertThat(r102.lungoIlNastro()).isTrue();
+        assertThat(r102.immagine().getWidth()).isEqualTo(3543); // lunghezza massima raggiunta (300 mm)
+        assertThat(r102.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]); // tagliato, non piu' alto
+        assertThat(r102.altezzaMm()).isEqualTo(102.0); // il lato sul nastro: il nominale
+
+        // sul 62 (sempre verticale) si tagliano i 500 mm di nastro, con l'avviso apposito
+        RisultatoResa r62 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        assertThat(r62.avvisi()).contains("Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi");
+        assertThat(r62.lungoIlNastro()).isFalse();
+        assertThat(r62.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r62.immagine().getHeight()).isEqualTo(Math.round(500f * 300f / 25.4f));
+        assertThat(r62.larghezzaMm()).isEqualTo(62.0);
+    }
+
+    private static ProdottoDto prodottoEnorme() {
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("titolo", true, 48, "piena", null),
                 new BloccoDto("ingredienti", true, 10, "piena", null));
         EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
         String ingredientiLunghissimi = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. "
                 .repeat(60);
-        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto con titolo enorme", "TITOLO ENORME", etichetta,
+        return new ProdottoDto(1L, "Prodotto con titolo enorme", "TITOLO ENORME", etichetta,
                 ingredientiLunghissimi, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
-
-        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
-
-        assertThat(r.avvisi()).contains("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
-        assertThat(r.lungoIlNastro()).isTrue();
-        assertThat(r.immagine().getWidth()).isEqualTo(3543); // lunghezza massima raggiunta (300 mm)
-        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]); // tagliato, non piu' alto
-        assertThat(r.altezzaMm()).isEqualTo(62.0); // il lato sul nastro: il nominale
     }
 
     /**
@@ -176,7 +200,7 @@ class RenditoreEtichettaTest {
      */
     @Test
     void laLunghezzaCresceORestaUgualeAggiungendoUnBlocco() {
-        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. ".repeat(20);
+        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. ".repeat(45);
         List<BloccoDto> pochi = List.of(
                 new BloccoDto("titolo", true, 18, "piena", null),
                 new BloccoDto("ingredienti", true, 8, "piena", null));
@@ -191,8 +215,8 @@ class RenditoreEtichettaTest {
         ProdottoDto prodottoConBloccoInPiu = new ProdottoDto(1L, "Prodotto", "PRODOTTO", etichettaConBloccoInPiu,
                 ingredienti, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
 
-        RisultatoResa base = renderer.rendi(prodottoPochi, ParametriStampa.VUOTI, 62, 1.0);
-        RisultatoResa risultatoConBloccoInPiu = renderer.rendi(prodottoConBloccoInPiu, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa base = renderer.rendi(prodottoPochi, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa risultatoConBloccoInPiu = renderer.rendi(prodottoConBloccoInPiu, ParametriStampa.VUOTI, 102, 1.0);
 
         assertThat(base.lungoIlNastro()).isTrue();
         assertThat(risultatoConBloccoInPiu.lungoIlNastro()).isTrue();

@@ -20,7 +20,7 @@
 
     <groupId>it.etichette</groupId>
     <artifactId>etichette</artifactId>
-    <version>0.1.11</version>
+    <version>0.1.12</version>
     <packaging>jar</packaging>
     <name>Etichette</name>
     <description>Servizio per la stampa di etichette alimentari su Brother QL-1100c</description>
