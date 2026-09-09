@@ -36,20 +36,37 @@ import java.util.regex.Pattern;
 
 /**
  * Rende un'etichetta (etichetta + prodotto + dati della stampa) in un'immagine bilivello a 300
- * dpi, esattamente larga quanto il rotolo (696 punti per il 62 mm, 1164 per il 102, docs/api.md).
- * Stessa tecnica dello spike verificato (tools/spike-java2d/TextRenderSpike.java): AttributedString
- * + LineBreakMeasurer per il grassetto misto, zona a due colonne con filetto verticale, tabella
- * dei valori nutrizionali allineata a destra.
+ * dpi. Stessa tecnica dello spike verificato (tools/spike-java2d/TextRenderSpike.java):
+ * AttributedString + LineBreakMeasurer per il grassetto misto, zona a due colonne con filetto
+ * verticale, tabella dei valori nutrizionali allineata a destra.
  *
- * <p><b>Nota sulla rotazione per il rotolo 62 mm</b>: docs/api.md dice che per il 62 mm "l'immagine
- * finale va ruotata di 90°" e che l'immagine mandata alla stampante resta comunque "larga 696
- * punti". Le due cose sono incompatibili con {@link ProtocolloQl#costruisciLavoro}, che impone
- * SEMPRE larghezza immagine = 696 per il 62 mm (altrimenti lancia IllegalArgumentException): una
- * rotazione di 90° di un'immagine larga 696 produce un'immagine larga quanto l'altezza originale
- * (variabile), non 696. Qui si rende quindi DIRETTAMENTE a larghezza 696 (62 mm) o 1164 (102 mm),
- * senza rotazione: soddisfa {@code costruisciLavoro} e combacia esattamente con l'esempio delle
- * misure del contratto ({@code larghezzaMm: 58.9, altezzaMm: 96.6} per il 62 mm). Segnalato al
- * team come incoerenza del contratto da chiarire (vedi il report finale).
+ * <p><b>Geometria (decisione del 2026-09-09, allineata alla regola ESATTA del prototipo
+ * {@code artefatti-claude/banco-etichette-2026-09-08.html}, funzione {@code misuraEtichetta}):
+ * l'etichetta in mano non e' MAI piu' alta che larga. Sia {@code H} la larghezza utile del rotolo
+ * in punti (696 per il 62 mm, 1164 per il 102, margine di {@link #MARGINE_MM} sopra/sotto
+ * compreso). Si prova PRIMA a disporre il contenuto con larghezza di riga {@code H} (il motore di
+ * layout e' sempre lo stesso, {@link #disegnaBlocco}/{@link #disegnaZona}: dato x/y/larghezza
+ * restituisce la y finale):
+ *
+ * <ul>
+ *   <li><b>caso A, "corta"</b>: se l'altezza risultante {@code h} e' ≤ {@code H}, il testo corre
+ *       ATTRAVERSO il nastro come nella vecchia geometria (pre-2026-09-09): immagine larga
+ *       {@code H}, alta {@code max(h, } {@link #ALTEZZA_MINIMA_CASO_A_PT} {@code )} - tagliata
+ *       all'altezza del contenuto, senza spazio bianco fino a un quadrato - e NESSUNA rotazione
+ *       per la stampa (l'immagine e' gia' larga quanto il rotolo);</li>
+ *   <li><b>caso B, "lunga"</b>: altrimenti l'etichetta corre LUNGO il nastro, alta quanto il
+ *       rotolo ({@code H}), e si cerca con una ricerca binaria la lunghezza {@code L} minima (fra
+ *       {@code H} - il confine del caso A, "a L = H il contenuto sta" - e
+ *       {@link #LUNGHEZZA_MASSIMA_PT}) che la contiene (vedi {@link #cercaLunghezzaMinima}); oltre
+ *       il massimo, avviso e contenuto tagliato. Rotazione di 90° per la stampa
+ *       ({@link #ruotaPerStampa}, solo chi stampa la chiama - vedi {@code StampeService}).</li>
+ * </ul>
+ *
+ * <p>{@link #rendi} restituisce sempre l'immagine NON ruotata (quella dell'anteprima, docs/api.md)
+ * e le misure DELL'ETICHETTA IN MANO nel verso in cui si legge: il lato che giace sul nastro si
+ * dichiara col rotolo NOMINALE (62 o 102), non con la larghezza utile precisa (58,9/98,6) - vedi
+ * {@link RisultatoResa#lungoIlNastro()} per sapere quale campo (larghezza o altezza) e' quello sul
+ * nastro.
  */
 @Component
 public class RenditoreEtichetta {
@@ -57,7 +74,18 @@ public class RenditoreEtichetta {
     private static final float MARGINE_MM = 1.5f;
     private static final float GUTTER_MM = 2.0f;
     private static final float SPAZIO_TRA_BLOCCHI_MM = 0.6f;
-    private static final float ALTEZZA_MASSIMA_MM = 500f;
+    /**
+     * Altezza minima dell'immagine nel caso A ("corta"): il prototipo usa 20 mm (236 punti,
+     * {@code LUNGH.min}), ma il manuale della stampante impone un minimo hardware di 25,4 mm (300
+     * punti) per il nastro continuo (mappatura, "Limiti nastro continuo" - lo stesso minimo gia'
+     * usato altrove nel servizio, {@code MonitorStampante.RIGHE_ESPULSIONE_MINIMO}): sotto quel
+     * minimo il nastro potrebbe non essere alimentabile, quindi qui si usa 300, non 236 - segnalato
+     * al team (vedi il report).
+     */
+    private static final int ALTEZZA_MINIMA_CASO_A_PT = 300;
+    /** Lunghezza massima lungo il nastro per la ricerca del caso B: 300 mm - oltre, avviso e contenuto tagliato. */
+    private static final int LUNGHEZZA_MASSIMA_PT = 3543;
+    private static final String AVVISO_CONTENUTO_NON_STA = "Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi";
     private static final Pattern PAROLA = Pattern.compile("\\p{L}+");
 
     private final Caratteri caratteri;
@@ -68,7 +96,13 @@ public class RenditoreEtichetta {
         this.logo = logo;
     }
 
-    /** L'etichetta viene dal prodotto stesso ({@link ProdottoDto#etichetta}): non e' piu' condivisa (mandato del 2026-09-08). */
+    /**
+     * L'etichetta viene dal prodotto stesso ({@link ProdottoDto#etichetta}): non e' piu' condivisa
+     * (mandato del 2026-09-08). Restituisce sempre l'immagine NON ruotata (vedi la nota di classe)
+     * e le misure dell'etichetta IN MANO: {@link RisultatoResa#lungoIlNastro()} dice quale dei due
+     * campi ({@code larghezzaMm}/{@code altezzaMm}) e' il lato che giace sul nastro (il rotolo
+     * nominale) e quale l'altro (la dimensione trovata).
+     */
     public RisultatoResa rendi(ProdottoDto prodotto, ParametriStampa parametri, int rotoloMm, double scala) {
         EtichettaProdottoDto etichetta = prodotto.etichetta() != null
                 ? prodotto.etichetta() : new EtichettaProdottoDto(null, null, null, null, List.of());
@@ -76,45 +110,169 @@ public class RenditoreEtichetta {
         if (spec == null) {
             throw new IllegalArgumentException("rotolo non gestito: " + rotoloMm + " mm");
         }
-        int banda = spec[1];
+        int larghezzaUtile = spec[1]; // H: larghezza utile del rotolo, margine sopra/sotto compreso
         int margine = mmInPx(MARGINE_MM);
-        int interno = banda - 2 * margine;
-        int altezzaMassima = mmInPx(ALTEZZA_MASSIMA_MM);
-
-        BufferedImage lavoro = new BufferedImage(banda, altezzaMassima, BufferedImage.TYPE_BYTE_BINARY);
-        Graphics2D g = lavoro.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, banda, altezzaMassima);
-        g.setColor(Color.BLACK);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
-        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
-        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-        FontRenderContext frc = g.getFontRenderContext();
 
         List<String> avvisi = new ArrayList<>();
         ParametriStampa p = parametri != null ? parametri : ParametriStampa.VUOTI;
         List<BloccoDto> renderizzabili = filtraRenderizzabili(etichetta, prodotto, p);
         List<Object> sequenza = raggruppaInZone(renderizzabili);
 
+        // Si prova PRIMA il caso A: contenuto disposto con larghezza di riga = H (il testo corre
+        // ATTRAVERSO il nastro, come nella vecchia geometria pre-2026-09-09).
+        int altezzaAH = misuraAltezza(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+
+        int larghezzaImmagine;
+        int altezzaImmagine;
+        boolean lungoIlNastro;
+        if (altezzaAH <= larghezzaUtile) {
+            // Caso A ("corta"): niente rotazione per la stampa, l'immagine e' gia' larga quanto il
+            // rotolo. Altezza tagliata al contenuto (mai spazio bianco fino a un quadrato), con un
+            // minimo hardware (vedi ALTEZZA_MINIMA_CASO_A_PT).
+            larghezzaImmagine = larghezzaUtile;
+            altezzaImmagine = Math.max(altezzaAH, ALTEZZA_MINIMA_CASO_A_PT);
+            lungoIlNastro = false;
+        } else {
+            // Caso B ("lunga"): il confine del caso A ("a L = H il contenuto sta") e' anche il
+            // minimo da cui parte la ricerca binaria della lunghezza.
+            RicercaLunghezza ricerca = cercaLunghezzaMinima(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+            if (ricerca.nonSta()) {
+                avvisi.add(AVVISO_CONTENUTO_NON_STA);
+            }
+            larghezzaImmagine = ricerca.lunghezza();
+            altezzaImmagine = larghezzaUtile;
+            lungoIlNastro = true;
+        }
+
+        BufferedImage lavoro = new BufferedImage(larghezzaImmagine, altezzaImmagine, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = lavoro.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, larghezzaImmagine, altezzaImmagine);
+        configuraRendering(g);
+        FontRenderContext frc = g.getFontRenderContext();
+
+        // Nel caso B, se il contenuto non sta (ricerca.nonSta()), disegnare in un buffer alto H
+        // taglia da solo l'eccedenza (Graphics2D non lancia mai nulla per un disegno fuori dai
+        // bordi): "taglia all'altezza H" non richiede nessun passaggio in piu'.
+        int larghezzaContenuto = Math.max(1, larghezzaImmagine - 2 * margine);
         float y = margine;
         for (Object elemento : sequenza) {
             if (elemento instanceof BloccoDto b) {
-                y = disegnaBlocco(g, frc, b, etichetta, prodotto, p, margine, y, interno, avvisi);
+                y = disegnaBlocco(g, frc, b, etichetta, prodotto, p, margine, y, larghezzaContenuto, avvisi);
             } else if (elemento instanceof ZonaGruppo zg) {
-                y = disegnaZona(g, frc, zg, etichetta, prodotto, p, margine, y, interno, avvisi);
+                y = disegnaZona(g, frc, zg, etichetta, prodotto, p, margine, y, larghezzaContenuto, avvisi);
             }
         }
         g.dispose();
 
-        int altezzaFinale = Math.min(Math.round(y) + margine, altezzaMassima);
-        BufferedImage contenuto = ritaglia(lavoro, banda, altezzaFinale);
+        // Misure "in mano" (prototipo rendiMisurata/misuraEtichetta): il lato sul nastro e' il
+        // rotolo NOMINALE, l'altro lato e' la dimensione appena trovata.
+        double latoSulNastroMm = rotoloMm;
+        double altroLatoMm = (lungoIlNastro ? larghezzaImmagine : altezzaImmagine) / ProtocolloQl.PUNTI_PER_MM;
+        double larghezzaMm = lungoIlNastro ? altroLatoMm : latoSulNastroMm;
+        double altezzaMm = lungoIlNastro ? latoSulNastroMm : altroLatoMm;
 
-        double larghezzaMm = banda / ProtocolloQl.PUNTI_PER_MM;
-        double altezzaMm = altezzaFinale / ProtocolloQl.PUNTI_PER_MM;
+        BufferedImage finale = scala == 1.0 ? lavoro : scala(lavoro, scala);
+        return new RisultatoResa(finale, larghezzaMm, altezzaMm, avvisi, lungoIlNastro);
+    }
 
-        BufferedImage finale = scala == 1.0 ? contenuto : scala(contenuto, scala);
-        return new RisultatoResa(finale, larghezzaMm, altezzaMm, avvisi);
+    // =========================================================================================
+    // Ricerca della lunghezza minima lungo il nastro (caso B, geometria del 2026-09-09)
+    // =========================================================================================
+
+    /** Esito di {@link #cercaLunghezzaMinima}: la lunghezza trovata (in punti) e se anche a {@link #LUNGHEZZA_MASSIMA_PT} il contenuto non ci sta. */
+    private record RicercaLunghezza(int lunghezza, boolean nonSta) {
+    }
+
+    /**
+     * Cerca la lunghezza L minima, fra {@code altezzaObiettivo} (il confine del caso A, "a L = H
+     * il contenuto sta") e {@link #LUNGHEZZA_MASSIMA_PT}, tale che il layout disposto con
+     * larghezza di riga L stia nell'altezza obiettivo: la funzione altezza(L) e' quasi sempre
+     * monotona non crescente (una riga piu' larga si spezza meno righe), quindi la ricerca binaria
+     * basta - ma non e' garantito al 100% (es. gli a-capo di {@link #disegnaVoceValore}), quindi
+     * dopo la ricerca si VERIFICA il risultato e, se non ci sta per davvero, si allarga finche' non
+     * ci sta o si raggiunge il massimo (a quel punto e' "non sta").
+     */
+    private RicercaLunghezza cercaLunghezzaMinima(List<Object> sequenza, EtichettaProdottoDto etichetta,
+                                                   ProdottoDto prodotto, ParametriStampa p, int altezzaObiettivo, int margine) {
+        if (misuraAltezza(sequenza, etichetta, prodotto, p, LUNGHEZZA_MASSIMA_PT, margine) > altezzaObiettivo) {
+            return new RicercaLunghezza(LUNGHEZZA_MASSIMA_PT, true);
+        }
+        int lo = altezzaObiettivo, hi = LUNGHEZZA_MASSIMA_PT;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (misuraAltezza(sequenza, etichetta, prodotto, p, mid, margine) <= altezzaObiettivo) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        int lunghezza = lo;
+        while (lunghezza < LUNGHEZZA_MASSIMA_PT && misuraAltezza(sequenza, etichetta, prodotto, p, lunghezza, margine) > altezzaObiettivo) {
+            lunghezza++;
+        }
+        return new RicercaLunghezza(lunghezza, false);
+    }
+
+    /**
+     * Altezza del contenuto (margine sopra e sotto compreso) se disposto con larghezza di riga
+     * {@code larghezzaRiga}, SENZA disegnare davvero in un buffer di dimensione vera: un buffer
+     * 1×1 basta, perche' {@link FontMetrics}/{@link TextLayout}/{@link LineBreakMeasurer} dipendono
+     * solo dal {@link FontRenderContext} (a sua volta indipendente dalle dimensioni dell'immagine),
+     * non dal buffer - disegnare fuori dai suoi bordi non lancia mai nulla, viene solo ritagliato.
+     * Chiamata circa una dozzina di volte per resa dalla ricerca binaria: tenerla leggera conta.
+     */
+    private int misuraAltezza(List<Object> sequenza, EtichettaProdottoDto etichetta, ProdottoDto prodotto,
+                               ParametriStampa p, int larghezzaRiga, int margine) {
+        BufferedImage misura = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = misura.createGraphics();
+        configuraRendering(g);
+        FontRenderContext frc = g.getFontRenderContext();
+        int larghezzaContenuto = Math.max(1, larghezzaRiga - 2 * margine);
+        float y = margine;
+        List<String> avvisiIgnorati = new ArrayList<>();
+        for (Object elemento : sequenza) {
+            if (elemento instanceof BloccoDto b) {
+                y = disegnaBlocco(g, frc, b, etichetta, prodotto, p, margine, y, larghezzaContenuto, avvisiIgnorati);
+            } else if (elemento instanceof ZonaGruppo zg) {
+                y = disegnaZona(g, frc, zg, etichetta, prodotto, p, margine, y, larghezzaContenuto, avvisiIgnorati);
+            }
+        }
+        g.dispose();
+        return Math.round(y) + margine;
+    }
+
+    private static void configuraRendering(Graphics2D g) {
+        g.setColor(Color.BLACK);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+    }
+
+    /**
+     * Ruota l'immagine ORIZZONTALE resa da {@link #rendi} (larghezza = lunghezza lungo il nastro,
+     * altezza = larghezza del rotolo) di 90° in senso ORARIO, per ottenere l'immagine da mandare a
+     * {@link ProtocolloQl#costruisciLavoro} (che impone larghezza = larghezza del rotolo, "righe" =
+     * lunghezza lungo il nastro). SOLO per la stampa - chiamata da {@code StampeService}, MAI
+     * dall'anteprima ({@code /api/resa/...}, che resta la striscia non ruotata).
+     *
+     * <p><b>Verso non ancora verificato su una stampa vera</b> (mandato del 2026-09-09: qui non si
+     * stampa nulla, la prova fisica e' rimandata): scelto orario perche', con l'etichetta che esce
+     * dalla stampante, girandola di 90° in senso orario il testo dovrebbe leggersi dritto. Se la
+     * prova mostra il contrario, per passare ad antiorario basta scambiare {@code y}/{@code
+     * altezza-1-x} sotto con {@code altezza-1-y}/{@code x}.
+     */
+    public static BufferedImage ruotaPerStampa(BufferedImage orizzontale) {
+        int lunghezza = orizzontale.getWidth();  // L
+        int altezza = orizzontale.getHeight();   // H
+        BufferedImage ruotata = new BufferedImage(altezza, lunghezza, BufferedImage.TYPE_BYTE_BINARY);
+        for (int y = 0; y < lunghezza; y++) {
+            for (int x = 0; x < altezza; x++) {
+                ruotata.setRGB(x, y, orizzontale.getRGB(y, altezza - 1 - x));
+            }
+        }
+        return ruotata;
     }
 
     // =========================================================================================
@@ -624,16 +782,6 @@ public class RenditoreEtichetta {
     private static int altezzaRiga(Font f, Graphics2D g) {
         FontMetrics fm = g.getFontMetrics(f);
         return fm.getAscent() + fm.getDescent() + fm.getLeading();
-    }
-
-    private static BufferedImage ritaglia(BufferedImage sorgente, int larghezza, int altezza) {
-        BufferedImage out = new BufferedImage(larghezza, altezza, sorgente.getType());
-        Graphics2D g = out.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, larghezza, altezza);
-        g.drawImage(sorgente, 0, 0, null);
-        g.dispose();
-        return out;
     }
 
     /** Anteprima a scala < 1: rende a 300 dpi (sopra) e riduce con interpolazione bilineare in scala di grigi. */

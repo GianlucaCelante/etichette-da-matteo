@@ -24,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.awt.image.BufferedImage;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -147,10 +148,17 @@ public class StampeService {
 
         ParametriStampa parametri = new ParametriStampa(quantita, scadenza, lotto);
         RisultatoResa risultato = renderer.rendi(prodotto, parametri, rotolo, 1.0);
+        // renderer.rendi() restituisce sempre l'immagine NON ruotata: nel caso A ("corta") e' gia'
+        // larga quanto il rotolo (nessuna rotazione); solo nel caso B ("lunga", lungoIlNastro) va
+        // ruotata di 90° per la stampa (larghezza = larghezza del rotolo, "righe" = lunghezza lungo
+        // il nastro, vedi RenditoreEtichetta#ruotaPerStampa).
+        BufferedImage immaginePerStampa = risultato.lungoIlNastro()
+                ? RenditoreEtichetta.ruotaPerStampa(risultato.immagine())
+                : risultato.immagine();
 
         int margineDot = ProtocolloQl.mmInDot(margineMm());
         boolean taglioAutomatico = taglioOgniEtichetta();
-        String lavoroId = coda.accoda(risultato.immagine(), rotolo, copie, margineDot, taglioAutomatico, prova);
+        String lavoroId = coda.accoda(immaginePerStampa, rotolo, copie, margineDot, taglioAutomatico, prova);
 
         String scadenzaStr = scadenza != null ? scadenza.format(DateTimeFormatter.ISO_LOCAL_DATE) : null;
         lavoriInCorso.put(lavoroId, new ContestoLavoro(prodotto.id(), prodotto.nome(), lotto, quantita,

@@ -73,26 +73,130 @@ class RenditoreEtichettaTest {
         return new ParametriStampa("2148 g", LocalDate.of(2026, 9, 15), "L 20260908-004");
     }
 
+    /**
+     * Geometria a due casi (correzione del 2026-09-09, allineata al prototipo
+     * {@code artefatti-claude/banco-etichette-2026-09-08.html}, {@code misuraEtichetta}):
+     * l'etichetta "Completa" sul 62 non sta nell'altezza utile del rotolo (696 punti) a larghezza
+     * di riga = 696, quindi e' caso B ("lunga"): corre lungo il nastro, alta quanto il rotolo,
+     * larga almeno 696 - il mockup mostra "164 × 62 mm", qui si verifica un intervallo intorno a
+     * quel valore. Le misure sono quelle "in mano": il lato sul nastro e' il NOMINALE (62, non 58,9).
+     */
     @Test
-    void completaSulRotolo62HaLaLarghezzaGiustaEContienePixelNeri() {
+    void completaSulRotolo62ECasoBConLunghezzaAlmenoLaLarghezzaUtileEMisureNominali() {
         RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
 
-        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
-        assertThat(r.immagine().getHeight()).isGreaterThan(0);
-        assertThat(r.larghezzaMm()).isCloseTo(58.9, org.assertj.core.data.Offset.offset(0.2));
-        assertThat(r.altezzaMm()).isGreaterThan(0);
+        assertThat(r.lungoIlNastro()).isTrue();
+        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.immagine().getWidth()).isGreaterThanOrEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.altezzaMm()).isEqualTo(62.0); // il lato sul nastro: il rotolo NOMINALE, non 58,9
+        assertThat(r.larghezzaMm()).isBetween(120.0, 220.0); // il mockup: "164 × 62 mm"
+        assertThat(r.avvisi()).isEmpty();
         assertThat(contienePixelNeri(r.immagine())).isTrue();
     }
 
+    /**
+     * Stesso contenuto sul 102: con piu' spazio verticale disponibile (larghezza utile 1164 contro
+     * 696 sul 62) il contenuto potrebbe gia' stare a larghezza di riga = larghezza utile (caso A) -
+     * qui si verifica quale dei due casi si applica davvero, e in entrambi che le misure "in mano"
+     * usino il nominale (102, non 98,6) sul lato giusto.
+     */
     @Test
-    void completaSulRotolo102HaLaLarghezzaGiustaEContienePixelNeri() {
+    void completaSulRotolo102UsaLeMisureNominaliNelCasoCheSiApplica() {
         RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 102, 1.0);
 
-        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]);
-        assertThat(r.immagine().getHeight()).isGreaterThan(0);
-        assertThat(r.larghezzaMm()).isCloseTo(98.6, org.assertj.core.data.Offset.offset(0.2));
-        assertThat(r.altezzaMm()).isGreaterThan(0);
+        // niente avviso di CONTENUTO CHE NON STA; un incidentale "titolo mandato a capo" e' invece
+        // possibile, la ricerca (o il caso A) preferisce la lunghezza/altezza minima anche a quel costo.
+        assertThat(r.avvisi()).doesNotContain("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
         assertThat(contienePixelNeri(r.immagine())).isTrue();
+        if (r.lungoIlNastro()) {
+            assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]);
+            assertThat(r.immagine().getWidth()).isGreaterThanOrEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]);
+            assertThat(r.altezzaMm()).isEqualTo(102.0);
+        } else {
+            assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]);
+            assertThat(r.larghezzaMm()).isEqualTo(102.0);
+        }
+    }
+
+    /** L'immagine ruotata per la stampante (RenditoreEtichetta#ruotaPerStampa) e' larga esattamente quanto il rotolo e alta quanto la lunghezza trovata - usata SOLO nel caso B. */
+    @Test
+    void limmagineRuotataPerLaStampaEIntercambiaLarghezzaEAltezza() {
+        RisultatoResa r62 = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
+        assertThat(r62.lungoIlNastro()).isTrue(); // vedi completaSulRotolo62...: e' sempre caso B
+
+        BufferedImage ruotata62 = RenditoreEtichetta.ruotaPerStampa(r62.immagine());
+        assertThat(ruotata62.getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(ruotata62.getHeight()).isEqualTo(r62.immagine().getWidth());
+    }
+
+    /**
+     * Cucina sul 62 (etichetta corta, pochi blocchi piccoli): caso A ("corta") - il testo corre
+     * ATTRAVERSO il nastro come nella vecchia geometria, immagine larga quanto il rotolo (696),
+     * alta quanto il contenuto (con un minimo hardware, vedi RenditoreEtichetta), NESSUNA
+     * rotazione per la stampa. Misure "in mano": larghezza = nominale (62), altezza = quella
+     * dell'immagine.
+     */
+    @Test
+    void laCucinaSulRotolo62ECasoAConImmagineGiaLargaQuantoIlRotolo() {
+        RisultatoResa r = renderer.rendi(impastoClassico24h(), parametriDiProva(), 62, 1.0);
+
+        assertThat(r.avvisi()).doesNotContain("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
+        assertThat(r.lungoIlNastro()).isFalse();
+        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.immagine().getHeight()).isBetween(300, ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]); // 300 = minimo hardware (25,4 mm), vedi RenditoreEtichetta
+        assertThat(r.larghezzaMm()).isEqualTo(62.0); // il lato sul nastro: il nominale
+        assertThat(r.altezzaMm() * ProtocolloQl.PUNTI_PER_MM).isCloseTo(r.immagine().getHeight(), org.assertj.core.data.Offset.offset(1.0));
+    }
+
+    /** Un titolo a 48 pt piu' ingredienti lunghissimi non stanno nell'altezza del rotolo nemmeno alla lunghezza massima (caso B): avviso e contenuto tagliato, non un errore. */
+    @Test
+    void unContenutoTroppoAltoProduceLavvisoDiNonStareEVieneTagliato() {
+        List<BloccoDto> blocchi = List.of(
+                new BloccoDto("titolo", true, 48, "piena", null),
+                new BloccoDto("ingredienti", true, 10, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        String ingredientiLunghissimi = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. "
+                .repeat(60);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto con titolo enorme", "TITOLO ENORME", etichetta,
+                ingredientiLunghissimi, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(r.avvisi()).contains("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
+        assertThat(r.lungoIlNastro()).isTrue();
+        assertThat(r.immagine().getWidth()).isEqualTo(3543); // lunghezza massima raggiunta (300 mm)
+        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]); // tagliato, non piu' alto
+        assertThat(r.altezzaMm()).isEqualTo(62.0); // il lato sul nastro: il nominale
+    }
+
+    /**
+     * Aggiungere un blocco puo' solo far crescere (o lasciare uguale) la lunghezza trovata, mai
+     * farla diminuire - contenuto abbastanza ricco da restare nel caso B in entrambi gli scenari
+     * (nel caso A "larghezzaMm" e' sempre il nominale, non rifletterebbe il contenuto).
+     */
+    @Test
+    void laLunghezzaCresceORestaUgualeAggiungendoUnBlocco() {
+        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. ".repeat(20);
+        List<BloccoDto> pochi = List.of(
+                new BloccoDto("titolo", true, 18, "piena", null),
+                new BloccoDto("ingredienti", true, 8, "piena", null));
+        List<BloccoDto> conBloccoInPiu = List.of(
+                new BloccoDto("titolo", true, 18, "piena", null),
+                new BloccoDto("ingredienti", true, 8, "piena", null),
+                new BloccoDto("testo", true, 8, "piena", "Un blocco di testo in piu' aggiunto apposta per far crescere il contenuto dell'etichetta."));
+        EtichettaProdottoDto etichettaPochi = new EtichettaProdottoDto(null, null, null, null, pochi);
+        EtichettaProdottoDto etichettaConBloccoInPiu = new EtichettaProdottoDto(null, null, null, null, conBloccoInPiu);
+        ProdottoDto prodottoPochi = new ProdottoDto(1L, "Prodotto", "PRODOTTO", etichettaPochi,
+                ingredienti, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+        ProdottoDto prodottoConBloccoInPiu = new ProdottoDto(1L, "Prodotto", "PRODOTTO", etichettaConBloccoInPiu,
+                ingredienti, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa base = renderer.rendi(prodottoPochi, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa risultatoConBloccoInPiu = renderer.rendi(prodottoConBloccoInPiu, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(base.lungoIlNastro()).isTrue();
+        assertThat(risultatoConBloccoInPiu.lungoIlNastro()).isTrue();
+        assertThat(risultatoConBloccoInPiu.larghezzaMm()).isGreaterThanOrEqualTo(base.larghezzaMm());
     }
 
     @Test
@@ -109,9 +213,12 @@ class RenditoreEtichettaTest {
 
     @Test
     void unaVoceDeiValoriNutrizionaliTroppoLungaVaACapoInveceDiTroncare() {
-        // Colonna destra stretta (1/4) sul rotolo piu' stretto (62 mm) e una voce lunghissima:
-        // se venisse troncata l'immagine avrebbe un'altezza "piccola" (una riga); se va a capo
-        // (comportamento corretto) l'altezza cresce per le righe aggiuntive di quella voce.
+        // Colonna destra stretta (1/4) e una voce lunghissima: disegnaVoceValore (non toccato dalla
+        // geometria orizzontale) va a capo invece di troncare. Con l'altezza ora FISSA (vedi la
+        // nota di classe di RenditoreEtichetta) l'altezza non e' piu' un segnale utile per questa
+        // verifica come lo era prima (l'immagine cresceva in altezza): qui basta che il render
+        // riesca, produca pixel e non serva l'avviso "non sta" (la voce a capo su piu' righe
+        // continua a starci nell'altezza fissa, non viene mai tagliata).
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("valori", true, 7, "dx", null),
                 // un blocco sx con contenuto vero: se restasse vuoto la zona renderebbe "dx" a
@@ -127,9 +234,7 @@ class RenditoreEtichettaTest {
         RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
 
         assertThat(contienePixelNeri(r.immagine())).isTrue();
-        // una singola riga a 7pt e' alta pochi mm; con la voce andata a capo su piu' righe
-        // l'altezza totale supera abbondantemente quella di un'unica riga di intestazione+valore.
-        assertThat(r.altezzaMm()).isGreaterThan(15.0);
+        assertThat(r.avvisi()).doesNotContain("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
     }
 
     @Test
@@ -246,8 +351,12 @@ class RenditoreEtichettaTest {
         RisultatoResa r = rendererConLogo.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
 
         assertThat(contienePixelNeri(r.immagine())).isTrue();
-        // margine (1,5 mm sopra) + logo alto 10 mm (corpo del blocco) + margine sotto
-        assertThat(r.altezzaMm()).isGreaterThan(10.0);
+        // un logo alto 10 mm ci sta comodamente nei 98,6 mm utili del rotolo 102 a larghezza di
+        // riga = larghezza utile: caso A, nessun avviso di taglio. Misure "in mano": larghezza =
+        // nominale (102), altezza = quella dell'immagine (min. hardware compreso).
+        assertThat(r.lungoIlNastro()).isFalse();
+        assertThat(r.larghezzaMm()).isEqualTo(102.0);
+        assertThat(r.avvisi()).isEmpty();
     }
 
     private static boolean contienePixelNeri(BufferedImage img) {
