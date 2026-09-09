@@ -39,7 +39,9 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
       {didascalia && (
         <div className="text-[12px] text-[var(--spento)]">{caricando ? "Aggiorno l'anteprima…" : didascalia}</div>
       )}
-      {lenteAperta && src && <LenteEtichetta titolo={titolo} sottotitolo={sottotitolo} src={src} onChiudi={chiudiLente} />}
+      {lenteAperta && src && (
+        <LenteEtichetta titolo={titolo} sottotitolo={sottotitolo ?? didascalia} src={src} onChiudi={chiudiLente} />
+      )}
     </div>
   );
 }

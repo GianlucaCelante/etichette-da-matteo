@@ -68,6 +68,16 @@
   --ombra: 0 8px 24px rgba(88, 68, 60, 0.10);
 }
 
+/* Tutto cio' che segue nel file sta nel layer "components" di Tailwind (gia'
+   dichiarato da @import "tailwindcss" sopra): senza, essendo fuori da ogni
+   layer, batterebbe SEMPRE le utility di Tailwind (h-, gap-, px-...) anche
+   quando un componente le usa apposta per scostarsi da una regola qui sotto
+   (per es. ".btn" e "px-4"/"gap-0.5" sul bottone "Ristampa ultima") — le
+   regole senza layer vincono su quelle in un layer a prescindere dall'ordine
+   nel file o dalla specificita'. Da dentro "components" restiamo comunque
+   sopra "base" (compreso il reset dei bottoni di Tailwind). */
+@layer components {
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
@@ -174,6 +184,16 @@ svg { display: block; flex-shrink: 0; }
   display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 17px;
 }
 .casella .unita { margin-left: auto; font-size: 14px; color: var(--spento); }
+/* il lotto (mono) sta stretto in meta' griglia: corpo piu' piccolo, come nel
+   prototipo (campoLetto con mono:true), e meno spazio perso in padding/gap,
+   cosi' il numero intero e "AUTO" ci stanno senza troncare anche sui 390px. */
+.casella.mono { font-size: 13px; white-space: nowrap; padding: 10px 10px; gap: 4px; }
+/* segna un valore proposto dal servizio (lotto auto, come nel prototipo):
+   resta modificabile, la pastiglia dice solo da dove viene il valore. */
+.casella .auto {
+  margin-left: auto; font-size: 10px; font-weight: 700; background: var(--riga); color: #6B5A4E;
+  padding: 2px 6px; border-radius: 5px; letter-spacing: .04em; flex-shrink: 0;
+}
 .scheda { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
 .sep { height: 1px; background: var(--riga); }
 
@@ -211,8 +231,6 @@ svg { display: block; flex-shrink: 0; }
 }
 .finestra.piccola { width: min(440px, 100%); padding: 24px 24px 20px; gap: 18px; }
 .piedeFinestra { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-.barraAzioniEtichetta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 32px 6px; flex-shrink: 0; flex-wrap: wrap; }
-@media (max-width: 860px) { .barraAzioniEtichetta { padding: 10px 20px 4px; } }
 .avvisino {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
   padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
@@ -302,6 +320,11 @@ svg { display: block; flex-shrink: 0; }
 .strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }
 .strumentiEt .btn.tondo { width: 44px; padding: 0; gap: 0; border-radius: 22px; }
 .strumentiEt .sep { width: 1px; height: 28px; background: var(--bordo); margin: 0 4px; flex-shrink: 0; }
+/* schermo stretto ma non telefono: Duplica ed Elimina restano con la sola icona */
+@media (min-width: 861px) and (max-width: 1150px) {
+  .strumentiEt .btn.conTesto { width: 44px; padding: 0; gap: 0; }
+  .strumentiEt .btn.conTesto > span { display: none; }
+}
 .btn.elimina { color: var(--rosso); }
 .btn.elimina.forte { background: var(--rosso); border-color: var(--rosso); color: #fff; }
 
@@ -319,14 +342,14 @@ svg { display: block; flex-shrink: 0; }
 /* ---------- anteprima e lente ---------- */
 .anteprima { position: relative; }
 .cornice {
-  overflow-y: auto; overflow-x: hidden; max-height: 260px; border-radius: 8px; position: relative;
+  overflow-y: auto; overflow-x: hidden; max-height: 260px; border-radius: 2px; position: relative;
   flex-shrink: 0; width: 100%; display: block; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
 }
 .cornice::-webkit-scrollbar { width: 6px; }
 .cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
 .cornice img { display: block; width: 100%; max-width: 100%; height: auto; }
 .lupa {
-  position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
+  position: absolute; top: 6px; left: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
   color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none;
 }
 .finestra.lente { width: 100%; height: 100%; }
@@ -383,6 +406,14 @@ svg { display: block; flex-shrink: 0; }
   .rail { display: none; }
   .testata { height: auto; padding: 14px 20px 10px; flex-wrap: wrap; row-gap: 10px; }
   .titolo { font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* sul telefono "strumenti" (indietro/avanti, Duplica/Elimina) va su una riga
+     propria sotto; le azioni (Salva prodotto, Esporta l'elenco...) restano
+     con il titolo sulla prima riga, come nel prototipo. */
+  .testataAzioni { order: 2; }
+  .testataStrumenti { order: 3; }
+  /* vuoto (viste senza "strumenti"), non deve riservarsi una riga propria */
+  .strumentiEt:has(*) { flex-basis: 100%; }
+  .strumentiEt .btn.conTesto { flex: 1 1 0; }
   .schermo { flex-direction: column; padding: 0 20px 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .schermo .scorre { overflow: visible; flex: none !important; }
   input, select, textarea { font-size: max(16px, 1em); }
@@ -391,6 +422,11 @@ svg { display: block; flex-shrink: 0; }
   .schermo > .colonna { width: auto !important; flex: none !important; }
   .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 14px; }
   .sezione { padding: 14px 16px !important; }
+  /* il lotto e' un campo che si scrive (a differenza dello span del
+     prototipo): sotto i 16px iOS ingrandisce la pagina (regola qui sopra),
+     e a quel corpo il numero intero non sta in meta' della griglia 2x2.
+     Gli si da' tutta la riga, Copie passa sotto. */
+  .campoLottoStampa { grid-column: 1 / -1; }
   .riga { padding: 10px 2px; }
   .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
   .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
@@ -445,3 +481,5 @@ svg { display: block; flex-shrink: 0; }
 }
 @media (min-width: 861px) { .soloTel { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+} /* fine @layer components */

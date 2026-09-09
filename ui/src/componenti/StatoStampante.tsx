@@ -42,6 +42,21 @@ export default function StatoStampante() {
   // c'e' un problema (errore/scollegata), dove non c'entra il rotolo.
   const inErrore = data.stato === "errore" || data.stato === "scollegata";
   const accanto = inErrore ? data.messaggio : data.rotolo ? `rotolo ${data.rotolo} mm` : "nessun rotolo";
+  // Da pronta, come nel prototipo: il grassetto e' il modello della
+  // stampante (solo su schermo largo, dove c'e' posto) e non ripete "Pronta",
+  // gia' detto dal colore verde del pallino.
+  if (data.stato === "pronta" && data.modello) {
+    return (
+      <span className="pastiglia pronta">
+        <span className="punto" />
+        <b className="soloPC">{data.modello}</b>
+        <span className="font-normal">
+          <span className="soloPC">rotolo </span>
+          {data.rotolo ? `${data.rotolo} mm · pronta` : "nessun rotolo"}
+        </span>
+      </span>
+    );
+  }
   return (
     <span className={"pastiglia " + classeDiStato(data.stato)}>
       <span className="punto" />

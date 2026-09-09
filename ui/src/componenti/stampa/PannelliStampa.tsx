@@ -93,21 +93,27 @@ export function PannelloErrore({ messaggio, onFerma }: { messaggio: string; onFe
 }
 
 export function PannelloFatta({
+  prodottoNome,
   fatte,
   volute,
   quantita,
   scadenza,
   lotto,
+  registrata,
   onRipeti,
   onChiudi,
   ripetendo,
   testoChiudi,
 }: {
+  prodottoNome: string;
   fatte: number;
   volute: number;
   quantita: string;
   scadenza: string;
   lotto: string;
+  // La riga "Registrata nello storico...", con l'ora e da dove: solo quando
+  // la riga fresca dello storico e' gia' arrivata (docs/api.md, "Stampe").
+  registrata?: { ora: string; dispositivo: string };
   onRipeti: (copie: number) => void;
   onChiudi: () => void;
   ripetendo: boolean;
@@ -133,7 +139,16 @@ export function PannelloFatta({
           <div className="text-[16px] text-[var(--tenue)] mt-1">{sotto}</div>
         </div>
       </div>
+      {registrata && (
+        <div className="text-[13px] text-[var(--tenue)] text-center leading-snug -mt-1.5">
+          Registrata nello storico alle {registrata.ora}, {registrata.dispositivo === "PC" ? "da questo PC" : `da ${registrata.dispositivo}`}.
+        </div>
+      )}
       <div className="scheda px-4 py-3">
+        <div className="kv">
+          <span>Prodotto</span>
+          <b>{prodottoNome}</b>
+        </div>
         <div className="kv">
           <span>Quantità</span>
           <b>{quantita}</b>

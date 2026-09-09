@@ -291,8 +291,8 @@ function SezioneStampa() {
           <div className="t">Margine iniziale e finale</div>
           <div className="s">Minimo consentito dalla stampante: {MARGINE_MINIMO_MM} mm</div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="casella min-h-[44px] px-[10px] w-[76px]">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="casella min-h-[44px] px-[10px] w-[58px]">
             <input
               value={margine}
               inputMode="numeric"
@@ -312,7 +312,6 @@ function SezioneStampa() {
 function SezioneTelefoni() {
   const { data: rete } = useRete();
   const principale = rete?.principale ?? rete?.indirizzi[0];
-  const altri = rete?.indirizzi.filter((indirizzo) => indirizzo !== principale) ?? [];
 
   return (
     <Sezione titolo="Telefoni e tablet">
@@ -331,18 +330,6 @@ function SezioneTelefoni() {
         />
         {principale && <span className="mono text-lg font-bold text-[var(--testo)]">{principale}</span>}
       </div>
-      {altri.length > 0 && (
-        <details className="mt-1">
-          <summary className="etichettina cursor-pointer select-none">Altri indirizzi</summary>
-          <div className="pt-2 pb-1 flex flex-col gap-1.5">
-            {altri.map((indirizzo) => (
-              <span key={indirizzo} className="mono text-sm text-[var(--tenue)]">
-                {indirizzo}
-              </span>
-            ))}
-          </div>
-        </details>
-      )}
     </Sezione>
   );
 }

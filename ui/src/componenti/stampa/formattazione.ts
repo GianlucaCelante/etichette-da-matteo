@@ -18,6 +18,15 @@ export function formattaDataItaliana(iso: string): string {
   return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 }
 
+// Solo l'ora (es. "18:32"), come nel prototipo per "Ristampa ultima" e per le
+// righe dello Storico: li' la giornata la dice gia' l'intestazione del
+// gruppo, qui e' quasi sempre "oggi" perche' e' l'ultima stampa fatta.
+export function formattaOra(iso: string): string {
+  const d = new Date(iso.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(d);
+}
+
 export function plurale(n: number, uno: string, molti: string): string {
   return `${n} ${n === 1 ? uno : molti}`;
 }

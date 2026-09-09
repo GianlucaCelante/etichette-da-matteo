@@ -16,10 +16,12 @@ import {
 import { useScalaAnteprima } from "../api/resa";
 import type { Prodotto } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
-import { IconaCerca, IconaCercaDiNuovo, IconaDestra, IconaMatita, IconaSinistra, IconaStampa } from "../componenti/Icone";
+import { usePortaleAzioni } from "../hooks/useTestata";
+import { IconaCerca, IconaCercaDiNuovo, IconaDestra, IconaMatita, IconaMeno, IconaPiu, IconaSinistra, IconaStampa } from "../componenti/Icone";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
+import StatoStampante from "../componenti/StatoStampante";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
-import { formattaDataItaliana, oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
+import { formattaOra, oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
 
 type Filtro = "usati" | "tutti";
 
@@ -56,47 +58,21 @@ function RigaProdotto({
   );
 }
 
-function ContatoreCopie({
-  copie,
-  altroAperto,
-  onUno,
-  onTre,
-  onAltro,
-  onCambiaAltro,
-}: {
-  copie: number;
-  altroAperto: boolean;
-  onUno: () => void;
-  onTre: () => void;
-  onAltro: () => void;
-  onCambiaAltro: (evento: ChangeEvent<HTMLInputElement>) => void;
-}) {
+// Il contatore "− n +" del prototipo (contatoreCopie): non piu' i gettoni
+// 1/3/Altro del giro scorso.
+function ContatoreCopie({ copie, onMeno, onPiu }: { copie: number; onMeno: () => void; onPiu: () => void }) {
   return (
     <div className="campo">
       <div className="etichettina">Copie</div>
-      <div className="segmento w-full">
-        <button type="button" className={!altroAperto && copie === 1 ? "on" : ""} onClick={onUno}>
-          1
+      <div className="flex gap-1.5 h-[52px]">
+        <button type="button" className="casella w-[52px] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
+          <IconaMeno larghezza={20} spessoreTratto={2.4} />
         </button>
-        <button type="button" className={!altroAperto && copie === 3 ? "on" : ""} onClick={onTre}>
-          3
-        </button>
-        <button type="button" className={altroAperto ? "on" : ""} onClick={onAltro}>
-          Altro
+        <div className="casella flex-1 justify-center font-bold">{copie}</div>
+        <button type="button" className="casella w-[52px] justify-center" onClick={onPiu} disabled={copie >= 99} aria-label="Una copia in più">
+          <IconaPiu larghezza={20} spessoreTratto={2.4} />
         </button>
       </div>
-      {altroAperto && (
-        <div className="casella">
-          <input
-            value={copie}
-            onChange={onCambiaAltro}
-            inputMode="numeric"
-            aria-label="Numero di copie"
-            className="font-bold"
-          />
-          <span className="unita">copie</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -109,17 +85,15 @@ function PannelloProdotto({
   lottoObbligatorio,
   lottoMancante,
   copie,
-  altroAperto,
+  notaScadenza,
   inStampaPending,
   mostraIndietro,
   onIndietro,
   onCambiaQuantita,
   onCambiaScadenza,
   onCambiaLotto,
-  onCopieUno,
-  onCopieTre,
-  onCopieAltro,
-  onCambiaCopieAltro,
+  onCopieMeno,
+  onCopiePiu,
   onModifica,
   onStampa,
 }: {
@@ -130,17 +104,15 @@ function PannelloProdotto({
   lottoObbligatorio: boolean;
   lottoMancante: boolean;
   copie: number;
-  altroAperto: boolean;
+  notaScadenza: string;
   inStampaPending: boolean;
   mostraIndietro: boolean;
   onIndietro: () => void;
   onCambiaQuantita: (evento: ChangeEvent<HTMLInputElement>) => void;
   onCambiaScadenza: (evento: ChangeEvent<HTMLInputElement>) => void;
   onCambiaLotto: (evento: ChangeEvent<HTMLInputElement>) => void;
-  onCopieUno: () => void;
-  onCopieTre: () => void;
-  onCopieAltro: () => void;
-  onCambiaCopieAltro: (evento: ChangeEvent<HTMLInputElement>) => void;
+  onCopieMeno: () => void;
+  onCopiePiu: () => void;
   onModifica: () => void;
   onStampa: () => void;
 }) {
@@ -179,8 +151,9 @@ function PannelloProdotto({
           <div className="casella">
             <input type="date" value={scadenza} onChange={onCambiaScadenza} aria-label="Scadenza" className="font-bold" />
           </div>
+          <div className="text-[12px] text-[var(--spento)]">{notaScadenza}</div>
         </div>
-        <div className="campo">
+        <div className="campo campoLottoStampa">
           <div className="etichettina">Lotto</div>
           <div className="casella mono">
             <input
@@ -190,16 +163,10 @@ function PannelloProdotto({
               aria-label="Lotto"
               className="font-bold"
             />
+            {!lottoObbligatorio && <span className="auto">AUTO</span>}
           </div>
         </div>
-        <ContatoreCopie
-          copie={copie}
-          altroAperto={altroAperto}
-          onUno={onCopieUno}
-          onTre={onCopieTre}
-          onAltro={onCopieAltro}
-          onCambiaAltro={onCambiaCopieAltro}
-        />
+        <ContatoreCopie copie={copie} onMeno={onCopieMeno} onPiu={onCopiePiu} />
       </div>
       {lottoMancante && (
         <div className="text-[13px] text-[var(--ambra)] font-bold">Scrivi il lotto prima di stampare.</div>
@@ -251,7 +218,6 @@ export default function Stampa() {
   });
   const [dettaglio, setDettaglio] = useState(() => searchParams.has("prodotto"));
   const [copie, setCopie] = useState(1);
-  const [altroAperto, setAltroAperto] = useState(false);
   const [quantita, setQuantita] = useState("");
   const [scadenza, setScadenza] = useState("");
   const [lotto, setLotto] = useState("");
@@ -299,6 +265,16 @@ export default function Stampa() {
   const stampaTerminata = evento ? evento.stato === "completata" || evento.stato === "annullata" : false;
   const stampaBloccante = !!riepilogo && !stampaTerminata;
   const lottoMancante = schemaAttuale === "mano" && !lotto.trim();
+  // Sotto Scadenza, come nel prototipo ("Oggi + N giorni"): se la data e'
+  // ancora quella proposta per il prodotto si dice quanti giorni sono, se
+  // l'ha cambiata a mano si dice solo che l'ha cambiata (non ha piu' senso
+  // contare "+N giorni" da una data che l'operatore ha scelto lui).
+  const notaScadenza =
+    prodotto && scadenza === oggiPiuGiorni(prodotto.giorniScadenza) ? `Oggi + ${plurale(prodotto.giorniScadenza, "giorno", "giorni")}` : "Modificata";
+  // La riga "Registrata nello storico..." del pannello "Stampata/e": la
+  // stampa appena finita e' quella in cima allo storico, che si rilegge da
+  // solo a lavoro completato (invalidateQueries in eventi.ts).
+  const registrata = stampaTerminata && storicoTutto?.[0] ? { ora: formattaOra(storicoTutto[0].stampatoIl), dispositivo: storicoTutto[0].dispositivoNome } : undefined;
 
   const scegliFiltro = useCallback((f: Filtro) => setFiltro(f), []);
   const scegliUsati = useCallback(() => scegliFiltro("usati"), [scegliFiltro]);
@@ -309,7 +285,6 @@ export default function Stampa() {
     (id: number) => {
       setProdottoId(id);
       setDettaglio(true);
-      setAltroAperto(false);
       setCopie(1);
       if (stampaTerminata) setRiepilogo(null);
     },
@@ -324,22 +299,9 @@ export default function Stampa() {
   const cambiaQuantita = useCallback((evento: ChangeEvent<HTMLInputElement>) => setQuantita(evento.target.value), []);
   const cambiaScadenza = useCallback((evento: ChangeEvent<HTMLInputElement>) => setScadenza(evento.target.value), []);
   const cambiaLotto = useCallback((evento: ChangeEvent<HTMLInputElement>) => setLotto(evento.target.value), []);
-  const copieUno = useCallback(() => {
-    setAltroAperto(false);
-    setCopie(1);
-  }, []);
-  const copieTre = useCallback(() => {
-    setAltroAperto(false);
-    setCopie(3);
-  }, []);
-  const copieAltro = useCallback(() => {
-    setAltroAperto(true);
-    setCopie((c) => (c === 1 || c === 3 ? 2 : c));
-  }, []);
-  const cambiaCopieAltro = useCallback((evento: ChangeEvent<HTMLInputElement>) => {
-    const n = Math.max(1, Math.min(99, parseInt(evento.target.value, 10) || 1));
-    setCopie(n);
-  }, []);
+  // Il contatore "− n +" del prototipo (contatoreCopie): da 1 a 99.
+  const copieMeno = useCallback(() => setCopie((c) => Math.max(1, c - 1)), []);
+  const copiePiu = useCallback(() => setCopie((c) => Math.min(99, c + 1)), []);
 
   const vaiAModifica = useCallback(() => {
     if (prodotto) navigate(`/etichette?prodotto=${prodotto.id}`);
@@ -428,8 +390,13 @@ export default function Stampa() {
     setDettaglio(false);
   }, []);
 
+  // La pastiglia della stampante sta nella testata condivisa, come nel
+  // prototipo (accanto al titolo "Stampa etichetta"), non dentro la vista.
+  const portaleStato = usePortaleAzioni(<StatoStampante />);
+
   return (
     <div className={"schermo vistaStampa" + (dettaglio ? " dettaglio" : "")}>
+      {portaleStato}
       <div className="colonna colonnaElenco flex-1 min-w-0 gap-3">
         <div className="flex gap-3">
           <div className="cerca flex-1">
@@ -448,7 +415,7 @@ export default function Stampa() {
                 Ristampa ultima
               </span>
               <span className="text-[12px] font-normal text-[var(--tenue)] pl-[26px]">
-                {ultimaStampa.prodottoNome} · {formattaDataItaliana(ultimaStampa.stampatoIl.slice(0, 10))}
+                {ultimaStampa.prodottoNome} · {formattaOra(ultimaStampa.stampatoIl)}
               </span>
             </button>
           )}
@@ -467,7 +434,7 @@ export default function Stampa() {
             <span className="testo">
               <b>Ristampa l&apos;ultima</b>
               <span>
-                {ultimaStampa.prodottoNome} · {plurale(ultimaStampa.copie, "copia", "copie")}
+                {ultimaStampa.prodottoNome} · {plurale(ultimaStampa.copie, "copia", "copie")} · {formattaOra(ultimaStampa.stampatoIl)}
               </span>
             </span>
             <span className="flex text-[var(--verdebordo)]">
@@ -489,11 +456,13 @@ export default function Stampa() {
             <PannelloErrore messaggio={evento.messaggio} onFerma={fermaSerie} />
           ) : stampaTerminata && evento ? (
             <PannelloFatta
+              prodottoNome={riepilogo.prodottoNome}
               fatte={evento.copiaCorrente}
               volute={riepilogo.copieTotali}
               quantita={riepilogo.quantita}
               scadenza={riepilogo.scadenza}
               lotto={riepilogo.lotto}
+              registrata={registrata}
               onRipeti={ripetiStampa}
               onChiudi={chiudiRiepilogo}
               ripetendo={creaStampa.isPending}
@@ -516,17 +485,15 @@ export default function Stampa() {
             lottoObbligatorio={schemaAttuale === "mano"}
             lottoMancante={lottoMancante}
             copie={copie}
-            altroAperto={altroAperto}
+            notaScadenza={notaScadenza}
             inStampaPending={creaStampa.isPending}
             mostraIndietro={dettaglio}
             onIndietro={indietroAiProdotti}
             onCambiaQuantita={cambiaQuantita}
             onCambiaScadenza={cambiaScadenza}
             onCambiaLotto={cambiaLotto}
-            onCopieUno={copieUno}
-            onCopieTre={copieTre}
-            onCopieAltro={copieAltro}
-            onCambiaCopieAltro={cambiaCopieAltro}
+            onCopieMeno={copieMeno}
+            onCopiePiu={copiePiu}
             onModifica={vaiAModifica}
             onStampa={avviaStampa}
           />

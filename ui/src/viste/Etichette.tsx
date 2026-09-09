@@ -7,42 +7,46 @@ import {
   useCreaProdotto,
   useDuplicaProdotto,
   useEliminaProdotto,
+  useImpostazioni,
   useLavoroStampa,
+  useLotto,
   useProdotti,
   useProdotto,
   useProvaProdotto,
+  useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
 import { useScalaAnteprimaDoppia } from "../api/resa";
-import { FORMATI_DATA, NOMIBLOCCO, type FormatoData, type Prodotto, type TipoBloccoDati } from "../api/tipi";
+import { FORMATI_DATA, NOMIBLOCCO, type FormatoData, type Prodotto, type TipoBlocco, type TipoBloccoDati } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
+import { usePortaleAzioni, usePortaleStrumenti } from "../hooks/useTestata";
 import { IconaAnnulla, IconaCerca, IconaCestino, IconaDuplica, IconaPiu, IconaRipristina, IconaStampa } from "../componenti/Icone";
 import Finestra from "../componenti/Finestra";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
 import { oggiPiuGiorni } from "../componenti/stampa/formattazione";
-import { CampoAllergeni, CampoArea, CampoSelezione, CampoTesto, Gruppo, Riquadro } from "../componenti/etichette/CampiComuni";
+import { CampoAllergeni, CampoArea, CampoInline, CampoSelezione, CampoTesto, Gruppo, Riquadro } from "../componenti/etichette/CampiComuni";
 import { blocchiInBozza, bozzaInBlocchi, bozzaInValori, valoriInBozza, type BloccoBozza, type ValoreBozza } from "../componenti/etichette/bozza";
 import BlocchiEditor from "../componenti/etichette/BlocchiEditor";
 import BlocchiTelefono from "../componenti/etichette/BlocchiTelefono";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
 
 const OPZIONI_CONSERVAZIONE = ["Fuori dal frigo", "In frigo", "In congelatore"];
-// I blocchi "dati" che hanno un riquadro nella scheda del prodotto: uno per
-// blocco, nell'ordine in cui stanno sull'etichetta. "lotto" resta senza: e'
-// automatico, non ha un campo da scrivere.
-const BLOCCHI_CON_RIQUADRO: TipoBloccoDati[] = [
-  "titolo",
-  "ingredienti",
-  "puoContenere",
-  "modoUso",
-  "scadenza",
-  "quantita",
-  "valori",
-  "produttore",
-  "dataProduzione",
-  "sigla",
-];
+// Le tre diciture fisse del prototipo (campoScelta): non e' testo libero.
+const OPZIONI_DICITURA_SCADENZA = ["da consumare entro", "da consumarsi preferibilmente entro il", "Scade il"];
+// Le unita' che si separano dal numero nel campo Quantita' (piu' lunghe
+// prima: "kg"/"ml" prima di "g"/"l", altrimenti il suffisso piu' corto le
+// intercetta per prima). Il valore salvato resta sempre il testo intero
+// ("2148 g"): qui si spacca solo per mostrarlo come nel mockup.
+const UNITA_QUANTITA = ["kg", "ml", "pz", "g", "l"];
+function separaQuantita(testo: string): { numero: string; unita: string | null } {
+  const t = testo.trim();
+  for (const u of UNITA_QUANTITA) {
+    const m = new RegExp(`^(.*?)\\s*${u}$`, "i").exec(t);
+    if (m) return { numero: (m[1] ?? "").trim(), unita: u };
+  }
+  return { numero: t, unita: null };
+}
 
 // La bozza del prodotto in modifica: il prodotto e la sua etichetta insieme
 // (decisione finale sul mockup, revisione di questo giro: l'etichetta vive
@@ -110,6 +114,100 @@ function VoceProdotto({
         {plurale(bloccchiAccesi, "blocco acceso", "blocchi accesi")}
       </span>
     </button>
+  );
+}
+
+// Il campo "Quantità" del gruppo Prodotto (campoInline nel prototipo): se il
+// testo finisce con un'unità nota, il numero va nella casella e l'unità
+// diventa il suffisso a destra, come per Scadenza/Conservazione; se no resta
+// testo libero. Il valore salvato e' sempre il testo intero.
+function CampoQuantitaInline({ valore, onCambia }: { valore: string; onCambia: (v: string) => void }) {
+  const { numero, unita } = separaQuantita(valore);
+  const cambia = useCallback(
+    (evento: ChangeEvent<HTMLInputElement>) => onCambia(unita ? `${evento.target.value} ${unita}` : evento.target.value),
+    [onCambia, unita],
+  );
+  return (
+    <div className="casella">
+      <input value={unita ? numero : valore} onChange={cambia} inputMode={unita ? "numeric" : "text"} aria-label="Quantità" className="font-bold" />
+      {unita && <span className="unita">{unita}</span>}
+    </div>
+  );
+}
+
+// Una scelta fra opzioni fisse, con l'etichetta a sinistra invece che sopra
+// (CampoInline + una select nuda): serve per Scadenza/Conservazione dentro
+// il gruppo Prodotto, dove il prototipo usa "campoInline" invece di
+// "campoScelta" (verticale, gia' coperto da CampoSelezione).
+function CampoSceltaInline({
+  etichetta,
+  valore,
+  opzioni,
+  onCambia,
+}: {
+  etichetta: string;
+  valore: string;
+  opzioni: readonly string[];
+  onCambia: (v: string) => void;
+}) {
+  const cambia = useCallback((evento: ChangeEvent<HTMLSelectElement>) => onCambia(evento.target.value), [onCambia]);
+  return (
+    <CampoInline etichetta={etichetta}>
+      <div className="casella p-0">
+        <select value={valore} onChange={cambia} aria-label={etichetta} className="w-full h-[50px] px-3.5 bg-transparent cursor-pointer">
+          {opzioni.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </div>
+    </CampoInline>
+  );
+}
+
+// Il gruppo Lotto, ridotto rispetto al prototipo: la a-mano (S.lottoMano) li'
+// e' una casella sempre visibile qui in Etichette; da noi il lotto scritto a
+// mano si scrive per ogni stampa (vista Stampa, gia' cosi'), non c'e' un
+// valore unico da tenere qui. Resta lo schema (vale per tutti i prodotti,
+// cambiarlo qui e' la stessa cosa che cambiarlo in Impostazioni) e cosa esce oggi.
+function CampoLottoRapido({ usaLottoBlocco }: { usaLottoBlocco: boolean }) {
+  const { data: lottoInfo } = useLotto();
+  const { data: impostazioni } = useImpostazioni();
+  const salvaImpostazioni = useSalvaImpostazioni();
+  const cambiaSchema = useCallback(
+    (evento: ChangeEvent<HTMLSelectElement>) => {
+      if (!impostazioni) return;
+      salvaImpostazioni.mutate({ ...impostazioni, schema_lotto: evento.target.value });
+    },
+    [impostazioni, salvaImpostazioni],
+  );
+  const schemaInfo = lottoInfo?.schemi.find((s) => s.codice === lottoInfo.schema);
+  return (
+    <div className="campo campoLotto">
+      <div className="etichettina">Lotto</div>
+      <div className="casella p-0">
+        <select
+          value={lottoInfo?.schema ?? ""}
+          onChange={cambiaSchema}
+          disabled={!impostazioni || salvaImpostazioni.isPending}
+          aria-label="Schema del lotto"
+          className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3.5 h-[50px] cursor-pointer"
+        >
+          {(lottoInfo?.schemi ?? []).map((s) => (
+            <option key={s.codice} value={s.codice}>
+              {s.nome} · {s.esempio}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="mono text-[12px] text-[var(--spento)]">
+        {schemaInfo?.codice === "mano" ? "a mano: si scrive prima di stampare" : `oggi: ${schemaInfo?.oggi ?? "…"}`}
+      </div>
+      <div className={"text-[12px] " + (usaLottoBlocco ? "text-[var(--tenue)]" : "text-[var(--spento)]")}>
+        {usaLottoBlocco ? "Vale per tutti i prodotti. Prima di stampare si può cambiare." : "Non compare su questa etichetta"}
+      </div>
+    </div>
   );
 }
 
@@ -204,8 +302,10 @@ export default function Etichette() {
     });
     const blocchiSalvi = etichetta?.blocchi ?? [];
     setBozzaBlocchi(blocchiInBozza(blocchiSalvi));
-    const primoBlocco = blocchiSalvi.find((b) => b.acceso && BLOCCHI_CON_RIQUADRO.includes(b.tipo as TipoBloccoDati));
-    setGruppoAperto(primoBlocco ? primoBlocco.tipo : null);
+    // Il gruppo "Prodotto" c'e' sempre (il nome non dipende da nessun
+    // blocco): e' quello che si apre di default, come S.gruppi.prodotto nel
+    // prototipo.
+    setGruppoAperto("prodotto");
     setEliminaChiesto(false);
     setProvaLavoroId(null);
     // Cambiando prodotto la cronologia riparte da zero (docs: "si azzera al
@@ -515,8 +615,15 @@ export default function Etichette() {
   const provaTerminata = eventoProva ? eventoProva.stato === "completata" || eventoProva.stato === "annullata" : false;
   const provaBloccante = !!provaLavoroId && !provaTerminata;
 
-  const ce = useCallback((tipo: TipoBloccoDati) => bozzaBlocchi?.some((b) => b.tipo === tipo && b.acceso) ?? false, [bozzaBlocchi]);
-  const fuoriProdotto = BLOCCHI_CON_RIQUADRO.filter((t) => !ce(t)).map((t) => NOMIBLOCCO[t]);
+  const ce = useCallback((tipo: TipoBlocco) => bozzaBlocchi?.some((b) => b.tipo === tipo && b.acceso) ?? false, [bozzaBlocchi]);
+  const aggiornaConservazione = useCallback((v: string) => aggiornaCampoProdotto("conservazione", v), [aggiornaCampoProdotto]);
+  const aggiornaQuantita = useCallback((v: string) => aggiornaCampoProdotto("quantita", v), [aggiornaCampoProdotto]);
+  // Il riassunto del lotto per il gruppo "Lotto" sul telefono (sottoTel),
+  // stessa formula del prototipo (riassuntoLotto): nome dello schema piu' cio'
+  // che uscirebbe oggi, o "da scrivere" per lo schema a mano.
+  const { data: lottoInfoSommario } = useLotto();
+  const schemaLottoSommario = lottoInfoSommario?.schemi.find((s) => s.codice === lottoInfoSommario.schema);
+  const riassuntoLotto = schemaLottoSommario ? `${schemaLottoSommario.nome} · ${schemaLottoSommario.oggi ?? "da scrivere"}` : undefined;
 
   const prodottiTrovati = (prodotti ?? []).filter((p) => p.nome.toLowerCase().includes(cercaEt.toLowerCase()));
 
@@ -526,147 +633,208 @@ export default function Etichette() {
     <CampoTesto key="nome" etichetta="Nome del prodotto" valore={bozzaProdotto.nome} campo="nome" onCambia={aggiornaNome} grassetto />
   ) : null;
 
-  // Un riquadro per blocco acceso, nell'ordine dei blocchi sull'etichetta. I
-  // blocchi liberi (testo, riga, spazio, qr, logo) e "lotto" non hanno un
-  // riquadro qui: si vedono nel vassoio dei blocchi.
-  const sezioni: { chiave: string; titolo: string; sottoTel?: string; nodo: React.ReactNode }[] = [];
-  if (bozzaProdotto) {
-    for (const b of bozzaBlocchi ?? []) {
-      if (!b.acceso) continue;
-      if (b.tipo === "titolo") {
-        sezioni.push({
-          chiave: "titolo",
-          titolo: NOMIBLOCCO.titolo,
-          sottoTel: bozzaProdotto.nomeStampa || "Da scrivere",
-          nodo: [<CampoTesto key="nomeStampa" etichetta="Nome sull'etichetta" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} grassetto />],
-        });
-      } else if (b.tipo === "ingredienti") {
-        sezioni.push({
-          chiave: "ingredienti",
-          titolo: NOMIBLOCCO.ingredienti,
-          sottoTel: bozzaProdotto.ingredienti ? undefined : "Da scrivere",
-          nodo: [<CampoArea key="ingredienti" etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />],
-        });
-      } else if (b.tipo === "puoContenere") {
-        sezioni.push({
-          chiave: "puoContenere",
-          titolo: NOMIBLOCCO.puoContenere,
-          sottoTel: bozzaProdotto.allergeni.length ? "Può contenere " + bozzaProdotto.allergeni.join(", ").toLowerCase() : "Nessun allergene segnato",
-          nodo: [<CampoAllergeni key="allergeni" allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />],
-        });
-      } else if (b.tipo === "modoUso") {
-        sezioni.push({
-          chiave: "modoUso",
-          titolo: NOMIBLOCCO.modoUso,
-          sottoTel: bozzaProdotto.modoUso ? undefined : "Da scrivere",
-          nodo: [<CampoArea key="modoUso" etichetta="Modo d'uso" valore={bozzaProdotto.modoUso} campo="modoUso" onCambia={aggiornaCampoProdotto} />],
-        });
-      } else if (b.tipo === "scadenza") {
-        sezioni.push({
-          chiave: "scadenza",
-          titolo: NOMIBLOCCO.scadenza,
-          sottoTel: `${plurale(bozzaProdotto.giorniScadenza, "giorno", "giorni")} · ${bozzaProdotto.conservazione}`,
-          nodo: [
-            <div className="campo" key="giorni">
-              <div className="etichettina">Scadenza</div>
-              <div className="casella">
-                <input value={bozzaProdotto.giorniScadenza} onChange={aggiornaGiorni} inputMode="numeric" aria-label="Giorni di scadenza" className="font-bold" />
-                <span className="unita">giorni</span>
-              </div>
-            </div>,
-            <CampoSelezione key="conservazione" etichetta="Conservazione" valore={bozzaProdotto.conservazione} campo="conservazione" opzioni={OPZIONI_CONSERVAZIONE} onCambia={aggiornaCampoProdotto} />,
-            <CampoTesto key="dicitura" etichetta="Dicitura scadenza" valore={bozzaProdotto.dicituraScadenza} campo="dicituraScadenza" onCambia={aggiornaCondiviso} placeholder="es. Scade il" />,
-            <CampoSelezione key="formato" etichetta="Formato data" valore={bozzaProdotto.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />,
-          ],
-        });
-      } else if (b.tipo === "quantita") {
-        sezioni.push({
-          chiave: "quantita",
-          titolo: NOMIBLOCCO.quantita,
-          sottoTel: bozzaProdotto.quantita || "Da scrivere",
-          nodo: [<CampoTesto key="quantita" etichetta="Quantità" valore={bozzaProdotto.quantita} campo="quantita" onCambia={aggiornaCampoProdotto} placeholder="es. 2148 g" />],
-        });
-      } else if (b.tipo === "valori") {
-        sezioni.push({
-          chiave: "valori",
-          titolo: NOMIBLOCCO.valori,
-          sottoTel: bozzaProdotto.valori.length ? plurale(bozzaProdotto.valori.length, "voce", "voci") + " per 100 g" : "Nessuna voce",
-          nodo: [<ValoriNutrizionali key="valori" valori={bozzaProdotto.valori} onCambia={aggiornaValori} />],
-        });
-      } else if (b.tipo === "produttore") {
-        sezioni.push({
-          chiave: "produttore",
-          titolo: NOMIBLOCCO.produttore,
-          sottoTel: bozzaProdotto.produttore.ragioneSociale || "Da scrivere",
-          nodo: [
-            <CampoTesto key="rs" etichetta="Ragione sociale" valore={bozzaProdotto.produttore.ragioneSociale} campo="ragioneSociale" onCambia={aggiornaProduttore} />,
-            <CampoTesto key="sl" etichetta="Sede legale" valore={bozzaProdotto.produttore.sedeLegale} campo="sedeLegale" onCambia={aggiornaProduttore} />,
-            <CampoTesto key="sp" etichetta="Sede di produzione · facoltativa" valore={bozzaProdotto.produttore.sedeProduzione} campo="sedeProduzione" onCambia={aggiornaProduttore} />,
-          ],
-        });
-      } else if (b.tipo === "dataProduzione") {
-        sezioni.push({
-          chiave: "dataProduzione",
-          titolo: NOMIBLOCCO.dataProduzione,
-          nodo: [
-            <div key="info" className="text-[13px] text-[var(--tenue)]">
-              Sull&apos;etichetta esce la data di stampa di oggi: non si scrive a mano.
-            </div>,
-          ],
-        });
-      } else if (b.tipo === "sigla") {
-        sezioni.push({
-          chiave: "sigla",
-          titolo: NOMIBLOCCO.sigla,
-          sottoTel: bozzaProdotto.siglaOperatore || "Da scrivere",
-          nodo: [<CampoTesto key="sigla" etichetta="Sigla di chi stampa" valore={bozzaProdotto.siglaOperatore} campo="siglaOperatore" onCambia={aggiornaCampoProdotto} placeholder="es. M.C." />],
-        });
-      }
-    }
-  }
+  // I gruppi della scheda, con nomi, ordine e campi come nel prototipo
+  // (vistaEtichette, variabile "sezioni"): non piu' un riquadro per blocco
+  // acceso, ma gruppi fissi ("Prodotto", "Ingredienti"...) che compaiono solo
+  // se hanno almeno un campo da mostrare. "Data di produzione" e "Sigla" sono
+  // in piu' (blocchi aggiunti dopo il prototipo, docs/api.md): restano in
+  // fondo, con lo stesso trattamento degli altri gruppi.
+  const usaTitolo = ce("titolo");
+  const usaIngredienti = ce("ingredienti");
+  const usaPuoContenere = ce("puoContenere");
+  const usaModoUso = ce("modoUso");
+  const usaScadenza = ce("scadenza");
+  const usaLottoBlocco = ce("lotto");
+  const usaLotto = usaLottoBlocco || ce("qr");
+  const usaQuantita = ce("quantita");
+  const usaValori = ce("valori");
+  const usaProduttore = ce("produttore");
+  const usaDataProduzione = ce("dataProduzione");
+  const usaSigla = ce("sigla");
+
+  const nelProdotto = ["Nome", usaScadenza && "scadenza", usaScadenza && "conservazione", usaQuantita && "peso"].filter(
+    (x): x is string => !!x,
+  );
+  const DATI_PRODOTTO_TITOLO: { chiave: TipoBloccoDati; usa: boolean }[] = [
+    { chiave: "titolo", usa: usaTitolo },
+    { chiave: "ingredienti", usa: usaIngredienti },
+    { chiave: "puoContenere", usa: usaPuoContenere },
+    { chiave: "modoUso", usa: usaModoUso },
+    { chiave: "scadenza", usa: usaScadenza },
+    { chiave: "lotto", usa: usaLotto },
+    { chiave: "quantita", usa: usaQuantita },
+    { chiave: "valori", usa: usaValori },
+    { chiave: "produttore", usa: usaProduttore },
+    { chiave: "dataProduzione", usa: usaDataProduzione },
+    { chiave: "sigla", usa: usaSigla },
+  ];
+  const fuoriProdotto = DATI_PRODOTTO_TITOLO.filter((d) => !d.usa).map((d) => NOMIBLOCCO[d.chiave]);
+
+  const sezioni: { chiave: string; titolo: string; sottoPC?: string; sottoTel?: string; campi: React.ReactNode[] }[] = bozzaProdotto
+    ? (
+        [
+          {
+            chiave: "prodotto",
+            titolo: "Prodotto",
+            sottoTel: inElenco(nelProdotto),
+            campi: [
+              campoNome,
+              usaTitolo && (
+                <CampoTesto key="nomeStampa" etichetta="Nome sull'etichetta" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} grassetto />
+              ),
+              usaScadenza && (
+                <CampoInline key="giorni" etichetta="Scadenza">
+                  <div className="casella">
+                    <input value={bozzaProdotto.giorniScadenza} onChange={aggiornaGiorni} inputMode="numeric" aria-label="Giorni di scadenza" className="font-bold" />
+                    <span className="unita">giorni</span>
+                  </div>
+                </CampoInline>
+              ),
+              usaScadenza && (
+                <CampoSceltaInline key="conservazione" etichetta="Conservazione" valore={bozzaProdotto.conservazione} opzioni={OPZIONI_CONSERVAZIONE} onCambia={aggiornaConservazione} />
+              ),
+              usaQuantita && (
+                <CampoInline key="quantita" etichetta="Quantità">
+                  <CampoQuantitaInline valore={bozzaProdotto.quantita} onCambia={aggiornaQuantita} />
+                </CampoInline>
+              ),
+            ],
+          },
+          {
+            chiave: "ingredienti",
+            titolo: "Ingredienti",
+            sottoTel: usaPuoContenere
+              ? bozzaProdotto.allergeni.length
+                ? "Può contenere " + bozzaProdotto.allergeni.join(", ").toLowerCase()
+                : "Nessun allergene segnato"
+              : undefined,
+            campi: [
+              usaIngredienti && <CampoArea key="ingredienti" etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />,
+              usaPuoContenere && <CampoAllergeni key="allergeni" allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />,
+            ],
+          },
+          {
+            chiave: "modoUso",
+            titolo: NOMIBLOCCO.modoUso,
+            sottoTel: bozzaProdotto.modoUso ? undefined : "Da scrivere",
+            campi: [usaModoUso && <CampoArea key="modoUso" etichetta="Modo d'uso" valore={bozzaProdotto.modoUso} campo="modoUso" onCambia={aggiornaCampoProdotto} />],
+          },
+          {
+            chiave: "valori",
+            titolo: NOMIBLOCCO.valori,
+            sottoPC: "per 100 g",
+            sottoTel: bozzaProdotto.valori.length ? plurale(bozzaProdotto.valori.length, "voce", "voci") + " per 100 g" : "Nessuna voce",
+            campi: [usaValori && <ValoriNutrizionali key="valori" valori={bozzaProdotto.valori} onCambia={aggiornaValori} />],
+          },
+          {
+            chiave: "scadenzaEtichetta",
+            titolo: "Scadenza sull'etichetta",
+            sottoTel: `“${bozzaProdotto.dicituraScadenza}” · ${bozzaProdotto.formatoData}`,
+            campi: [
+              usaScadenza && (
+                <div key="due" className="grid grid-cols-2 gap-3.5">
+                  <CampoSelezione etichetta="Dicitura scadenza" valore={bozzaProdotto.dicituraScadenza} campo="dicituraScadenza" opzioni={OPZIONI_DICITURA_SCADENZA} onCambia={aggiornaCondiviso} />
+                  <CampoSelezione etichetta="Formato data" valore={bozzaProdotto.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />
+                </div>
+              ),
+            ],
+          },
+          {
+            chiave: "lotto",
+            titolo: "Lotto",
+            sottoTel: riassuntoLotto,
+            campi: [usaLotto && <CampoLottoRapido key="lotto" usaLottoBlocco={usaLottoBlocco} />],
+          },
+          {
+            chiave: "produttore",
+            titolo: NOMIBLOCCO.produttore,
+            sottoTel: bozzaProdotto.produttore.ragioneSociale || "Da scrivere",
+            campi: [
+              usaProduttore && <CampoTesto key="rs" etichetta="Ragione sociale" valore={bozzaProdotto.produttore.ragioneSociale} campo="ragioneSociale" onCambia={aggiornaProduttore} />,
+              usaProduttore && <CampoTesto key="sl" etichetta="Sede legale" valore={bozzaProdotto.produttore.sedeLegale} campo="sedeLegale" onCambia={aggiornaProduttore} />,
+              usaProduttore && (
+                <CampoTesto key="sp" etichetta="Sede di produzione · facoltativa" valore={bozzaProdotto.produttore.sedeProduzione} campo="sedeProduzione" onCambia={aggiornaProduttore} />
+              ),
+            ],
+          },
+          {
+            chiave: "dataProduzione",
+            titolo: NOMIBLOCCO.dataProduzione,
+            campi: [
+              usaDataProduzione && (
+                <div key="info" className="text-[13px] text-[var(--tenue)]">
+                  Sull&apos;etichetta esce la data di stampa di oggi: non si scrive a mano.
+                </div>
+              ),
+            ],
+          },
+          {
+            chiave: "sigla",
+            titolo: NOMIBLOCCO.sigla,
+            sottoTel: bozzaProdotto.siglaOperatore || "Da scrivere",
+            campi: [
+              usaSigla && (
+                <CampoTesto key="sigla" etichetta="Sigla di chi stampa" valore={bozzaProdotto.siglaOperatore} campo="siglaOperatore" onCambia={aggiornaCampoProdotto} placeholder="es. M.C." />
+              ),
+            ],
+          },
+        ] satisfies { chiave: string; titolo: string; sottoPC?: string; sottoTel?: string; campi: React.ReactNode[] }[]
+      )
+        .map((s) => ({ ...s, campi: s.campi.filter(Boolean) }))
+        .filter((s) => s.campi.length > 0)
+    : [];
 
   const bloccheAccesi = bozzaBlocchi?.filter((b) => b.acceso).length ?? 0;
   const bloccheTotali = bozzaBlocchi?.length ?? 0;
 
+  // Gli strumenti (indietro/avanti, Duplica/Elimina) e le azioni (Stampa di
+  // prova, Salva prodotto) stanno nella testata condivisa, come nel
+  // prototipo (funzione strumentiEtichetta/comandiDiTestata), non in una
+  // barra propria della vista.
+  const portaleStrumenti = usePortaleStrumenti(
+    <>
+      <button type="button" className="btn tondo" onClick={clicAnnulla} disabled={!puoAnnullare} title="Annulla (Ctrl+Z)" aria-label="Annulla">
+        <IconaAnnulla larghezza={18} spessoreTratto={2} />
+      </button>
+      <button type="button" className="btn tondo" onClick={clicRipristina} disabled={!puoRipristinare} title="Ripristina (Ctrl+Y)" aria-label="Ripristina">
+        <IconaRipristina larghezza={18} spessoreTratto={2} />
+      </button>
+      <div className="sep" />
+      {prodotto && (
+        <button type="button" className="btn conTesto" onClick={duplicaProdotto} disabled={duplicaProdottoMut.isPending || provaBloccante}>
+          <IconaDuplica larghezza={17} spessoreTratto={2} />
+          <span>Duplica</span>
+        </button>
+      )}
+      {prodotto && (
+        <button type="button" className="btn conTesto elimina" onClick={chiediElimina} disabled={eliminaProdottoMut.isPending || provaBloccante}>
+          <IconaCestino larghezza={17} spessoreTratto={2} />
+          <span>Elimina</span>
+        </button>
+      )}
+    </>,
+  );
+  const portaleAzioni = usePortaleAzioni(
+    <>
+      <button
+        type="button"
+        className="btn soloPC"
+        onClick={stampaDiProva}
+        disabled={!prodottoInModifica || stampante?.stato !== "pronta" || provaProdottoMut.isPending || provaBloccante}
+      >
+        <IconaStampa larghezza={18} spessoreTratto={2} />
+        <span>Stampa di prova</span>
+      </button>
+      <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}>
+        Salva prodotto
+      </button>
+    </>,
+  );
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="barraAzioniEtichetta">
-        <div className="flex gap-2 flex-wrap items-center">
-          <div className="strumentiEt">
-            <button type="button" className="btn tondo" onClick={clicAnnulla} disabled={!puoAnnullare} title="Annulla (Ctrl+Z)" aria-label="Annulla">
-              <IconaAnnulla larghezza={18} spessoreTratto={2} />
-            </button>
-            <button type="button" className="btn tondo" onClick={clicRipristina} disabled={!puoRipristinare} title="Ripristina (Ctrl+Y)" aria-label="Ripristina">
-              <IconaRipristina larghezza={18} spessoreTratto={2} />
-            </button>
-            <div className="sep" />
-          </div>
-          <button
-            type="button"
-            className="btn soloPC"
-            onClick={stampaDiProva}
-            disabled={!prodottoInModifica || stampante?.stato !== "pronta" || provaProdottoMut.isPending || provaBloccante}
-          >
-            <IconaStampa larghezza={18} spessoreTratto={2} />
-            <span>Stampa di prova</span>
-          </button>
-          {prodotto && (
-            <button type="button" className="btn" onClick={duplicaProdotto} disabled={duplicaProdottoMut.isPending || provaBloccante}>
-              <IconaDuplica larghezza={17} spessoreTratto={2} />
-              <span>Duplica prodotto</span>
-            </button>
-          )}
-          {prodotto && (
-            <button type="button" className="btn elimina" onClick={chiediElimina} disabled={eliminaProdottoMut.isPending || provaBloccante}>
-              <IconaCestino larghezza={17} spessoreTratto={2} />
-              <span>Elimina</span>
-            </button>
-          )}
-          <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}>
-            Salva prodotto
-          </button>
-        </div>
-      </div>
+      {portaleStrumenti}
+      {portaleAzioni}
 
       <div className="schermo">
         <div className="colonna soloPC flex-none w-[240px] min-w-0 gap-1">
@@ -712,12 +880,12 @@ export default function Etichette() {
             </div>
           </div>
 
-          {/* PC: nome, un riquadro per blocco, elenco di cio' che manca */}
+          {/* PC: un riquadro per gruppo (il primo, "Prodotto", comincia con
+              il nome), elenco di cio' che manca */}
           <div className="soloPC flex flex-col gap-3">
-            {campoNome}
             {sezioni.map((s) => (
-              <Riquadro key={s.chiave} titolo={s.titolo}>
-                {s.nodo}
+              <Riquadro key={s.chiave} titolo={s.titolo} sotto={s.sottoPC}>
+                {s.campi}
               </Riquadro>
             ))}
             {fuoriProdotto.length > 0 && (
@@ -729,17 +897,17 @@ export default function Etichette() {
             )}
           </div>
 
-          {/* Telefono: anteprima in cima, poi un gruppo alla volta, i blocchi
-              per ultimi, con le righe semplificate (niente trascinamento ne'
-              colonna sx/dx: quelle restano un affare da PC). */}
+          {/* Telefono: anteprima in cima, poi un gruppo alla volta (il primo,
+              "Prodotto", comincia col nome), i blocchi per ultimi, con le
+              righe semplificate (niente trascinamento ne' colonna sx/dx:
+              quelle restano un affare da PC). */}
           <div className="soloTel flex flex-col gap-3">
-            {campoNome}
             <div ref={rifAnteprimaTel} className="min-w-0">
               <RiquadroAnteprima src={srcAnteprima} caricando={caricandoAnteprima} titolo={bozzaProdotto?.nome ?? ""} didascalia={`Anteprima rotolo ${rotolo} mm`} />
             </div>
             {sezioni.map((s) => (
               <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
-                {s.nodo}
+                {s.campi}
               </Gruppo>
             ))}
             {fuoriProdotto.length > 0 && (
@@ -774,6 +942,7 @@ export default function Etichette() {
               <PannelloErrore messaggio={eventoProva.messaggio} onFerma={fermaProva} />
             ) : provaTerminata && eventoProva ? (
               <PannelloFatta
+                prodottoNome={prodotto?.nome ?? ""}
                 fatte={eventoProva.copiaCorrente}
                 volute={1}
                 quantita={prodotto?.quantita ?? ""}

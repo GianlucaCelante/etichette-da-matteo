@@ -2,7 +2,9 @@ import { useCallback, useState, type ChangeEvent } from "react";
 import { useRistampaStorico, useStorico } from "../api/hooks";
 import type { PeriodoStorico, StoricoRiga } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
+import { usePortaleAzioni } from "../hooks/useTestata";
 import { IconaCerca, IconaCercaDiNuovo, IconaMonitor, IconaScarica, IconaTelefono } from "../componenti/Icone";
+import { formattaOra } from "../componenti/stampa/formattazione";
 
 const FILTRI: { chiave: PeriodoStorico; testo: string }[] = [
   { chiave: "oggi", testo: "Oggi" },
@@ -13,11 +15,6 @@ const FILTRI: { chiave: PeriodoStorico; testo: string }[] = [
 
 function plurale(n: number, uno: string, molti: string): string {
   return `${n} ${n === 1 ? uno : molti}`;
-}
-function formattaOra(iso: string): string {
-  const d = new Date(iso.replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(d);
 }
 function formattaData(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -154,8 +151,18 @@ export default function Storico() {
 
   const totaleOggi = (righeOggi ?? []).reduce((n, r) => n + r.copie, 0);
 
+  // "Esporta l'elenco" sta nella testata condivisa, accanto al titolo
+  // "Storico stampe", come nel prototipo.
+  const portaleEsporta = usePortaleAzioni(
+    <button type="button" className="btn soloPC" onClick={esporta} disabled={!righe?.length}>
+      <IconaScarica larghezza={18} spessoreTratto={2} />
+      <span>Esporta l&apos;elenco</span>
+    </button>,
+  );
+
   return (
     <div className="schermo storicoTel">
+      {portaleEsporta}
       <div className="colonna flex-1 gap-3">
         <div className="prima flex gap-3 flex-wrap">
           <div className="flex gap-2">
@@ -167,10 +174,6 @@ export default function Storico() {
             <IconaCerca larghezza={18} spessoreTratto={2} />
             <input value={q} onChange={cambiaQ} placeholder="Cerca per prodotto o lotto…" aria-label="Cerca per prodotto o lotto" />
           </div>
-          <button type="button" className="btn soloPC" onClick={esporta} disabled={!righe?.length}>
-            <IconaScarica larghezza={18} spessoreTratto={2} />
-            <span>Esporta l&apos;elenco</span>
-          </button>
         </div>
 
         <div className="tabella grigliaStorico soloPC">

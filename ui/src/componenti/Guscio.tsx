@@ -1,5 +1,7 @@
+import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEventi } from "../api/eventi";
+import { Contesto as ContestoTestata } from "./contestoTestata";
 import {
   IconaEtichette,
   IconaImpostazioni,
@@ -8,7 +10,6 @@ import {
   IconaStorico,
 } from "./Icone";
 import RichiediNomeDispositivo from "./RichiediNomeDispositivo";
-import StatoStampante from "./StatoStampante";
 
 const VOCI = [
   { percorso: "/stampa", etichetta: "Stampa", Icona: IconaStampa },
@@ -42,6 +43,14 @@ export default function Guscio() {
   // Query aggiornata per tutte le viste, non solo per quella aperta.
   useEventi();
 
+  // I due punti d'aggancio della testata (vedi contestoTestata.ts): la vista
+  // aperta vi si affaccia con un portale (hooks/useTestata.ts) invece di
+  // avere una barra propria, come nel prototipo (".strumentiEt" e il resto
+  // della testata stanno sempre li', a fianco del titolo).
+  const [nodoStrumenti, setNodoStrumenti] = useState<HTMLDivElement | null>(null);
+  const [nodoAzioni, setNodoAzioni] = useState<HTMLDivElement | null>(null);
+  const valoreTestata = useMemo(() => ({ strumenti: nodoStrumenti, azioni: nodoAzioni }), [nodoStrumenti, nodoAzioni]);
+
   return (
     <div className="app">
       <nav className="rail" aria-label="Sezioni dell'app">
@@ -61,11 +70,16 @@ export default function Guscio() {
           <div className="flex items-center gap-2.5 min-w-0">
             <h1 className="h titolo">{titolo}</h1>
           </div>
-          {/* lo stato della stampante, in chiaro, mentre si stampa (funzionalita-prima-versione.md) */}
-          {posizione.pathname === "/stampa" && <StatoStampante />}
+          {/* "strumenti" (solo Etichette) prima, poi "azioni": stesso ordine
+              del prototipo. Sul telefono l'ordine visivo si scambia via CSS
+              (.strumentiEt va sulla riga sotto, le azioni restano coi titolo). */}
+          <div ref={setNodoStrumenti} className="strumentiEt testataStrumenti" />
+          <div ref={setNodoAzioni} className="flex items-center gap-2.5 flex-wrap testataAzioni" />
         </header>
 
-        <Outlet />
+        <ContestoTestata.Provider value={valoreTestata}>
+          <Outlet />
+        </ContestoTestata.Provider>
 
         <nav className="barrasotto" aria-label="Sezioni dell'app">
           {VOCI.map(({ percorso, etichetta, Icona }) => (
