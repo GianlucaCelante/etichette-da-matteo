@@ -123,10 +123,6 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     (chiave: string) => onCambiaBlocchi(blocchi.filter((b) => b.chiave !== chiave)),
     [blocchi, onCambiaBlocchi],
   );
-  const onCambiaTesto = useCallback(
-    (chiave: string, testo: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
-    [blocchi, onCambiaBlocchi],
-  );
   const onCambiaAllineamento = useCallback(
     (chiave: string, allineamento: AllineamentoBlocco) =>
       onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, allineamento } : b))),
@@ -182,7 +178,6 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         onCambiaCorpo={onCambiaCorpo}
         onCicloColonna={onCicloColonna}
         onRimuovi={onRimuovi}
-        onCambiaTesto={onCambiaTesto}
         onCambiaAllineamento={onCambiaAllineamento}
       />
     );

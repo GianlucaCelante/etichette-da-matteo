@@ -9,6 +9,7 @@ import {
   useEliminaProdotto,
   useImpostazioni,
   useLavoroStampa,
+  useLogoEsiste,
   useLotto,
   useProdotti,
   useProdotto,
@@ -20,15 +21,16 @@ import { useScalaAnteprimaDoppia } from "../api/resa";
 import { FORMATI_DATA, NOMIBLOCCO, type FormatoData, type Prodotto, type TipoBlocco, type TipoBloccoDati } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni, usePortaleStrumenti } from "../hooks/useTestata";
-import { IconaAnnulla, IconaCerca, IconaCestino, IconaDuplica, IconaPiu, IconaRipristina, IconaStampa } from "../componenti/Icone";
+import { IconaAnnulla, IconaCerca, IconaCestino, IconaDestra, IconaDuplica, IconaPiu, IconaRipristina, IconaSinistra, IconaStampa } from "../componenti/Icone";
 import Finestra from "../componenti/Finestra";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
 import { oggiPiuGiorni } from "../componenti/stampa/formattazione";
-import { CampoAllergeni, CampoArea, CampoInline, CampoSelezione, CampoTesto, Gruppo, Riquadro } from "../componenti/etichette/CampiComuni";
+import { CampoAllergeni, CampoArea, CampoInline, CampoSelezione, CampoTesto, Gruppo } from "../componenti/etichette/CampiComuni";
 import { blocchiInBozza, bozzaInBlocchi, bozzaInValori, valoriInBozza, type BloccoBozza, type ValoreBozza } from "../componenti/etichette/bozza";
 import BlocchiEditor from "../componenti/etichette/BlocchiEditor";
 import BlocchiTelefono from "../componenti/etichette/BlocchiTelefono";
+import CampoLogoBlocco from "../componenti/etichette/CampoLogoBlocco";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
 
 const OPZIONI_CONSERVAZIONE = ["Fuori dal frigo", "In frigo", "In congelatore"];
@@ -93,6 +95,39 @@ function inElenco(a: string[]): string {
   if (a.length === 0) return "";
   if (a.length === 1) return a[0] ?? "";
   return a.slice(0, -1).join(", ") + " e " + a[a.length - 1];
+}
+// L'anteprima di un testo lungo per il riassunto di un gruppo chiuso (i
+// primi caratteri, deciso da Gianluca): "Da scrivere" se e' ancora vuoto.
+function anteprimaTesto(testo: string, massimo: number): string {
+  const t = testo.trim();
+  if (!t) return "Da scrivere";
+  return t.length > massimo ? t.slice(0, massimo).trimEnd() + "…" : t;
+}
+
+// Lo stato aperto/chiuso dei gruppi su PC (deciso da Gianluca, 9 settembre
+// sera: "i gruppi si aprono e chiudono come sul telefono... lo stato e'
+// ricordato sul dispositivo") vive nel localStorage del browser, un valore
+// per nome di gruppo; try/catch perche' un browser in incognito o con lo
+// spazio pieno puo' rifiutare la scrittura, e in quel caso lo stato resta
+// solo in memoria per questa sessione, senza far crashare la pagina.
+function leggiPreferenza(chiave: string, assente: boolean): boolean {
+  try {
+    const v = localStorage.getItem(chiave);
+    return v === null ? assente : v === "1";
+  } catch {
+    return assente;
+  }
+}
+function scriviPreferenza(chiave: string, valore: boolean) {
+  try {
+    localStorage.setItem(chiave, valore ? "1" : "0");
+  } catch {
+    // privato o pieno: si resta con lo stato solo in memoria
+  }
+}
+const CHIAVE_LS_ELENCO_COLLASSATO = "etichette.elenco.collassato";
+function chiaveLsGruppoPC(nomeGruppo: string): string {
+  return `etichette.gruppoPC.${nomeGruppo}`;
 }
 
 function VoceProdotto({
@@ -211,6 +246,21 @@ function CampoLottoRapido({ usaLottoBlocco }: { usaLottoBlocco: boolean }) {
   );
 }
 
+// Il testo di un blocco "Testo libero"/"Testo grande", nel suo gruppo
+// (deciso da Gianluca): prima stava nella riga del vassoio dei blocchi,
+// spostato qui perche' segua lo stesso posto degli altri campi del blocco.
+function CampoTestoBloccoLibero({ blocco, onCambia }: { blocco: BloccoBozza; onCambia: (chiave: string, testo: string) => void }) {
+  const cambia = useCallback((evento: ChangeEvent<HTMLInputElement>) => onCambia(blocco.chiave, evento.target.value), [onCambia, blocco.chiave]);
+  return (
+    <div className="campo">
+      <div className="etichettina">Testo</div>
+      <div className="casella">
+        <input value={blocco.testo ?? ""} onChange={cambia} placeholder="Scrivi il testo…" aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`} />
+      </div>
+    </div>
+  );
+}
+
 // La vista Etichette: il prodotto e la sua etichetta stanno nella stessa
 // scheda (l'etichetta vive dentro il prodotto: decisione finale sul mockup,
 // revisione di questo giro - non ci sono piu' tipi di etichetta ne' una
@@ -234,6 +284,18 @@ export default function Etichette() {
   // Sul telefono la scheda si apre un gruppo alla volta (vero accordion):
   // null = tutti chiusi, altrimenti la chiave del gruppo aperto.
   const [gruppoAperto, setGruppoAperto] = useState<string | null>(null);
+  // Su PC invece ogni gruppo si apre/chiude per conto suo (deciso da
+  // Gianluca): aperti di default, lo stato di ognuno si ricorda a parte nel
+  // localStorage (leggiPreferenza/scriviPreferenza sopra); qui in memoria si
+  // tiene solo cio' che e' stato toccato in questa sessione, il resto si
+  // legge al volo da apertoGruppoPC.
+  const [gruppiPCAperti, setGruppiPCAperti] = useState<Record<string, boolean>>({});
+  // L'elenco dei prodotti (colonna sinistra, PC) si puo' ridurre a una barra
+  // stretta: da solo quando si sceglie un prodotto (impostaProdotto/
+  // nuovoProdotto sotto), a mano col bottone. Solo il collasso manuale si
+  // ricorda nel localStorage; l'auto-collasso alla scelta vale sempre, non
+  // dipende da quella preferenza.
+  const [elencoCollassato, setElencoCollassato] = useState<boolean>(() => leggiPreferenza(CHIAVE_LS_ELENCO_COLLASSATO, false));
   const [eliminaChiesto, setEliminaChiesto] = useState(false);
   const [provaLavoroId, setProvaLavoroId] = useState<string | null>(null);
   // L'azione rimasta in sospeso mentre si chiede conferma di scartare le
@@ -255,6 +317,9 @@ export default function Etichette() {
   const { data: prodotto } = useProdotto(prodottoId ?? undefined);
   const { data: stampante } = useStampante();
   const { data: lavoro } = useLavoroStampa();
+  // Per il riassunto del gruppo "Logo" quando e' chiuso ("caricato"/"nessuno"):
+  // stessa chiave di query di CampoLogoBlocco, nessuna richiesta in piu'.
+  const { data: logoEsiste } = useLogoEsiste();
 
   const salvaProdottoMut = useAggiornaProdotto();
   const eliminaProdottoMut = useEliminaProdotto();
@@ -441,7 +506,14 @@ export default function Etichette() {
   const annullaScarta = useCallback(() => setAzionePendente(null), []);
 
   const cambiaCercaEt = useCallback((evento: ChangeEvent<HTMLInputElement>) => setCercaEt(evento.target.value), []);
-  const impostaProdotto = useCallback((id: number) => setProdottoId(id), []);
+  // Scegliere un prodotto (clic sulla voce, o dopo "Nuovo prodotto") riduce
+  // da solo l'elenco alla barra stretta (deciso da Gianluca): sempre, non
+  // solo la prima volta, e senza scriverlo nel localStorage (quello resta
+  // solo per il bottone «›», vedi toggleElenco).
+  const impostaProdotto = useCallback((id: number) => {
+    setProdottoId(id);
+    setElencoCollassato(true);
+  }, []);
   const scegliProdotto = useCallback((id: number) => provaAzione(() => impostaProdotto(id)), [provaAzione, impostaProdotto]);
 
   // Senza corpo: il servizio crea il prodotto nuovo del prototipo (nome
@@ -452,6 +524,7 @@ export default function Etichette() {
       onSuccess: (dati) => {
         appenaCreatoRef.current = true;
         setProdottoId(dati.id);
+        setElencoCollassato(true);
       },
       onError: () => avvisa("Non sono riuscito a creare il prodotto."),
     });
@@ -486,6 +559,33 @@ export default function Etichette() {
 
   const toggleGruppo = useCallback((chiave: string) => setGruppoAperto((corrente) => (corrente === chiave ? null : chiave)), []);
 
+  // Il bottone «‹»/«›» dell'elenco: unico caso in cui il collasso si ricorda
+  // nel localStorage (l'auto-collasso alla scelta del prodotto no, vedi
+  // impostaProdotto/nuovoProdotto sopra).
+  const toggleElenco = useCallback(() => {
+    setElencoCollassato((corrente) => {
+      const nuovo = !corrente;
+      scriviPreferenza(CHIAVE_LS_ELENCO_COLLASSATO, nuovo);
+      return nuovo;
+    });
+  }, []);
+
+  // Ogni gruppo della colonna dei valori si apre/chiude per conto suo su PC
+  // (deciso da Gianluca): aperto di default, lo stato toccato in questa
+  // sessione sta in gruppiPCAperti, altrimenti si legge dal localStorage.
+  const apertoGruppoPC = useCallback(
+    (nomeGruppo: string) => (nomeGruppo in gruppiPCAperti ? gruppiPCAperti[nomeGruppo]! : leggiPreferenza(chiaveLsGruppoPC(nomeGruppo), true)),
+    [gruppiPCAperti],
+  );
+  const toggleGruppoPC = useCallback((nomeGruppo: string) => {
+    setGruppiPCAperti((corrente) => {
+      const attuale = nomeGruppo in corrente ? corrente[nomeGruppo]! : leggiPreferenza(chiaveLsGruppoPC(nomeGruppo), true);
+      const nuovo = !attuale;
+      scriviPreferenza(chiaveLsGruppoPC(nomeGruppo), nuovo);
+      return { ...corrente, [nomeGruppo]: nuovo };
+    });
+  }, []);
+
   const aggiornaNome = useCallback((_campo: "nome", valore: string) => {
     setBozzaProdotto((p) => {
       if (!p) return p;
@@ -516,6 +616,21 @@ export default function Etichette() {
   const aggiornaLarghezzaDestra = useCallback((v: ProdottoBozza["zona"]["larghezzaDestra"]) => {
     setBozzaProdotto((p) => (p ? { ...p, zona: { larghezzaDestra: v } } : p));
   }, []);
+  // Il testo dei blocchi "Testo libero"/"Testo grande": ora si scrive nel
+  // gruppo del blocco (deciso da Gianluca), non piu' nella riga del vassoio,
+  // ma passa dalla stessa bozzaBlocchi/cronologia di annulla-ripristina di
+  // tutti gli altri campi del blocco.
+  const aggiornaTestoBlocco = useCallback(
+    (chiave: string, testo: string) => setBozzaBlocchi((blocchi) => blocchi && blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
+    [],
+  );
+  // Il logo e' unico per tutti i prodotti (non e' un campo della bozza): dopo
+  // averlo caricato o tolto, l'anteprima dell'etichetta va rifatta anche se
+  // la bozza in se' non e' cambiata, altrimenti resterebbe quella vecchia
+  // finche' non si tocca dell'altro. useAnteprimaProdottoInModifica prende
+  // "versioneLogo" in piu' apposta per questo (sotto).
+  const [versioneLogo, setVersioneLogo] = useState(0);
+  const logoCambiato = useCallback(() => setVersioneLogo((v) => v + 1), []);
 
   const chiediElimina = useCallback(() => setEliminaChiesto(true), []);
   const chiudiElimina = useCallback(() => setEliminaChiesto(false), []);
@@ -588,7 +703,7 @@ export default function Etichette() {
   // 500 ms di ritardo invece dei 400 di Stampa: qui la bozza cambia insieme
   // su piu' fronti (campi del prodotto e blocchi insieme).
   const bozzaAnteprima = prodottoInModifica ? { prodotto: prodottoInModifica, rotolo, scala } : null;
-  const { src: srcAnteprima, misure: misureAnteprima, caricando: caricandoAnteprima } = useAnteprimaProdottoInModifica(bozzaAnteprima, 500);
+  const { src: srcAnteprima, misure: misureAnteprima, caricando: caricandoAnteprima } = useAnteprimaProdottoInModifica(bozzaAnteprima, 500, versioneLogo);
 
   // "Stampa di prova" della vista Etichette: prova il prodotto in modifica su
   // una copia sola, riusando gli stessi pannelli e eventi SSE della vista
@@ -652,9 +767,12 @@ export default function Etichette() {
   const usaDataProduzione = ce("dataProduzione");
   const usaSigla = ce("sigla");
 
-  const nelProdotto = ["Nome", usaScadenza && "scadenza", usaScadenza && "conservazione", usaQuantita && "peso"].filter(
-    (x): x is string => !!x,
-  );
+  // Il riassunto del gruppo "Prodotto" quando e' chiuso (nome, scadenza,
+  // quantita': "Base pizza low carb · 7 giorni · 2148 g"), uguale su PC e
+  // telefono.
+  const riassuntoProdotto = [bozzaProdotto?.nome, usaScadenza ? plurale(bozzaProdotto?.giorniScadenza ?? 0, "giorno", "giorni") : null, usaQuantita ? bozzaProdotto?.quantita : null]
+    .filter((x): x is string => !!x)
+    .join(" · ");
   const DATI_PRODOTTO_TITOLO: { chiave: TipoBloccoDati; usa: boolean }[] = [
     { chiave: "titolo", usa: usaTitolo },
     { chiave: "ingredienti", usa: usaIngredienti },
@@ -676,7 +794,8 @@ export default function Etichette() {
           {
             chiave: "prodotto",
             titolo: "Prodotto",
-            sottoTel: inElenco(nelProdotto),
+            sottoPC: riassuntoProdotto,
+            sottoTel: riassuntoProdotto,
             campi: [
               campoNome,
               usaTitolo && (
@@ -703,11 +822,8 @@ export default function Etichette() {
           {
             chiave: "ingredienti",
             titolo: "Ingredienti",
-            sottoTel: usaPuoContenere
-              ? bozzaProdotto.allergeni.length
-                ? "Può contenere " + bozzaProdotto.allergeni.join(", ").toLowerCase()
-                : "Nessun allergene segnato"
-              : undefined,
+            sottoPC: usaIngredienti ? anteprimaTesto(bozzaProdotto.ingredienti, 60) : undefined,
+            sottoTel: usaIngredienti ? anteprimaTesto(bozzaProdotto.ingredienti, 60) : undefined,
             campi: [
               usaIngredienti && <CampoArea key="ingredienti" etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />,
               usaPuoContenere && <CampoAllergeni key="allergeni" allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />,
@@ -784,6 +900,38 @@ export default function Etichette() {
         .filter((s) => s.campi.length > 0)
     : [];
 
+  // Ogni blocco "libero" che ha qualcosa da impostare (Logo, Testo libero,
+  // Testo grande) ha il suo gruppo, in coda ai gruppi fissi sopra e
+  // nell'ordine dei blocchi (deciso da Gianluca, 9 settembre sera): compare
+  // quando il blocco e' acceso, sparisce quando si spegne o si toglie. QR ha
+  // solo la misura nella riga (nessun gruppo); Sigla e Data di produzione
+  // sono gia' fra i gruppi fissi sopra.
+  let contaTesto = 0;
+  let contaTestoGrande = 0;
+  const sezioniBlocchi: typeof sezioni = (bozzaBlocchi ?? []).flatMap((b) => {
+    if (!b.acceso) return [];
+    if (b.tipo === "logo") {
+      const sotto = logoEsiste ? "caricato" : "nessuno";
+      return [{ chiave: "logo", titolo: NOMIBLOCCO.logo, sottoPC: sotto, sottoTel: sotto, campi: [<CampoLogoBlocco key="logo" onCambiato={logoCambiato} />] }];
+    }
+    if (b.tipo === "testo" || b.tipo === "testoGrande") {
+      const indice = b.tipo === "testo" ? ++contaTesto : ++contaTestoGrande;
+      const titolo = `${NOMIBLOCCO[b.tipo]} ${indice}`;
+      const sotto = anteprimaTesto(b.testo ?? "", 40);
+      return [
+        {
+          chiave: `${b.tipo}-${indice}`,
+          titolo,
+          sottoPC: sotto,
+          sottoTel: sotto,
+          campi: [<CampoTestoBloccoLibero key={b.chiave} blocco={b} onCambia={aggiornaTestoBlocco} />],
+        },
+      ];
+    }
+    return [];
+  });
+  const sezioniComplete = [...sezioni, ...sezioniBlocchi];
+
   const bloccheAccesi = bozzaBlocchi?.filter((b) => b.acceso).length ?? 0;
   const bloccheTotali = bozzaBlocchi?.length ?? 0;
 
@@ -837,33 +985,55 @@ export default function Etichette() {
       {portaleAzioni}
 
       <div className="schermo">
-        <div className="colonna soloPC flex-[0_1_240px] min-w-[190px] gap-1">
-          <div className="cerca h-11 text-[15px]">
-            <IconaCerca larghezza={18} spessoreTratto={2} />
-            <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca prodotto" />
+        {elencoCollassato ? (
+          // Ridotto a una barra stretta (deciso da Gianluca): il bottone
+          // «›» la riapre, il nome del prodotto scelto resta leggibile in
+          // verticale (con lo stesso nome per intero nel title, come una
+          // conferma per chi preferisce il tooltip al testo ruotato).
+          <div className="colonna soloPC elencoCollassato">
+            <button type="button" className="riapriElenco" onClick={toggleElenco} title="Mostra l'elenco dei prodotti" aria-label="Mostra l'elenco dei prodotti">
+              <IconaDestra larghezza={16} spessoreTratto={2} />
+            </button>
+            {prodotto && (
+              <span className="nomeVerticale" title={prodotto.nome}>
+                {prodotto.nome}
+              </span>
+            )}
           </div>
-          <button
-            type="button"
-            className="h-11 border border-dashed border-[var(--tratteggio)] rounded-xl flex items-center justify-center gap-2 text-[14px] font-bold text-[#6B5A4E] mb-1"
-            onClick={clicNuovoProdotto}
-            disabled={creaProdottoMut.isPending}
-          >
-            <IconaPiu larghezza={17} spessoreTratto={2.2} />
-            <span>Nuovo prodotto</span>
-          </button>
-          <div className="scorre flex flex-col gap-1 flex-1 min-h-0">
-            {prodottiTrovati.map((p) => (
-              <VoceProdotto
-                key={p.id}
-                prodotto={p}
-                bloccchiAccesi={(p.etichetta.blocchi ?? []).filter((b) => b.acceso).length}
-                selezionato={p.id === prodottoId}
-                onScegli={scegliProdotto}
-              />
-            ))}
-            {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessun prodotto con questo nome.</div>}
+        ) : (
+          <div className="colonna soloPC flex-[0_1_240px] min-w-[190px] gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="cerca h-11 text-[15px] flex-1 min-w-0">
+                <IconaCerca larghezza={18} spessoreTratto={2} />
+                <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca prodotto" />
+              </div>
+              <button type="button" className="riduciElenco" onClick={toggleElenco} title="Riduci l'elenco dei prodotti" aria-label="Riduci l'elenco dei prodotti">
+                <IconaSinistra larghezza={16} spessoreTratto={2} />
+              </button>
+            </div>
+            <button
+              type="button"
+              className="h-11 border border-dashed border-[var(--tratteggio)] rounded-xl flex items-center justify-center gap-2 text-[14px] font-bold text-[#6B5A4E] mb-1"
+              onClick={clicNuovoProdotto}
+              disabled={creaProdottoMut.isPending}
+            >
+              <IconaPiu larghezza={17} spessoreTratto={2.2} />
+              <span>Nuovo prodotto</span>
+            </button>
+            <div className="scorre flex flex-col gap-1 flex-1 min-h-0">
+              {prodottiTrovati.map((p) => (
+                <VoceProdotto
+                  key={p.id}
+                  prodotto={p}
+                  bloccchiAccesi={(p.etichetta.blocchi ?? []).filter((b) => b.acceso).length}
+                  selezionato={p.id === prodottoId}
+                  onScegli={scegliProdotto}
+                />
+              ))}
+              {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessun prodotto con questo nome.</div>}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="colonna scheda scorre flex-none w-full md:flex-[0_1_456px] min-w-0 gap-3">
           <div className="campo soloTel">
@@ -880,13 +1050,14 @@ export default function Etichette() {
             </div>
           </div>
 
-          {/* PC: un riquadro per gruppo (il primo, "Prodotto", comincia con
-              il nome), elenco di cio' che manca */}
+          {/* PC: un gruppo per sezione (il primo, "Prodotto", comincia con
+              il nome), apribile/chiudibile come sul telefono (deciso da
+              Gianluca), elenco di cio' che manca */}
           <div className="soloPC flex flex-col gap-3">
-            {sezioni.map((s) => (
-              <Riquadro key={s.chiave} titolo={s.titolo} sotto={s.sottoPC}>
+            {sezioniComplete.map((s) => (
+              <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoPC ?? s.sottoTel} aperto={apertoGruppoPC(s.chiave)} onToggle={toggleGruppoPC}>
                 {s.campi}
-              </Riquadro>
+              </Gruppo>
             ))}
             {fuoriProdotto.length > 0 && (
               <div className="fuoriEtichetta">
@@ -912,8 +1083,8 @@ export default function Etichette() {
                 maxH={200}
               />
             </div>
-            {sezioni.map((s) => (
-              <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
+            {sezioniComplete.map((s) => (
+              <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel ?? s.sottoPC} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
                 {s.campi}
               </Gruppo>
             ))}

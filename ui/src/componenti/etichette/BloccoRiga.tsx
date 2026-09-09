@@ -1,7 +1,6 @@
 import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useLogoEsiste } from "../../api/hooks";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
 import { IconaManiglia, IconaVia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
@@ -20,13 +19,15 @@ interface ProprietaBloccoRiga {
   onCambiaCorpo: (chiave: string, corpo: number) => void;
   onCicloColonna: (chiave: string) => void;
   onRimuovi: (chiave: string) => void;
-  onCambiaTesto: (chiave: string, testo: string) => void;
   onCambiaAllineamento: (chiave: string, allineamento: AllineamentoBlocco) => void;
 }
 
-// Una riga del vassoio: maniglia (solo lei si trascina), interruttore,
-// nome, corpo in punti, larghezza a tre stati, e per i blocchi liberi un
-// campo di testo sotto. Segue esattamente il prototipo (".blocco").
+// Una riga del vassoio: maniglia (solo lei si trascina), interruttore, nome,
+// corpo in punti, larghezza a tre stati. Il testo dei blocchi liberi e il
+// caricamento del logo non stanno piu' qui (deciso da Gianluca,
+// funzionalita-prima-versione.md 9 settembre sera): ogni blocco che ha
+// qualcosa da impostare ha il suo gruppo nella colonna dei valori, la riga
+// resta solo il comando rapido (acceso/spento, corpo, colonna).
 export default function BloccoRiga({
   blocco,
   indice,
@@ -34,7 +35,6 @@ export default function BloccoRiga({
   onCambiaCorpo,
   onCicloColonna,
   onRimuovi,
-  onCambiaTesto,
   onCambiaAllineamento,
 }: ProprietaBloccoRiga) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: blocco.chiave });
@@ -43,13 +43,7 @@ export default function BloccoRiga({
     [transform, transition],
   );
 
-  const libero = blocco.tipo === "testo" || blocco.tipo === "testoGrande";
   const eLogo = blocco.tipo === "logo";
-  const { data: logoEsiste } = useLogoEsiste();
-  const notaLogo = eLogo && !logoEsiste;
-  // ".libero" mette la riga su due righe (testa sopra, il resto sotto): serve
-  // sia al campo di testo dei blocchi liberi sia alla nota del logo mancante.
-  const suDueRighe = libero || notaLogo;
   const mostraAllineamento = !BLOCCHI_SENZA_ALLINEAMENTO.includes(blocco.tipo);
 
   const clicSw = useCallback(() => onToggleAcceso(blocco.chiave), [onToggleAcceso, blocco.chiave]);
@@ -59,10 +53,6 @@ export default function BloccoRiga({
   );
   const clicLato = useCallback(() => onCicloColonna(blocco.chiave), [onCicloColonna, blocco.chiave]);
   const clicVia = useCallback(() => onRimuovi(blocco.chiave), [onRimuovi, blocco.chiave]);
-  const cambiaTesto = useCallback(
-    (evento: ChangeEvent<HTMLInputElement>) => onCambiaTesto(blocco.chiave, evento.target.value),
-    [onCambiaTesto, blocco.chiave],
-  );
   const cambiaAllineamento = useCallback(
     (a: AllineamentoBlocco) => onCambiaAllineamento(blocco.chiave, a),
     [onCambiaAllineamento, blocco.chiave],
@@ -74,7 +64,7 @@ export default function BloccoRiga({
     <div
       ref={setNodeRef}
       style={stile}
-      className={"blocco" + (blocco.acceso ? "" : " spento") + (suDueRighe ? " libero" : "") + (isDragging ? " trascina" : "")}
+      className={"blocco" + (blocco.acceso ? "" : " spento") + (isDragging ? " trascina" : "")}
     >
       <div className="testa">
         <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${NOMIBLOCCO[blocco.tipo]}`}>
@@ -116,16 +106,6 @@ export default function BloccoRiga({
           <IconaVia larghezza={14} spessoreTratto={2} />
         </button>
       </div>
-      {libero && (
-        <input
-          className="testoLibero"
-          value={blocco.testo ?? ""}
-          onChange={cambiaTesto}
-          placeholder="Scrivi il testo…"
-          aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`}
-        />
-      )}
-      {notaLogo && <div className="text-[11.5px] text-[var(--spento)] px-1.5">Carica il logo nelle Impostazioni.</div>}
     </div>
   );
 }

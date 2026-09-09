@@ -299,7 +299,11 @@ interface AnteprimaProdotto {
 // revocando quello precedente cosi' da non perdere memoria mentre si compone.
 // ritardoMs: 400 per l'anteprima del prodotto in Stampa, 500 per quella del
 // prodotto in modifica in Etichette (revisione di questo giro).
-export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, ritardoMs = 400): AnteprimaProdotto {
+// versioneExtra: una leva in piu' per rifare la resa anche se la bozza non
+// e' cambiata (per esempio dopo aver caricato/tolto il logo dal suo gruppo:
+// il logo non e' un campo della bozza, quindi da solo non farebbe ripartire
+// l'effetto).
+export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, ritardoMs = 400, versioneExtra: number = 0): AnteprimaProdotto {
   const differita = useDebounced(bozza, ritardoMs);
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [misure, setMisure] = useState<MisureRisposta | undefined>(undefined);
@@ -330,7 +334,7 @@ export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, rit
     return () => {
       annullato = true;
     };
-  }, [differita]);
+  }, [differita, versioneExtra]);
 
   useEffect(
     () => () => {

@@ -29,10 +29,6 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
     [blocchi, onCambiaBlocchi],
   );
   const onRimuovi = useCallback((chiave: string) => onCambiaBlocchi(blocchi.filter((b) => b.chiave !== chiave)), [blocchi, onCambiaBlocchi]);
-  const onCambiaTesto = useCallback(
-    (chiave: string, testo: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
-    [blocchi, onCambiaBlocchi],
-  );
   const onCambiaAllineamento = useCallback(
     (chiave: string, allineamento: AllineamentoBlocco) =>
       onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, allineamento } : b))),
@@ -73,7 +69,6 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
         onToggleAcceso={onToggleAcceso}
         onCambiaCorpo={onCambiaCorpo}
         onRimuovi={onRimuovi}
-        onCambiaTesto={onCambiaTesto}
         onCambiaAllineamento={onCambiaAllineamento}
       />
     );

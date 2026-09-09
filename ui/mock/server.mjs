@@ -110,7 +110,15 @@ function nuovaTela(larghezza, altezza) {
   return { larghezza, altezza, righe };
 }
 function rettangoloVuoto(t, x0, y0, x1, y1) {
-  x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(t.larghezza - 1, x1); y1 = Math.min(t.altezza - 1, y1);
+  // Ognuna delle quattro coordinate va chiusa fra 0 e il bordo: prima capitava
+  // solo un verso per lato (x0/y0 solo >=0, x1/y1 solo <=bordo), cosi' un
+  // blocco disegnato oltre l'altezza della tela (contenuto che non ci sta,
+  // gia' possibile prima di questo giro con un QR, ora anche col logo)
+  // lasciava y0 oltre l'ultima riga e t.righe[y0] risultava undefined.
+  x0 = Math.min(Math.max(0, x0), t.larghezza - 1);
+  x1 = Math.min(Math.max(0, x1), t.larghezza - 1);
+  y0 = Math.min(Math.max(0, y0), t.altezza - 1);
+  y1 = Math.min(Math.max(0, y1), t.altezza - 1);
   for (let x = x0; x <= x1; x++) { t.righe[y0][x] = 0; t.righe[y1][x] = 0; }
   for (let y = y0; y <= y1; y++) { t.righe[y][x0] = 0; t.righe[y][x1] = 0; }
 }
