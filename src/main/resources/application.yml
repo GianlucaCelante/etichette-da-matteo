@@ -49,6 +49,13 @@ etichette:
   dati: ${ETICHETTE_DATA_DIR:./data}
   cors:
     origine-sviluppo: http://localhost:5173
+  rete:
+    # Nome annunciato in mDNS come "<nome>.local" (vedi AnnuncioMdns) e usato dal campo "nome" di
+    # GET /api/rete. Sovrascrivibile con ETICHETTE_RETE_NOME: serve a far girare una seconda
+    # istanza di sviluppo/prova sullo stesso PC del servizio installato senza collidere sullo
+    # stesso nome mDNS (mandato del 2026-09-09, dopo "Got conflicting probe from ourselves" nel
+    # log del servizio installato per una prova lasciata attiva con lo stesso nome di default).
+    nome: ${ETICHETTE_RETE_NOME:etichette}
   stampante:
     # A false, MonitorStampante non cerca ne' apre mai la porta USB (resta sempre "scollegata"):
     # serve per far girare una seconda istanza di sviluppo/revisione sullo stesso PC senza

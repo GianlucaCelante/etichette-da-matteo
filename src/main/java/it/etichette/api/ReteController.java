@@ -27,10 +27,13 @@ public class ReteController {
 
     private final IndirizziRete indirizziRete;
     private final int porta;
+    private final String nomeHost;
 
-    public ReteController(IndirizziRete indirizziRete, @Value("${server.port}") int porta) {
+    public ReteController(IndirizziRete indirizziRete, @Value("${server.port}") int porta,
+                           @Value("${etichette.rete.nome:etichette}") String nomeHost) {
         this.indirizziRete = indirizziRete;
         this.porta = porta;
+        this.nomeHost = nomeHost;
     }
 
     @GetMapping
@@ -43,7 +46,7 @@ public class ReteController {
         // richiesta. Map mutabile (non Map.of) perche' puo' essere null se non c'e' rete.
         Map<String, Object> risposta = new HashMap<>();
         risposta.put("indirizzi", indirizzi);
-        risposta.put("nome", "http://etichette.local:" + porta);
+        risposta.put("nome", "http://" + nomeHost + ".local:" + porta);
         risposta.put("principale", indirizzi.isEmpty() ? null : indirizzi.get(0));
         return risposta;
     }

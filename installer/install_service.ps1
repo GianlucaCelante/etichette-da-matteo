@@ -162,7 +162,7 @@ function Set-EtichetteFirewallRule {
         -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale."
 
     # Seconda regola, UDP 5353: le domande mDNS dei telefoni per
-    # "etichette.local" (JmDNS) su rete Pubblica non arrivavano al processo
+    # "etichette.local" (il responder mDNS del servizio) su rete Pubblica non arrivavano al processo
     # Java senza una regola dedicata, anche con la porta 8765 gia' aperta
     # (verificato sul PC di sviluppo: il QR funzionava, .local no).
     Set-OrCreateFirewallRule -DisplayName $FirewallRuleNameMdns -Protocol UDP -LocalPort $MdnsPort `
