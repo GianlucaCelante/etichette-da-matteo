@@ -384,3 +384,7 @@ data/valuta), togli quello che risulta inutile per tenere la JRE ridotta.
       vero: il flag esiste ed e' stato solo verificato per la parte
       "certificato assente -> avviso e si va avanti", non per una firma
       reale.
+
+## Build con poca memoria
+
+Se il PC ha poca RAM libera (la build completa lancia anche `npm run build` dentro Maven), si va in due passi: prima l'interfaccia a mano (`cd ui && npm run build`), poi il jar senza Node e senza npm ma con la copia di `ui/dist` (`mvn clean package -DskipTests -Dskip.installnodenpm=true -Dskip.npm=true`; in PowerShell scrivere `mvn --% ...` o mettere le opzioni fra virgolette), e infine `.\Build-Setup.ps1 -SkipMaven`, che fa solo jlink e jpackage sul jar già pronto.
