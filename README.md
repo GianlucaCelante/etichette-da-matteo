@@ -2,7 +2,9 @@
 
 Piccola applicazione per stampare etichette alimentari (preparazioni e ingredienti di una pizzeria) su una **Brother QL-1100c** collegata via USB.
 
-## Stato del progetto (2026-09-03)
+## Stato del progetto (2026-09-09)
+
+- **Allineata al mockup finale e installata come servizio** (2026-09-09, versione 0.1.11): l'etichetta vive dentro il prodotto (niente tipi né galleria), l'etichetta in mano non è mai più alta che larga (corta attraverso il nastro o lunga con lunghezza automatica, regola della funzione `misuraEtichetta` del prototipo), anteprima che si adatta e scorre come nel mockup, testata condivisa con le azioni della vista, gruppi della scheda del prodotto come nel prototipo. Cinque prove reali del coperchio aperto con ripresa automatica (espulsione della copia interrotta e rinvio). Rete: porta 8765, regole del firewall su tutti i profili, responder mDNS proprio (`etichette.local`, non su Android: si usa il QR). MSI installato e aggiornato più volte sul PC di sviluppo (`installer/update.ps1`).
 
 - **Stampante mappata e verificata**: comunicazione raw via USB senza driver Brother, lettura stato e impostazioni, stampe di prova in modalità raster riuscite su entrambi i rotoli (62 e 102 mm). Tutto in [`docs/mappatura-brother-ql-1100c.md`](docs/mappatura-brother-ql-1100c.md).
 - **Interfaccia disegnata**: [canvas di design](https://claude.ai/code/artifact/e8537537-bab9-4cce-a2f3-0dec57fc9bd2) con le nove schermate del PC — Stampa, stampa in corso, errore, Etichette (dati del prodotto ed etichetta insieme), scelta dell’etichetta, etichetta nuova a blocchi, Storico, Impostazioni, aggancio dei telefoni — e le nove del telefono, che ripetono le stesse quattro voci: stampa, in stampa, errore, stampata, scheda del prodotto, scelta dell’etichetta, etichetta nuova, storico, impostazioni. Sorgenti degli artboard in [`design/`](design/).
