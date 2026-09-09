@@ -63,6 +63,11 @@ etichette:
     abilitata: ${ETICHETTE_STAMPANTE_ABILITATA:true}
 
 logging:
+  # La console (catturata da WinSW in Etichette_<data>.out.log) usa la codepage di Windows
+  # e rovinava le lettere accentate («Ragù»): si forza UTF-8 come nel file.
+  charset:
+    console: UTF-8
+    file: UTF-8
   file:
     name: ${etichette.dati}/log/etichette.log
   logback:
