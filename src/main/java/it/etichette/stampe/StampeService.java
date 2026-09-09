@@ -148,10 +148,10 @@ public class StampeService {
 
         ParametriStampa parametri = new ParametriStampa(quantita, scadenza, lotto);
         RisultatoResa risultato = renderer.rendi(prodotto, parametri, rotolo, 1.0);
-        // renderer.rendi() restituisce sempre l'immagine NON ruotata: nel caso A ("corta") e' gia'
-        // larga quanto il rotolo (nessuna rotazione); solo nel caso B ("lunga", lungoIlNastro) va
-        // ruotata di 90° per la stampa (larghezza = larghezza del rotolo, "righe" = lunghezza lungo
-        // il nastro, vedi RenditoreEtichetta#ruotaPerStampa).
+        // renderer.rendi() restituisce sempre l'immagine NON ruotata: VERTICALE, e' gia' larga
+        // quanto il rotolo (nessuna rotazione); solo ORIZZONTALE (lungoIlNastro) va ruotata di 90°
+        // per la stampa (larghezza = larghezza del rotolo, "righe" = lunghezza lungo il nastro,
+        // vedi RenditoreEtichetta#ruotaPerStampa).
         BufferedImage immaginePerStampa = risultato.lungoIlNastro()
                 ? RenditoreEtichetta.ruotaPerStampa(risultato.immagine())
                 : risultato.immagine();
@@ -163,8 +163,11 @@ public class StampeService {
         String scadenzaStr = scadenza != null ? scadenza.format(DateTimeFormatter.ISO_LOCAL_DATE) : null;
         lavoriInCorso.put(lavoroId, new ContestoLavoro(prodotto.id(), prodotto.nome(), lotto, quantita,
                 scadenzaStr, copie, dispositivoNome, System.nanoTime()));
-        log.info("Stampa avviata: lavoroId={}, prodotto={}, copie={}, lotto={}, dispositivo={}",
-                lavoroId, prodotto.nome(), copie, lotto, dispositivoNome);
+        log.info("Stampa avviata: lavoroId={}, prodotto={}, copie={}, lotto={}, dispositivo={}, etichetta {} {}x{} mm su rotolo {}",
+                lavoroId, prodotto.nome(), copie, lotto, dispositivoNome,
+                risultato.lungoIlNastro() ? "orizzontale" : "verticale",
+                String.format(java.util.Locale.ITALY, "%.1f", risultato.larghezzaMm()),
+                String.format(java.util.Locale.ITALY, "%.1f", risultato.altezzaMm()), rotolo);
         return new RispostaStampa(lavoroId, lotto, scadenzaStr);
     }
 

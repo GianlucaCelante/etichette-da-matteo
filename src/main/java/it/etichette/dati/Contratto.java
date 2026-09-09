@@ -37,6 +37,9 @@ public final class Contratto {
 
     public static final Set<String> COLONNE = Set.of("piena", "sx", "dx");
 
+    /** Allineamento dei blocchi di testo e di qr/logo (decisione del 2026-09-09); "sinistra" e' il default, vedi BloccoDto. */
+    public static final Set<String> ALLINEAMENTI = Set.of("sinistra", "centro", "destra");
+
     public static final Set<String> FRAZIONI_ZONA = Set.of("1/4", "1/3", "1/2", "2/3");
 
     /** Default quando {@code zona} manca (in scrittura) o non e' mai stata impostata (in lettura): docs/api.md, "Il servizio restituisce sempre zona". */

@@ -74,19 +74,19 @@ class RenditoreEtichettaTest {
     }
 
     /**
-     * Geometria a due casi (correzione del 2026-09-09, allineata al prototipo
-     * {@code artefatti-claude/banco-etichette-2026-09-08.html}, {@code misuraEtichetta}):
-     * l'etichetta "Completa" sul 62 non sta nell'altezza utile del rotolo (696 punti) a larghezza
-     * di riga = 696, quindi e' caso B ("lunga"): corre lungo il nastro, alta quanto il rotolo,
-     * larga almeno 696 - il mockup mostra "164 × 62 mm", qui si verifica un intervallo intorno a
-     * quel valore. Le misure sono quelle "in mano": il lato sul nastro e' il NOMINALE (62, non 58,9).
+     * Orientamento "meno nastro possibile" (correzione del 2026-09-09 pomeriggio, dopo le stampe
+     * di prova): per la "Completa" sul 62 il candidato verticale consuma meno nastro di quello
+     * orizzontale (verificato dal vivo: ~119 mm contro ~168 mm), quindi vince il verticale - larga
+     * quanto il rotolo, alta quanto il contenuto, nessuna rotazione. Le misure sono quelle "in
+     * mano": il lato sul nastro e' il NOMINALE (62, non 58,9).
      */
     @Test
-    void completaSulRotolo62EVerticaleLargaQuantoIlRotoloEPiuAltaCheLarga() {
+    void completaSulRotolo62SceglieIlVerticalePerchePiuCortoDellOrizzontale() {
         RisultatoResa r = renderer.rendi(prodottoBase(), parametriDiProva(), 62, 1.0);
+        RenditoreEtichetta.EsitoOrientamento esito = renderer.calcolaOrientamento(prodottoBase(), parametriDiProva(), 62);
 
-        // sul 62 l'etichetta e' SEMPRE verticale (decisione del 2026-09-09 pomeriggio): larga quanto
-        // il rotolo, alta quanto il contenuto, anche oltre il quadrato, nessuna rotazione
+        assertThat(esito.usaOrizzontale()).isFalse();
+        assertThat(esito.nastroVerticalePt()).isLessThan(esito.lunghezzaOrizzontalePt());
         assertThat(r.lungoIlNastro()).isFalse();
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
         assertThat(r.immagine().getHeight()).isGreaterThan(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
@@ -142,16 +142,19 @@ class RenditoreEtichettaTest {
     }
 
     /**
-     * Cucina sul 62 (etichetta corta, pochi blocchi piccoli): caso A ("corta") - il testo corre
-     * ATTRAVERSO il nastro come nella vecchia geometria, immagine larga quanto il rotolo (696),
-     * alta quanto il contenuto (con un minimo hardware, vedi RenditoreEtichetta), NESSUNA
-     * rotazione per la stampa. Misure "in mano": larghezza = nominale (62), altezza = quella
+     * Cucina sul 62 (etichetta corta, pochi blocchi piccoli, contenuto che sta gia' in un
+     * "quadrato"): il candidato orizzontale non esiste nemmeno (l'altezza a larghezza di riga = W
+     * e' gia' ≤ W), quindi verticale corto, come nella vecchia geometria - immagine larga quanto il
+     * rotolo (696), alta quanto il contenuto (con un minimo hardware, vedi RenditoreEtichetta),
+     * NESSUNA rotazione per la stampa. Misure "in mano": larghezza = nominale (62), altezza = quella
      * dell'immagine.
      */
     @Test
-    void laCucinaSulRotolo62ECasoAConImmagineGiaLargaQuantoIlRotolo() {
+    void laCucinaSulRotolo62EVerticaleCortoSenzaCandidatoOrizzontale() {
         RisultatoResa r = renderer.rendi(impastoClassico24h(), parametriDiProva(), 62, 1.0);
+        RenditoreEtichetta.EsitoOrientamento esito = renderer.calcolaOrientamento(impastoClassico24h(), parametriDiProva(), 62);
 
+        assertThat(esito.lunghezzaOrizzontalePt()).isNull(); // il contenuto sta gia' in un quadrato: nessuna ricerca serve
         assertThat(r.avvisi()).doesNotContain("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
         assertThat(r.lungoIlNastro()).isFalse();
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
@@ -160,47 +163,97 @@ class RenditoreEtichettaTest {
         assertThat(r.altezzaMm() * ProtocolloQl.PUNTI_PER_MM).isCloseTo(r.immagine().getHeight(), org.assertj.core.data.Offset.offset(1.0));
     }
 
-    /** Un titolo a 48 pt piu' ingredienti lunghissimi non stanno nell'altezza del rotolo nemmeno alla lunghezza massima (caso B): avviso e contenuto tagliato, non un errore. */
+    /**
+     * Prodotto ricco (Completa + qr 18 + logo 10) sul 62: verticale, larga quanto il rotolo,
+     * {@code lungoIlNastro} falso (test (1) del mandato: qr/logo sono blocchi a misura FISSA, non
+     * si accorciano allargando la riga, quindi di norma spingono verso il verticale).
+     */
     @Test
-    void unContenutoTroppoAltoProduceLavvisoDiNonStareEVieneTagliato() {
-        ProdottoDto prodotto = prodottoEnorme();
+    void unProdottoRiccoConQrELogoSulRotolo62SceglieIlVerticale() throws Exception {
+        Path cartella = Files.createTempDirectory("etichette-test-prodotto-ricco-");
+        salvaLogoDiProva(cartella);
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        RenditoreEtichetta rendererConLogo = new RenditoreEtichetta(caratteri, new LogoService(cartella.toString()));
 
-        // sul 102 (regola del prototipo) si finisce nel caso B alla lunghezza massima, tagliato in altezza
-        RisultatoResa r102 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
-        assertThat(r102.avvisi()).contains("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
-        assertThat(r102.lungoIlNastro()).isTrue();
-        assertThat(r102.immagine().getWidth()).isEqualTo(3543); // lunghezza massima raggiunta (300 mm)
-        assertThat(r102.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(102)[1]); // tagliato, non piu' alto
-        assertThat(r102.altezzaMm()).isEqualTo(102.0); // il lato sul nastro: il nominale
+        List<BloccoDto> blocchi = new java.util.ArrayList<>(etichettaCompleta().blocchi());
+        blocchi.add(new BloccoDto("qr", true, 18, "piena", null));
+        blocchi.add(new BloccoDto("logo", true, 10, "piena", null));
+        EtichettaProdottoDto etichettaRicca = new EtichettaProdottoDto(etichettaCompleta().dicituraScadenza(),
+                etichettaCompleta().formatoData(), etichettaCompleta().produttore(), etichettaCompleta().zona(), blocchi);
+        ProdottoDto prodottoRicco = new ProdottoDto(1L, "Base pizza low carb", "BASE PIZZA LOW CARB ARTIGIANALE", etichettaRicca,
+                prodottoBase().ingredienti(), prodottoBase().allergeni(), prodottoBase().modoUso(), 7, "Fuori dal frigo",
+                "2148 g", prodottoBase().valoriNutrizionali(), "M.C.", 12, null, null, null);
 
-        // sul 62 (sempre verticale) si tagliano i 500 mm di nastro, con l'avviso apposito
-        RisultatoResa r62 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
-        assertThat(r62.avvisi()).contains("Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi");
-        assertThat(r62.lungoIlNastro()).isFalse();
-        assertThat(r62.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
-        assertThat(r62.immagine().getHeight()).isEqualTo(Math.round(500f * 300f / 25.4f));
-        assertThat(r62.larghezzaMm()).isEqualTo(62.0);
-    }
+        RisultatoResa r = rendererConLogo.rendi(prodottoRicco, parametriDiProva(), 62, 1.0);
 
-    private static ProdottoDto prodottoEnorme() {
-        List<BloccoDto> blocchi = List.of(
-                new BloccoDto("titolo", true, 48, "piena", null),
-                new BloccoDto("ingredienti", true, 10, "piena", null));
-        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
-        String ingredientiLunghissimi = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. "
-                .repeat(60);
-        return new ProdottoDto(1L, "Prodotto con titolo enorme", "TITOLO ENORME", etichetta,
-                ingredientiLunghissimi, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+        assertThat(r.lungoIlNastro()).isFalse();
+        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(contienePixelNeri(r.immagine())).isTrue();
     }
 
     /**
-     * Aggiungere un blocco puo' solo far crescere (o lasciare uguale) la lunghezza trovata, mai
-     * farla diminuire - contenuto abbastanza ricco da restare nel caso B in entrambi gli scenari
-     * (nel caso A "larghezzaMm" e' sempre il nominale, non rifletterebbe il contenuto).
+     * Contenuto compatto (titolo 14, ingredienti 5 pt) sul 62: l'altezza a larghezza di riga = W
+     * supera W (hA > W, il verticale non basta gia'), e la lunghezza minima trovata L e' PIU'
+     * CORTA del nastro verticale - test (2) del mandato: verifica esplicita L &lt; hA (il confine
+     * da cui parte la ricerca) esponendo i due candidati con {@link RenditoreEtichetta#calcolaOrientamento}.
+     * Calibrato empiricamente (il titolo, ad altezza fissa indipendente dalla larghezza, deve
+     * pesare abbastanza rispetto agli ingredienti perche' l'orizzontale vinca per davvero - con
+     * un solo blocco di paragrafo puro verticale e orizzontale finiscono quasi sempre in un pareggio
+     * a favore del verticale, per come la lunghezza di una riga di testo scala con la larghezza).
      */
     @Test
-    void laLunghezzaCresceORestaUgualeAggiungendoUnBlocco() {
-        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. ".repeat(45);
+    void unContenutoCompattoSulRotolo62SceglieLOrizzontalePerchePiuCortoDelVerticale() {
+        List<BloccoDto> blocchi = List.of(
+                new BloccoDto("titolo", true, 14, "piena", null),
+                new BloccoDto("ingredienti", true, 5, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva, Zucchero, Lievito. ".repeat(15);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto compatto", "PRODOTTO COMPATTO", etichetta,
+                ingredienti, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+
+        RenditoreEtichetta.EsitoOrientamento esito = renderer.calcolaOrientamento(prodotto, ParametriStampa.VUOTI, 62);
+        assertThat(esito.lunghezzaOrizzontalePt()).isNotNull();
+        assertThat(esito.lunghezzaOrizzontalePt()).isLessThan(esito.nastroVerticalePt());
+        assertThat(esito.usaOrizzontale()).isTrue();
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        assertThat(r.lungoIlNastro()).isTrue();
+        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.immagine().getWidth()).isEqualTo(esito.lunghezzaOrizzontalePt());
+    }
+
+    /**
+     * Uno "spazio" enorme (indipendente dalla larghezza di riga: non si accorcia MAI allargando la
+     * larghezza, a differenza del testo) supera sia il tetto del verticale (500 mm) sia il massimo
+     * dell'orizzontale (300 mm) a QUALUNQUE larghezza: nessuno dei due candidati sta per davvero,
+     * quindi si ripiega comunque sul verticale, tagliato a 500 mm, con l'avviso apposito (non
+     * quello - rimosso - del vecchio "caso B").
+     */
+    @Test
+    void unContenutoTroppoAltoProduceLavvisoDiNonStareEVieneTagliato() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("spazio", true, 2000, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto con spazio enorme", "PRODOTTO", etichetta,
+                null, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(r.avvisi()).contains("Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi");
+        assertThat(r.lungoIlNastro()).isFalse();
+        assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
+        assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.mmInDot(500));
+        assertThat(r.larghezzaMm()).isEqualTo(62.0); // il lato sul nastro: il nominale
+    }
+
+    /**
+     * Aggiungere un blocco puo' solo far crescere (o lasciare uguale) il nastro DAVVERO consumato,
+     * mai farlo diminuire - qualunque candidato vinca in ciascuno dei due scenari (il minimo di due
+     * funzioni non decrescenti resta non decrescente).
+     */
+    @Test
+    void ilNastroConsumatoNonDiminuisceAggiungendoUnBlocco() {
+        String ingredienti = "Acqua, Farina di GRANO tenero tipo 0, Sale, Lievito madre essiccato, Olio extravergine di oliva. ".repeat(20);
         List<BloccoDto> pochi = List.of(
                 new BloccoDto("titolo", true, 18, "piena", null),
                 new BloccoDto("ingredienti", true, 8, "piena", null));
@@ -215,12 +268,15 @@ class RenditoreEtichettaTest {
         ProdottoDto prodottoConBloccoInPiu = new ProdottoDto(1L, "Prodotto", "PRODOTTO", etichettaConBloccoInPiu,
                 ingredienti, List.of(), null, null, null, null, List.of(), null, 0, null, null, null);
 
-        RisultatoResa base = renderer.rendi(prodottoPochi, ParametriStampa.VUOTI, 102, 1.0);
-        RisultatoResa risultatoConBloccoInPiu = renderer.rendi(prodottoConBloccoInPiu, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa base = renderer.rendi(prodottoPochi, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa risultatoConBloccoInPiu = renderer.rendi(prodottoConBloccoInPiu, ParametriStampa.VUOTI, 62, 1.0);
 
-        assertThat(base.lungoIlNastro()).isTrue();
-        assertThat(risultatoConBloccoInPiu.lungoIlNastro()).isTrue();
-        assertThat(risultatoConBloccoInPiu.larghezzaMm()).isGreaterThanOrEqualTo(base.larghezzaMm());
+        assertThat(nastroConsumatoMm(risultatoConBloccoInPiu)).isGreaterThanOrEqualTo(nastroConsumatoMm(base));
+    }
+
+    /** Quanto nastro consuma davvero l'etichetta (il lato che NON e' il nominale): la larghezza se orizzontale, l'altezza se verticale. */
+    private static double nastroConsumatoMm(RisultatoResa r) {
+        return r.lungoIlNastro() ? r.larghezzaMm() : r.altezzaMm();
     }
 
     @Test
@@ -350,18 +406,7 @@ class RenditoreEtichettaTest {
     @Test
     void ilBloccoLogoSiStampaConDitheringSeCaricato() throws Exception {
         Path cartella = Files.createTempDirectory("etichette-test-con-logo-");
-        // meta' nera, meta' bianca: col dithering ci si aspetta sicuramente pixel neri, e
-        // un'immagine diversa da un rettangolo pieno (la soglia secca darebbe lo stesso risultato
-        // per un'immagine cosi' netta; qui basta verificare che si stampi qualcosa e che le
-        // dimensioni tornino - i dettagli del dithering sono verificati a vista nel report).
-        BufferedImage sorgente = new BufferedImage(40, 20, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = sorgente.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, 40, 20);
-        g.setColor(Color.BLACK);
-        g.fillRect(0, 0, 20, 20);
-        g.dispose();
-        ImageIO.write(sorgente, "png", cartella.resolve("logo.png").toFile());
+        salvaLogoDiProva(cartella);
 
         Caratteri caratteri = new Caratteri();
         caratteri.carica();
@@ -381,6 +426,98 @@ class RenditoreEtichettaTest {
         assertThat(r.lungoIlNastro()).isFalse();
         assertThat(r.larghezzaMm()).isEqualTo(102.0);
         assertThat(r.avvisi()).isEmpty();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Allineamento dei blocchi (decisione del 2026-09-09 pomeriggio, mandato B)
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Testo centrato: i margini sinistro e destro dell'inchiostro sono uguali entro pochi punti.
+     * Usa "testoGrande" invece di "titolo" apposta: il titolo disegna anche un filetto sottostante
+     * a TUTTA larghezza (indipendente dall'allineamento del testo), che confonderebbe la misura
+     * dei margini dell'inchiostro - "testoGrande" passa dallo stesso {@code disegnaParagrafo}/
+     * {@code xAllineata} del titolo, senza quella complicazione.
+     */
+    @Test
+    void unTestoCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("testoGrande", true, 24, "piena", "CENTRATO", "centro"));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        int[] limiti = limitiOrizzontaliInchiostro(r.immagine());
+
+        assertThat(limiti).describedAs("nessun pixel nero trovato").isNotNull();
+        int margineSx = limiti[0];
+        int margineDx = r.immagine().getWidth() - 1 - limiti[1];
+        assertThat(Math.abs(margineSx - margineDx)).isLessThanOrEqualTo(4);
+    }
+
+    /** Testo a destra: il margine destro dell'inchiostro coincide col margine del blocco (1,5 mm). */
+    @Test
+    void unTestoADestraHaIlMargineDestroPariAlMargineDelBlocco() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("testoGrande", true, 24, "piena", "DESTRA", "destra"));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        int[] limiti = limitiOrizzontaliInchiostro(r.immagine());
+
+        assertThat(limiti).isNotNull();
+        int margineDx = r.immagine().getWidth() - 1 - limiti[1];
+        int margineAtteso = (int) Math.round(1.5 * ProtocolloQl.PUNTI_PER_MM); // MARGINE_MM del renderer
+        assertThat(margineDx).isCloseTo(margineAtteso, org.assertj.core.data.Offset.offset(4));
+    }
+
+    /** Il QR centrato ha anch'esso margini sinistro e destro uguali entro pochi punti (posizione orizzontale, non solo il testo). */
+    @Test
+    void unQrCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("qr", true, 18, "piena", null, "centro"));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
+        ParametriStampa parametri = new ParametriStampa(null, null, "L 20260909-001");
+
+        RisultatoResa r = renderer.rendi(prodotto, parametri, 62, 1.0);
+        int[] limiti = limitiOrizzontaliInchiostro(r.immagine());
+
+        assertThat(limiti).isNotNull();
+        int margineSx = limiti[0];
+        int margineDx = r.immagine().getWidth() - 1 - limiti[1];
+        assertThat(Math.abs(margineSx - margineDx)).isLessThanOrEqualTo(4);
+    }
+
+    /** Colonna [minX, maxX] con almeno un pixel nero nell'immagine, o null se non ce n'e' nessuno. */
+    private static int[] limitiOrizzontaliInchiostro(BufferedImage img) {
+        int minX = -1, maxX = -1;
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                if ((img.getRGB(x, y) & 0xFFFFFF) == 0) {
+                    if (minX == -1 || x < minX) {
+                        minX = x;
+                    }
+                    if (x > maxX) {
+                        maxX = x;
+                    }
+                }
+            }
+        }
+        return minX == -1 ? null : new int[]{minX, maxX};
+    }
+
+    /** Logo di prova (meta' nera, meta' bianca: col dithering ci si aspetta sicuramente pixel neri), salvato in {@code cartella} per {@link LogoService}. */
+    private static void salvaLogoDiProva(Path cartella) throws Exception {
+        BufferedImage sorgente = new BufferedImage(40, 20, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = sorgente.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 40, 20);
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, 20, 20);
+        g.dispose();
+        ImageIO.write(sorgente, "png", cartella.resolve("logo.png").toFile());
     }
 
     private static boolean contienePixelNeri(BufferedImage img) {

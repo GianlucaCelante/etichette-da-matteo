@@ -154,4 +154,14 @@ class ProdottiApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errore").exists());
     }
+
+    /** Allineamento (decisione del 2026-09-09 pomeriggio): solo "sinistra"/"centro"/"destra" sono ammessi. */
+    @Test
+    void unPutConUnAllineamentoDiBloccoSconosciutoNellEtichettaRispondeErrore() throws Exception {
+        String corpo = "{\"nome\":\"Base pizza low carb\",\"etichetta\":{\"blocchi\":"
+                + "[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":18,\"colonna\":\"piena\",\"allineamento\":\"su\"}]}}";
+        mockMvc.perform(put("/api/prodotti/1").contentType("application/json").content(corpo))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").exists());
+    }
 }

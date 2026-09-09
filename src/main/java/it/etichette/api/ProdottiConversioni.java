@@ -150,6 +150,9 @@ public class ProdottiConversioni {
             if (b.colonna() == null || !Contratto.COLONNE.contains(b.colonna())) {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta.blocchi: colonna non ammessa: " + b.colonna());
             }
+            if (!Contratto.ALLINEAMENTI.contains(b.allineamento())) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta.blocchi: allineamento non ammesso: " + b.allineamento());
+            }
         }
     }
 

@@ -12,6 +12,8 @@ import it.etichette.api.ValoreNutrizionaleDto;
 import it.etichette.api.ZonaDto;
 import it.etichette.dati.Contratto;
 import it.etichette.stampante.ProtocolloQl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.awt.BasicStroke;
@@ -31,7 +33,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,62 +42,58 @@ import java.util.regex.Pattern;
  * AttributedString + LineBreakMeasurer per il grassetto misto, zona a due colonne con filetto
  * verticale, tabella dei valori nutrizionali allineata a destra.
  *
- * <p><b>Geometria (decisione del 2026-09-09, allineata alla regola ESATTA del prototipo
- * {@code artefatti-claude/banco-etichette-2026-09-08.html}, funzione {@code misuraEtichetta}):
- * l'etichetta in mano non e' MAI piu' alta che larga. Sia {@code H} la larghezza utile del rotolo
- * in punti (696 per il 62 mm, 1164 per il 102, margine di {@link #MARGINE_MM} sopra/sotto
- * compreso). Si prova PRIMA a disporre il contenuto con larghezza di riga {@code H} (il motore di
- * layout e' sempre lo stesso, {@link #disegnaBlocco}/{@link #disegnaZona}: dato x/y/larghezza
- * restituisce la y finale):
+ * <p><b>Orientamento (decisione del 2026-09-09 pomeriggio, dopo le stampe di prova - sostituisce
+ * la regola "mai piu' alta che larga" del prototipo, che sul 62 consumava troppo nastro)</b>:
+ * la regola unica, su entrambi i rotoli, e' "consuma meno nastro possibile". Sia {@code W} la
+ * larghezza utile del rotolo in punti (696 per il 62 mm, 1164 per il 102, margine di
+ * {@link #MARGINE_MM} sopra/sotto compreso). Si calcolano due candidati (il motore di layout e'
+ * sempre lo stesso, {@link #disegnaBlocco}/{@link #disegnaZona}: dato x/y/larghezza restituisce la
+ * y finale):
  *
  * <ul>
- *   <li><b>caso A, "corta"</b>: se l'altezza risultante {@code h} e' ≤ {@code H}, il testo corre
- *       ATTRAVERSO il nastro come nella vecchia geometria (pre-2026-09-09): immagine larga
- *       {@code H}, alta {@code max(h, } {@link #ALTEZZA_MINIMA_CASO_A_PT} {@code )} - tagliata
- *       all'altezza del contenuto, senza spazio bianco fino a un quadrato - e NESSUNA rotazione
- *       per la stampa (l'immagine e' gia' larga quanto il rotolo);</li>
- *   <li><b>caso B, "lunga"</b>: altrimenti l'etichetta corre LUNGO il nastro, alta quanto il
- *       rotolo ({@code H}), e si cerca con una ricerca binaria la lunghezza {@code L} minima (fra
- *       {@code H} - il confine del caso A, "a L = H il contenuto sta" - e
- *       {@link #LUNGHEZZA_MASSIMA_PT}) che la contiene (vedi {@link #cercaLunghezzaMinima}); oltre
- *       il massimo, avviso e contenuto tagliato. Rotazione di 90° per la stampa
- *       ({@link #ruotaPerStampa}, solo chi stampa la chiama - vedi {@code StampeService}).</li>
+ *   <li><b>verticale</b> (testo ATTRAVERSO il nastro, nessuna rotazione per la stampa): si misura
+ *       il contenuto a larghezza di riga {@code W} (altezza {@code hA}); il nastro consumato e'
+ *       {@code max(hA, } {@link #ALTEZZA_MINIMA_CASO_A_PT} {@code )}, con un tetto di
+ *       {@link #ALTEZZA_MASSIMA_VERTICALE_MM} (oltre, avviso e contenuto tagliato). Esiste
+ *       SEMPRE;</li>
+ *   <li><b>orizzontale</b> (righe LUNGO il nastro, altezza {@code W}, rotazione per la stampa,
+ *       {@link #ruotaPerStampa}): si prova SOLO se {@code hA > W} (altrimenti nessuna lunghezza,
+ *       che parte comunque da {@code W}, potrebbe essere piu' corta del nastro verticale gia'
+ *       trovato) - ricerca binaria della lunghezza {@code L} minima fra {@code W} e
+ *       {@link #LUNGHEZZA_MASSIMA_PT} che contiene il contenuto (vedi
+ *       {@link #cercaLunghezzaMinima}); se non ci sta nemmeno al massimo il candidato NON esiste
+ *       (nessun avviso per questo: si ripiega sul verticale).</li>
  * </ul>
  *
- * <p>{@link #rendi} restituisce sempre l'immagine NON ruotata (quella dell'anteprima, docs/api.md)
- * e le misure DELL'ETICHETTA IN MANO nel verso in cui si legge: il lato che giace sul nastro si
- * dichiara col rotolo NOMINALE (62 o 102), non con la larghezza utile precisa (58,9/98,6) - vedi
- * {@link RisultatoResa#lungoIlNastro()} per sapere quale campo (larghezza o altezza) e' quello sul
- * nastro.
+ * <p>Si sceglie l'orizzontale SOLO se il candidato esiste e consuma MENO nastro del verticale
+ * (stretto: a parita' vince il verticale, nessuna rotazione). {@link #rendi} restituisce sempre
+ * l'immagine NON ruotata (quella dell'anteprima, docs/api.md) e le misure DELL'ETICHETTA IN MANO
+ * nel verso in cui si legge: il lato che giace sul nastro si dichiara col rotolo NOMINALE (62 o
+ * 102), non con la larghezza utile precisa (58,9/98,6) - vedi {@link RisultatoResa#lungoIlNastro()}
+ * per sapere quale campo (larghezza o altezza) e' quello sul nastro. Un log INFO (stampe, scala 1)
+ * o DEBUG (anteprime) per ogni resa riepiloga i due candidati e la scelta, per l'assistenza.
  */
 @Component
 public class RenditoreEtichetta {
+
+    private static final Logger log = LoggerFactory.getLogger(RenditoreEtichetta.class);
 
     private static final float MARGINE_MM = 1.5f;
     private static final float GUTTER_MM = 2.0f;
     private static final float SPAZIO_TRA_BLOCCHI_MM = 0.6f;
     /**
-     * Altezza minima dell'immagine nel caso A ("corta"): il prototipo usa 20 mm (236 punti,
-     * {@code LUNGH.min}), ma il manuale della stampante impone un minimo hardware di 25,4 mm (300
-     * punti) per il nastro continuo (mappatura, "Limiti nastro continuo" - lo stesso minimo gia'
-     * usato altrove nel servizio, {@code MonitorStampante.RIGHE_ESPULSIONE_MINIMO}): sotto quel
-     * minimo il nastro potrebbe non essere alimentabile, quindi qui si usa 300, non 236 - segnalato
-     * al team (vedi il report).
+     * Altezza minima del candidato verticale: il prototipo usa 20 mm (236 punti, {@code LUNGH.min}),
+     * ma il manuale della stampante impone un minimo hardware di 25,4 mm (300 punti) per il nastro
+     * continuo (mappatura, "Limiti nastro continuo" - lo stesso minimo gia' usato altrove nel
+     * servizio, {@code MonitorStampante.RIGHE_ESPULSIONE_MINIMO}): sotto quel minimo il nastro
+     * potrebbe non essere alimentabile, quindi qui si usa 300, non 236 - segnalato al team.
      */
     private static final int ALTEZZA_MINIMA_CASO_A_PT = 300;
-    /**
-     * Rotoli su cui l'etichetta e' SEMPRE verticale (caso A senza il vincolo "mai piu' alta che
-     * larga"): deciso il 2026-09-09 pomeriggio dopo la stampa di prova - sul 62 l'etichetta lunga
-     * consumava troppo nastro (300 mm per «Base pizza low carb»). Sul 102 resta la regola del
-     * prototipo (corta se sta in un quadrato, altrimenti lunga).
-     */
-    private static final Set<Integer> ROTOLI_SEMPRE_VERTICALI = Set.of(62);
-    /** Altezza massima dell'etichetta verticale (lungo il nastro): oltre, avviso e contenuto tagliato. */
+    /** Altezza massima del candidato verticale (lungo il nastro): oltre, avviso e contenuto tagliato. */
     private static final float ALTEZZA_MASSIMA_VERTICALE_MM = 500f;
     private static final String AVVISO_CONTENUTO_NON_STA_VERTICALE = "Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi";
-    /** Lunghezza massima lungo il nastro per la ricerca del caso B: 300 mm - oltre, avviso e contenuto tagliato. */
+    /** Lunghezza massima lungo il nastro per la ricerca del candidato orizzontale: 300 mm. */
     private static final int LUNGHEZZA_MASSIMA_PT = 3543;
-    private static final String AVVISO_CONTENUTO_NON_STA = "Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi";
     private static final Pattern PAROLA = Pattern.compile("\\p{L}+");
 
     private final Caratteri caratteri;
@@ -121,7 +118,7 @@ public class RenditoreEtichetta {
         if (spec == null) {
             throw new IllegalArgumentException("rotolo non gestito: " + rotoloMm + " mm");
         }
-        int larghezzaUtile = spec[1]; // H: larghezza utile del rotolo, margine sopra/sotto compreso
+        int larghezzaUtile = spec[1]; // W: larghezza utile del rotolo, margine sopra/sotto compreso
         int margine = mmInPx(MARGINE_MM);
 
         List<String> avvisi = new ArrayList<>();
@@ -129,36 +126,25 @@ public class RenditoreEtichetta {
         List<BloccoDto> renderizzabili = filtraRenderizzabili(etichetta, prodotto, p);
         List<Object> sequenza = raggruppaInZone(renderizzabili);
 
-        // Si prova PRIMA il caso A: contenuto disposto con larghezza di riga = H (il testo corre
-        // ATTRAVERSO il nastro, come nella vecchia geometria pre-2026-09-09).
-        int altezzaAH = misuraAltezza(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+        EsitoOrientamento esito = sceglieOrientamento(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
 
         int larghezzaImmagine;
         int altezzaImmagine;
         boolean lungoIlNastro;
-        if (ROTOLI_SEMPRE_VERTICALI.contains(rotoloMm) || altezzaAH <= larghezzaUtile) {
-            // Caso A ("corta", o verticale senza limite sui rotoli di ROTOLI_SEMPRE_VERTICALI):
-            // niente rotazione per la stampa, l'immagine e' gia' larga quanto il rotolo. Altezza
-            // tagliata al contenuto (mai spazio bianco fino a un quadrato), con un minimo hardware
-            // (vedi ALTEZZA_MINIMA_CASO_A_PT) e un massimo oltre il quale si avvisa e si taglia.
-            int altezzaMassima = mmInPx(ALTEZZA_MASSIMA_VERTICALE_MM);
-            if (altezzaAH > altezzaMassima) {
-                avvisi.add(AVVISO_CONTENUTO_NON_STA_VERTICALE);
-            }
-            larghezzaImmagine = larghezzaUtile;
-            altezzaImmagine = Math.min(Math.max(altezzaAH, ALTEZZA_MINIMA_CASO_A_PT), altezzaMassima);
-            lungoIlNastro = false;
-        } else {
-            // Caso B ("lunga"): il confine del caso A ("a L = H il contenuto sta") e' anche il
-            // minimo da cui parte la ricerca binaria della lunghezza.
-            RicercaLunghezza ricerca = cercaLunghezzaMinima(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
-            if (ricerca.nonSta()) {
-                avvisi.add(AVVISO_CONTENUTO_NON_STA);
-            }
-            larghezzaImmagine = ricerca.lunghezza();
+        if (esito.usaOrizzontale()) {
+            larghezzaImmagine = esito.lunghezzaOrizzontalePt();
             altezzaImmagine = larghezzaUtile;
             lungoIlNastro = true;
+        } else {
+            larghezzaImmagine = larghezzaUtile;
+            altezzaImmagine = esito.nastroVerticalePt();
+            lungoIlNastro = false;
+            if (esito.verticaleTagliato()) {
+                avvisi.add(AVVISO_CONTENUTO_NON_STA_VERTICALE);
+            }
         }
+
+        logResa(prodotto, rotoloMm, scala, esito);
 
         BufferedImage lavoro = new BufferedImage(larghezzaImmagine, altezzaImmagine, BufferedImage.TYPE_BYTE_BINARY);
         Graphics2D g = lavoro.createGraphics();
@@ -167,9 +153,9 @@ public class RenditoreEtichetta {
         configuraRendering(g);
         FontRenderContext frc = g.getFontRenderContext();
 
-        // Nel caso B, se il contenuto non sta (ricerca.nonSta()), disegnare in un buffer alto H
-        // taglia da solo l'eccedenza (Graphics2D non lancia mai nulla per un disegno fuori dai
-        // bordi): "taglia all'altezza H" non richiede nessun passaggio in piu'.
+        // Se il contenuto non sta nell'altezza dell'immagine (candidato verticale tagliato a 500
+        // mm), disegnare in un buffer di quell'altezza taglia da solo l'eccedenza (Graphics2D non
+        // lancia mai nulla per un disegno fuori dai bordi): non serve nessun passaggio in piu'.
         int larghezzaContenuto = Math.max(1, larghezzaImmagine - 2 * margine);
         float y = margine;
         for (Object elemento : sequenza) {
@@ -192,8 +178,84 @@ public class RenditoreEtichetta {
         return new RisultatoResa(finale, larghezzaMm, altezzaMm, avvisi, lungoIlNastro);
     }
 
+    /**
+     * Un log a DEBUG per ogni resa, coi due candidati e la scelta - per l'assistenza (vedi la nota
+     * di classe). Le stampe vere sono loggate a INFO da {@code StampeService} ("Stampa avviata"),
+     * con la forma scelta e le misure: qui non si distingue anteprima da stampa (anche {@code
+     * /misure} e {@code /prodotti/{id}.png} rendono a scala 1).
+     */
+    private void logResa(ProdottoDto prodotto, int rotoloMm, double scala, EsitoOrientamento esito) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        String verticaleMm = String.format(Locale.ITALY, "%.0f", esito.nastroVerticalePt() / ProtocolloQl.PUNTI_PER_MM);
+        String orizzontaleTesto = esito.lunghezzaOrizzontalePt() != null
+                ? String.format(Locale.ITALY, "%.0f mm", esito.lunghezzaOrizzontalePt() / ProtocolloQl.PUNTI_PER_MM)
+                : "non sta";
+        String scelta = esito.usaOrizzontale() ? "orizzontale" : "verticale";
+        log.debug("Resa \"{}\" rotolo {} (scala {}): verticale {} mm, orizzontale {} → {}",
+                prodotto.nome(), rotoloMm, scala, verticaleMm, orizzontaleTesto, scelta);
+    }
+
     // =========================================================================================
-    // Ricerca della lunghezza minima lungo il nastro (caso B, geometria del 2026-09-09)
+    // Scelta dell'orientamento: meno nastro possibile fra verticale e orizzontale (2026-09-09 pomeriggio)
+    // =========================================================================================
+
+    /**
+     * Pacchetto-privato PER I TEST: espone i due candidati calcolati da {@link #rendi} per un
+     * prodotto/rotolo dati, cosi' si puo' verificare esplicitamente il confronto (es. {@code
+     * lunghezzaOrizzontalePt() < nastroVerticalePt()}) senza dover dedurlo dalle misure finali.
+     */
+    record EsitoOrientamento(int nastroVerticalePt, boolean verticaleTagliato, Integer lunghezzaOrizzontalePt, boolean usaOrizzontale) {
+    }
+
+    /** Come {@link #rendi}, ma si ferma alla scelta dell'orientamento (per {@link #EsitoOrientamento}, solo per i test). */
+    EsitoOrientamento calcolaOrientamento(ProdottoDto prodotto, ParametriStampa parametri, int rotoloMm) {
+        EtichettaProdottoDto etichetta = prodotto.etichetta() != null
+                ? prodotto.etichetta() : new EtichettaProdottoDto(null, null, null, null, List.of());
+        int[] spec = ProtocolloQl.ROTOLI_CONTINUI.get(rotoloMm);
+        if (spec == null) {
+            throw new IllegalArgumentException("rotolo non gestito: " + rotoloMm + " mm");
+        }
+        int larghezzaUtile = spec[1];
+        int margine = mmInPx(MARGINE_MM);
+        ParametriStampa p = parametri != null ? parametri : ParametriStampa.VUOTI;
+        List<BloccoDto> renderizzabili = filtraRenderizzabili(etichetta, prodotto, p);
+        List<Object> sequenza = raggruppaInZone(renderizzabili);
+        return sceglieOrientamento(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+    }
+
+    /**
+     * Calcola i due candidati (vedi la nota di classe) e sceglie: l'orizzontale SOLO se esiste e
+     * consuma MENO nastro del verticale (stretto: a parita' vince il verticale, nessuna rotazione).
+     */
+    private EsitoOrientamento sceglieOrientamento(List<Object> sequenza, EtichettaProdottoDto etichetta, ProdottoDto prodotto,
+                                                   ParametriStampa p, int larghezzaUtile, int margine) {
+        // Candidato VERTICALE (testo attraverso il nastro, larghezza di riga = W): esiste sempre.
+        int altezzaAW = misuraAltezza(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+        int altezzaMassimaVerticale = mmInPx(ALTEZZA_MASSIMA_VERTICALE_MM);
+        int nastroVerticaleGrezzo = Math.max(altezzaAW, ALTEZZA_MINIMA_CASO_A_PT);
+        boolean verticaleTagliato = nastroVerticaleGrezzo > altezzaMassimaVerticale;
+        int nastroVerticale = Math.min(nastroVerticaleGrezzo, altezzaMassimaVerticale);
+
+        // Candidato ORIZZONTALE (righe lungo il nastro, altezza W): si prova SOLO se il verticale
+        // non basta gia' (altezzaAW > W) - se il contenuto sta gia' a larghezza W in altezza <= W,
+        // nessuna lunghezza L (che parte comunque da W) potrebbe essere piu' corta del nastro
+        // verticale gia' trovato.
+        Integer lunghezzaOrizzontale = null;
+        if (altezzaAW > larghezzaUtile) {
+            RicercaLunghezza ricerca = cercaLunghezzaMinima(sequenza, etichetta, prodotto, p, larghezzaUtile, margine);
+            if (!ricerca.nonSta()) {
+                lunghezzaOrizzontale = ricerca.lunghezza();
+            } // altrimenti il candidato orizzontale non esiste: nessun avviso, si ripiega sul verticale
+        }
+
+        boolean usaOrizzontale = lunghezzaOrizzontale != null && lunghezzaOrizzontale < nastroVerticale;
+        return new EsitoOrientamento(nastroVerticale, verticaleTagliato, lunghezzaOrizzontale, usaOrizzontale);
+    }
+
+    // =========================================================================================
+    // Ricerca della lunghezza minima lungo il nastro (candidato orizzontale, geometria del 2026-09-09)
     // =========================================================================================
 
     /** Esito di {@link #cercaLunghezzaMinima}: la lunghezza trovata (in punti) e se anche a {@link #LUNGHEZZA_MASSIMA_PT} il contenuto non ci sta. */
@@ -201,11 +263,11 @@ public class RenditoreEtichetta {
     }
 
     /**
-     * Cerca la lunghezza L minima, fra {@code altezzaObiettivo} (il confine del caso A, "a L = H
-     * il contenuto sta") e {@link #LUNGHEZZA_MASSIMA_PT}, tale che il layout disposto con
-     * larghezza di riga L stia nell'altezza obiettivo: la funzione altezza(L) e' quasi sempre
-     * monotona non crescente (una riga piu' larga si spezza meno righe), quindi la ricerca binaria
-     * basta - ma non e' garantito al 100% (es. gli a-capo di {@link #disegnaVoceValore}), quindi
+     * Cerca la lunghezza L minima, fra {@code altezzaObiettivo} (= W, larghezza utile del rotolo:
+     * il confine "a L = W il contenuto sta") e {@link #LUNGHEZZA_MASSIMA_PT}, tale che il layout
+     * disposto con larghezza di riga L stia nell'altezza obiettivo: la funzione altezza(L) e' quasi
+     * sempre monotona non crescente (una riga piu' larga si spezza meno righe), quindi la ricerca
+     * binaria basta - ma non e' garantito al 100% (es. gli a-capo di {@link #disegnaVoceValore}), quindi
      * dopo la ricerca si VERIFICA il risultato e, se non ci sta per davvero, si allarga finche' non
      * ci sta o si raggiunge il massimo (a quel punto e' "non sta").
      */
@@ -406,10 +468,11 @@ public class RenditoreEtichetta {
                                  ProdottoDto prodotto, ParametriStampa parametri, float x, float y, float larghezza,
                                  List<String> avvisi) {
         float corpoPt = b.corpo();
+        String allineamento = b.allineamento();
         switch (b.tipo()) {
             case "titolo" -> {
                 String testo = titoloTesto(prodotto);
-                EsitoParagrafo r = disegnaParagrafo(g, frc, List.of(new Segmento(testo, caratteri.grassetto(corpoPt))), x, y, larghezza);
+                EsitoParagrafo r = disegnaParagrafo(g, frc, List.of(new Segmento(testo, caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento);
                 if (r.righe() > 1) {
                     avvisi.add("Il titolo è stato mandato a capo");
                 }
@@ -418,37 +481,37 @@ public class RenditoreEtichetta {
                 g.drawLine(Math.round(x), Math.round(y), Math.round(x + larghezza), Math.round(y));
                 y += mmInPx(0.8f);
             }
-            case "ingredienti" -> y = disegnaParagrafo(g, frc, segmentiIngredienti(prodotto.ingredienti(), corpoPt), x, y, larghezza).y();
-            case "puoContenere" -> y = disegnaParagrafo(g, frc, segmentiPuoContenere(prodotto.allergeni(), corpoPt), x, y, larghezza).y();
-            case "modoUso" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(prodotto.modoUso(), caratteri.regolare(corpoPt))), x, y, larghezza).y();
+            case "ingredienti" -> y = disegnaParagrafo(g, frc, segmentiIngredienti(prodotto.ingredienti(), corpoPt), x, y, larghezza, allineamento).y();
+            case "puoContenere" -> y = disegnaParagrafo(g, frc, segmentiPuoContenere(prodotto.allergeni(), corpoPt), x, y, larghezza, allineamento).y();
+            case "modoUso" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(prodotto.modoUso(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "scadenza" -> {
                 LocalDate scad = risolviScadenza(prodotto, parametri);
                 String dicitura = etichetta.dicituraScadenza() != null ? etichetta.dicituraScadenza() + " " : "";
                 List<Segmento> segs = List.of(
                         new Segmento(dicitura, caratteri.regolare(corpoPt)),
                         new Segmento(formattaData(scad, etichetta.formatoData()), caratteri.grassetto(corpoPt)));
-                y = disegnaParagrafo(g, frc, segs, x, y, larghezza).y();
+                y = disegnaParagrafo(g, frc, segs, x, y, larghezza, allineamento).y();
                 if (nonVuoto(prodotto.conservazione())) {
                     y = disegnaParagrafo(g, frc,
                             List.of(new Segmento(prodotto.conservazione().toUpperCase(Locale.ITALY), caratteri.regolare(corpoPt))),
-                            x, y, larghezza).y();
+                            x, y, larghezza, allineamento).y();
                 }
             }
-            case "lotto" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(parametri.lotto(), caratteri.regolare(corpoPt))), x, y, larghezza).y();
+            case "lotto" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(parametri.lotto(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "quantita" -> {
-                y = disegnaParagrafo(g, frc, List.of(new Segmento("Quantità", caratteri.grassetto(8f))), x, y, larghezza).y();
-                y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), caratteri.grassetto(corpoPt))), x, y, larghezza).y();
+                y = disegnaParagrafo(g, frc, List.of(new Segmento("Quantità", caratteri.grassetto(8f))), x, y, larghezza, allineamento).y();
+                y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
             }
             case "valori" -> y = disegnaTabellaValori(g, frc, prodotto.valoriNutrizionali(), corpoPt, x, y, larghezza);
-            case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), caratteri.regolare(corpoPt))), x, y, larghezza).y();
+            case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "dataProduzione" -> y = disegnaParagrafo(g, frc,
                     List.of(new Segmento(testoDataProduzione(etichetta.formatoData()), caratteri.regolare(corpoPt))),
-                    x, y, larghezza).y();
+                    x, y, larghezza, allineamento).y();
             case "sigla" -> y = disegnaParagrafo(g, frc,
                     List.of(new Segmento(testoSigla(prodotto), caratteri.regolare(corpoPt))),
-                    x, y, larghezza).y();
-            case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.regolare(corpoPt))), x, y, larghezza).y();
-            case "testoGrande" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.grassetto(corpoPt))), x, y, larghezza).y();
+                    x, y, larghezza, allineamento).y();
+            case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
+            case "testoGrande" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
             case "riga" -> {
                 y += mmInPx(0.8f);
                 g.setStroke(new BasicStroke(2f));
@@ -456,8 +519,8 @@ public class RenditoreEtichetta {
                 y += mmInPx(0.8f);
             }
             case "spazio" -> y += corpoPt * Caratteri.PX_PER_PT;
-            case "qr" -> y = disegnaQr(g, parametri.lotto(), corpoPt, x, y);
-            case "logo" -> y = disegnaLogo(g, corpoPt, x, y);
+            case "qr" -> y = disegnaQr(g, parametri.lotto(), corpoPt, x, y, larghezza, allineamento);
+            case "logo" -> y = disegnaLogo(g, corpoPt, x, y, larghezza, allineamento);
             default -> {
                 // nessun altro tipo di blocco previsto
             }
@@ -465,12 +528,27 @@ public class RenditoreEtichetta {
         return y + mmInPx(SPAZIO_TRA_BLOCCHI_MM);
     }
 
-    private float disegnaQr(Graphics2D g, String lotto, float latoMm, float x, float y) {
+    /**
+     * Posizione x di un elemento largo {@code larghezzaElemento} dentro lo spazio disponibile
+     * ({@code x}, {@code larghezza}), secondo l'allineamento ("sinistra" di default per qualunque
+     * valore non riconosciuto - non dovrebbe succedere, la validazione lo impedisce). Mai negativa
+     * rispetto a {@code x} (un elemento piu' largo dello spazio disponibile resta a sinistra).
+     */
+    private static float xAllineata(float x, float larghezza, float larghezzaElemento, String allineamento) {
+        return switch (allineamento) {
+            case "centro" -> x + Math.max(0, (larghezza - larghezzaElemento) / 2);
+            case "destra" -> x + Math.max(0, larghezza - larghezzaElemento);
+            default -> x; // "sinistra"
+        };
+    }
+
+    private float disegnaQr(Graphics2D g, String lotto, float latoMm, float x, float y, float larghezza, String allineamento) {
         try {
             int latoPx = mmInPx(latoMm > 0 ? latoMm : 12f);
             BitMatrix matrice = new MultiFormatWriter().encode(lotto, BarcodeFormat.QR_CODE, latoPx, latoPx);
             BufferedImage qr = MatrixToImageWriter.toBufferedImage(matrice);
-            g.drawImage(qr, Math.round(x), Math.round(y), null);
+            float xQr = xAllineata(x, larghezza, latoPx, allineamento);
+            g.drawImage(qr, Math.round(xQr), Math.round(y), null);
             return y + latoPx;
         } catch (Exception e) {
             return y; // lotto non codificabile: il blocco non occupa spazio
@@ -485,9 +563,10 @@ public class RenditoreEtichetta {
      * Logo in bilivello con diffusione dell'errore di Floyd-Steinberg (non una soglia secca:
      * una foto o un logo con sfumature diventerebbe un blocco nero informe), alto quanto dice
      * {@code corpo} in mm (7…48 della scaletta dei corpi non si applica qui: e' un valore libero
-     * in mm, come per il blocco "qr"; docs/api.md), proporzioni conservate, allineato a sinistra.
+     * in mm, come per il blocco "qr"; docs/api.md), proporzioni conservate, posizione orizzontale
+     * secondo {@code allineamento}.
      */
-    private float disegnaLogo(Graphics2D g, float altezzaMmRichiesta, float x, float y) {
+    private float disegnaLogo(Graphics2D g, float altezzaMmRichiesta, float x, float y, float larghezza, String allineamento) {
         BufferedImage originale = logo.leggiImmagine();
         if (originale == null || originale.getHeight() <= 0 || originale.getWidth() <= 0) {
             return y; // nessun logo caricato: il blocco non occupa spazio
@@ -505,7 +584,7 @@ public class RenditoreEtichetta {
         gs.dispose();
 
         boolean[][] nero = ditherFloydSteinberg(scalato);
-        int xi = Math.round(x);
+        int xi = Math.round(xAllineata(x, larghezza, larghezzaPx, allineamento));
         int yi = Math.round(y);
         for (int yy = 0; yy < altezzaPx; yy++) {
             for (int xx = 0; xx < larghezzaPx; xx++) {
@@ -647,11 +726,13 @@ public class RenditoreEtichetta {
     private record EsitoParagrafo(float y, int righe) {
     }
 
-    private EsitoParagrafo disegnaParagrafo(Graphics2D g, FontRenderContext frc, List<Segmento> segmenti, float x, float y, float larghezza) {
+    /** Ogni riga allineata per conto suo dentro {@code larghezza} (una riga corta centrata/a destra non si allinea alle altre, si allinea allo spazio disponibile - come un elaboratore di testi). */
+    private EsitoParagrafo disegnaParagrafo(Graphics2D g, FontRenderContext frc, List<Segmento> segmenti, float x, float y, float larghezza, String allineamento) {
         List<TextLayout> righe = costruisciRighe(frc, segmenti, Math.max(1f, larghezza));
         for (TextLayout riga : righe) {
             y += riga.getAscent();
-            riga.draw(g, x, y);
+            float xRiga = xAllineata(x, larghezza, riga.getVisibleAdvance(), allineamento);
+            riga.draw(g, xRiga, y);
             y += riga.getDescent() + riga.getLeading();
         }
         return new EsitoParagrafo(y, righe.size());
