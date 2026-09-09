@@ -86,7 +86,7 @@ Deciso l'8 settembre 2026, sul modello di `agent-java/scripts` (Build-Setup.ps1,
 1. copia app e JRE in `C:\Program Files\Etichette\`;
 2. crea `C:\ProgramData\Etichette\` per database SQLite, log e backup, con i permessi giusti per il servizio;
 3. registra il servizio Windows «Etichette» con WinSW: avvio automatico ritardato, riavvio da solo se cade, log ruotati;
-4. apre la porta nel firewall di Windows sul profilo privato. Porta **8765**, mai la 80, che potrebbe servire al gestionale; se è occupata ne prende un'altra e la scrive nelle Impostazioni. I telefoni arrivano dal QR, che porta l'indirizzo completo con la porta;
+4. apre la porta nel firewall di Windows su tutti i profili (Dominio, Privato, Pubblico): il confine di fiducia è la rete locale, non la classificazione che Windows dà alla rete, che su una Wi-Fi nuova nasce quasi sempre Pubblica. Porta **8765**, mai la 80, che potrebbe servire al gestionale; se è occupata ne prende un'altra e la scrive nelle Impostazioni. I telefoni arrivano dal QR, che porta l'indirizzo completo con la porta;
 5. crea il collegamento «Etichette» sul desktop e in Esecuzione automatica dell'utente: è Edge in modalità app (`msedge --app=http://localhost:8765/`) con l'icona dell'app. È la finestra sul PC;
 6. registra la voce in «App installate»: disinstallare ferma e toglie il servizio ma **lascia `ProgramData` con i dati**.
 

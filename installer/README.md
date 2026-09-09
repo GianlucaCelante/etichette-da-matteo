@@ -21,8 +21,9 @@ Sul PC di Matteo gira anche il gestionale delle casse. L'installer tocca
 - la propria cartella in `C:\Program Files\Etichette\`;
 - la propria cartella dati in `C:\ProgramData\Etichette\`;
 - il proprio servizio Windows (`Etichette`);
-- **una** regola del firewall (TCP 8765, profili Privato e Dominio, mai
-  Pubblico, mai la porta 80);
+- **una** regola del firewall (TCP 8765, profili Dominio, Privato e
+  Pubblico - il confine di fiducia e' la rete locale, non la
+  classificazione che Windows da' alla rete, mai la porta 80);
 - le proprie scorciatoie (desktop pubblico, avvio automatico e menu Start di
   tutti gli utenti).
 
@@ -232,7 +233,7 @@ quella si prova sul PC di sviluppo con gli spike in `tools/spike-jna/` e
 4. Verifica:
    - `Get-Service Etichette` -> `Running`;
    - `Get-NetFirewallRule -DisplayName Etichette` -> presente, profili
-     Private/Domain;
+     Domain/Private/Public;
    - scorciatoia "Etichette" sul desktop pubblico e in
      `shell:common startup`;
    - `C:\ProgramData\Etichette\` creata con `log\` e `backup\`;
@@ -284,7 +285,7 @@ data/valuta), togli quello che risulta inutile per tenere la JRE ridotta.
 | Rollback/downgrade via MSI (`JpAllowDowngrades`, `JP_DOWNGRADABLE_FOUND` che rimuove il prodotto piu' nuovo) | Il downgrade via MSI resta **bloccato** (comportamento di default di jpackage): se un aggiornamento fallisce ci pensa `update.ps1` a rimettere in piedi il servizio sulla versione ancora sul disco, non serve un vero rollback via Windows Installer |
 | `RmpLaunchRegistrationPage` (apre una pagina di registrazione tenant dopo l'installazione, da `InstallUISequence`) | Non esiste una registrazione tenant; le scorciatoie create da `install_service.ps1` bastano per aprire l'app |
 | Verifica dei bundle SPA "cold-boot" nel jar (POS, KDS, code...) | Non pertinente: un'unica interfaccia React incorporata nel jar, senza bundle multipli da verificare |
-| Porta LAN 8081 per i monitor cucina, profilo firewall `Any` | Porta 8765, profili **Private+Domain** (mai Pubblico, mai la 80: la 80 potrebbe servire al gestionale di cassa) |
+| Porta LAN 8081 per i monitor cucina, profilo firewall `Any` | Porta 8765, profili **Domain+Private+Public** (il confine di fiducia e' la rete locale, non la classificazione della rete; mai la 80, che potrebbe servire al gestionale di cassa) |
 | Launcher elevato con autoelevazione + file-picker (`update_agent.ps1`), scoperta automatica dell'MSI, marcatura `RMP_AGENT_SERVICE_LAUNCH` per bloccare avvii diretti pericolosi | `update.ps1` prende il percorso dell'MSI come parametro esplicito (lo passa Gianluca); nessuna scoperta automatica ne' marcatura anti-avvio-diretto (fuori scopo per un solo cliente) |
 | Notifiche di aggiornamento in-app, endpoint `/admin/v1/updates/*`, Task Scheduler per l'hand-off asincrono | Nessun aggiornamento automatico nella prima versione (deciso in `docs/stack-tecnologico.md`): un cliente solo non vale l'infrastruttura |
 | `jdk.jfr` (Java Flight Recorder per diagnosi hub-freeze), `jdk.localedata` | Non nell'elenco moduli jlink iniziale: da aggiungere se servono davvero (vedi sezione sopra) |

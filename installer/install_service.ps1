@@ -11,8 +11,10 @@
 # Cosa fa:
 #   1. Crea C:\ProgramData\Etichette (+ log\, backup\) con permessi per
 #      SYSTEM/Administratos in scrittura e Users in sola lettura.
-#   2. Apre la porta 8765 nel firewall di Windows (profili Privato e Dominio,
-#      mai Pubblico: il PC di un negozio/ristorante e' su rete privata).
+#   2. Apre la porta 8765 nel firewall di Windows su tutti i profili (Dominio,
+#      Privato, Pubblico): il confine di fiducia e' la rete locale (nessun
+#      login, il router NAT separa da internet), non la classificazione che
+#      Windows da' alla rete, che su una Wi-Fi nuova e' quasi sempre Pubblica.
 #   3. Registra il servizio "Etichette" con WinSW se non esiste ancora,
 #      altrimenti lo ferma e basta (idempotente: "install" su un servizio
 #      gia' esistente fa scrivere a WinSW un FATAL nel log anche se poi il
@@ -106,25 +108,40 @@ function Set-EtichetteFirewallRule {
         return
     }
 
+    # Tutti i profili (Dominio, Privato, Pubblico): il confine di fiducia e'
+    # la rete locale, non la classificazione che Windows da' alla rete - una
+    # Wi-Fi nuova nasce quasi sempre "Pubblica" di default, e su quel profilo
+    # i telefoni non raggiungevano il servizio (verificato sul PC di
+    # sviluppo). Nessun login sull'app e il router NAT separa gia' da
+    # internet, quindi va bene. Mai la porta 80, che potrebbe servire al
+    # gestionale di cassa.
     try {
         $existing = Get-NetFirewallRule -DisplayName $FirewallRuleName -ErrorAction SilentlyContinue
         if ($existing) {
-            $existing | Remove-NetFirewallRule -ErrorAction Stop
+            # Aggiorno la regola gia' registrata invece di ricrearla, cosi'
+            # un "installa sopra" corregge da solo il profilo su chi
+            # l'aveva ancora su Private,Domain.
+            $existing | Set-NetFirewallRule `
+                -Direction Inbound `
+                -Action Allow `
+                -Protocol TCP `
+                -LocalPort $FirewallPort `
+                -Profile Domain,Private,Public `
+                -Enabled True `
+                -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
+                -ErrorAction Stop
+        } else {
+            New-NetFirewallRule `
+                -DisplayName $FirewallRuleName `
+                -Direction Inbound `
+                -Action Allow `
+                -Protocol TCP `
+                -LocalPort $FirewallPort `
+                -Profile Domain,Private,Public `
+                -Enabled True `
+                -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
+                | Out-Null
         }
-
-        # Profilo Privato e Dominio, mai Pubblico: e' il PC di un negozio,
-        # non un portatile che gira in reti sconosciute. Mai la porta 80,
-        # che potrebbe servire al gestionale di cassa.
-        New-NetFirewallRule `
-            -DisplayName $FirewallRuleName `
-            -Direction Inbound `
-            -Action Allow `
-            -Protocol TCP `
-            -LocalPort $FirewallPort `
-            -Profile Private,Domain `
-            -Enabled True `
-            -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
-            | Out-Null
     } catch {
         Write-Warning "Impossibile configurare la regola firewall '$FirewallRuleName' per la porta ${FirewallPort}: $($_.Exception.Message)"
         Write-Warning "L'installazione continua; i telefoni potrebbero non raggiungere il servizio finche' la regola non viene creata a mano."

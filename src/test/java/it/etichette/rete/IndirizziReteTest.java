@@ -17,9 +17,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * Lista finta di interfacce (Mockito, {@code NetworkInterface} non e' final): verifica che
- * link-local, adattatori virtuali (WSL/Hyper-V/Bluetooth/Loopback) e interfacce spente vengano
- * esclusi, e che le classi private piu' comuni (192.168.0.0/16, 10.0.0.0/8) vengano prima delle
- * altre, con l'ordine originale conservato a parita' di classe.
+ * link-local, adattatori virtuali (WSL/Hyper-V/Bluetooth/Loopback), VPN (Tailscale) e interfacce
+ * spente vengano esclusi, e che le classi private piu' comuni (192.168.0.0/16, 10.0.0.0/8)
+ * vengano prima delle altre, con l'ordine originale conservato a parita' di classe.
  */
 class IndirizziReteTest {
 
@@ -41,9 +41,11 @@ class IndirizziReteTest {
                 true, true, false, false, indirizzo(127, 0, 0, 1));
         NetworkInterface bluetooth = interfacciaFinta("Bluetooth Network Connection", "Bluetooth Device (Personal Area Network)",
                 true, false, false, false, indirizzo(192, 168, 137, 1));
+        NetworkInterface tailscale = interfacciaFinta("Tailscale", "Tailscale Tunnel",
+                true, false, false, false, indirizzo(100, 92, 49, 19));
 
         List<Inet4Address> risultato = IndirizziRete.filtraEOrdina(
-                List.of(ethernet, secondaria, wsl, hyperV, senzaDhcp, spenta, loopback, bluetooth));
+                List.of(ethernet, secondaria, wsl, hyperV, senzaDhcp, spenta, loopback, bluetooth, tailscale));
 
         assertThat(risultato)
                 .extracting(Inet4Address::getHostAddress)
