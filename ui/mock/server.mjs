@@ -186,9 +186,10 @@ const MICHI_COMPLETO = {
 };
 const MICHI_BREVE = { ragioneSociale: "Michi s.n.c.", sedeLegale: "Carbonera (TV)", sedeProduzione: "" };
 
-const bl = (tipo, corpo, colonna = "piena", acceso = true, testo) => {
+const bl = (tipo, corpo, colonna = "piena", acceso = true, testo, allineamento) => {
   const b = { tipo, acceso, corpo, colonna };
   if (testo !== undefined) b.testo = testo;
+  if (allineamento !== undefined) b.allineamento = allineamento;
   return b;
 };
 
@@ -209,7 +210,9 @@ function etichettaVendita() {
       bl("lotto", 7, "sx"),
       bl("quantita", 28, "sx"),
       bl("valori", 7, "dx"),
-      bl("produttore", 7, "sx"),
+      // "centro" solo per far vedere l'allineamento (funzione nuova, non nel
+      // mockup): un esempio a portata di mano per lo screenshot v5.
+      bl("produttore", 7, "sx", true, undefined, "centro"),
     ],
   };
 }
@@ -468,14 +471,19 @@ function altezzaBlocchi(blocchi, prodotto, etichetta, larghezzaUtileMm, opzioni)
   for (const b of blocchi) {
     const info = infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, opzioni);
     if (!info) continue;
+    // "allineamento" (funzione nuova, non nel mockup): assente = sinistra;
+    // ignorato per "valori"/"riga"/"spazio" (BLOCCHI_SENZA_ALLINEAMENTO in
+    // tipi.ts) - qui semplicemente quei tipi non arrivano mai a "barra" con
+    // piu' di un valore, o non producono barra/quadrato/rettangolo affatto.
+    const allineamento = b.allineamento || "sinistra";
     if (b.tipo === "titolo" && info.righe.length > 1) avvisi.push("Il titolo è stato mandato a capo");
     if (info.quadratoMm) {
-      disegni.push({ tipo: "quadrato", yMm, latoMm: info.quadratoMm });
+      disegni.push({ tipo: "quadrato", yMm, latoMm: info.quadratoMm, allineamento });
       yMm += info.quadratoMm + 0.8;
       continue;
     }
     if (info.rettangolo) {
-      disegni.push({ tipo: "rettangolo", yMm, larghezzaMm: info.rettangolo.larghezzaMm, altezzaMm: info.rettangolo.altezzaMm });
+      disegni.push({ tipo: "rettangolo", yMm, larghezzaMm: info.rettangolo.larghezzaMm, altezzaMm: info.rettangolo.altezzaMm, allineamento });
       yMm += info.rettangolo.altezzaMm + 0.8;
       continue;
     }
@@ -490,7 +498,7 @@ function altezzaBlocchi(blocchi, prodotto, etichetta, larghezzaUtileMm, opzioni)
     }
     for (const riga of info.righe) {
       const altezzaRigaMm = riga.corpo * 0.3528 * 1.3;
-      disegni.push({ tipo: "barra", yMm, altezzaMm: altezzaRigaMm, frazione: riga.frazione });
+      disegni.push({ tipo: "barra", yMm, altezzaMm: altezzaRigaMm, frazione: riga.frazione, allineamento });
       yMm += altezzaRigaMm;
     }
     yMm += 0.8;
@@ -604,6 +612,15 @@ function misuraVisualizzata(m, rotolo) {
   return m.lungo ? { ...m, altezzaMm: nominale } : { ...m, larghezzaMm: nominale };
 }
 
+// Quanto spostare a destra una forma larga "larghezzaFormaPx" dentro uno
+// spazio largo "larghezzaDisponibilePx", secondo l'allineamento del blocco
+// che l'ha disegnata (funzione nuova, non nel mockup: docs/api.md, BloccoDto).
+function scostamentoAllineamento(larghezzaDisponibilePx, larghezzaFormaPx, allineamento) {
+  if (allineamento === "destra") return Math.max(0, larghezzaDisponibilePx - larghezzaFormaPx);
+  if (allineamento === "centro") return Math.max(0, (larghezzaDisponibilePx - larghezzaFormaPx) / 2);
+  return 0;
+}
+
 function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
   const rotolo = opzioni.rotolo === 102 ? 102 : 62;
   const scala = opzioni.scala && opzioni.scala > 0 ? opzioni.scala : 1;
@@ -628,13 +645,15 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
     const larghezzaDisponibilePx = Math.round((d.larghezzaDisponibileMm ?? geometria.larghezzaMm - MARGINE_MM * 2) * K);
     if (d.tipo === "quadrato") {
       const lato = Math.round(d.latoMm * K);
-      rettangoloVuoto(tela, x0, y0, x0 + lato, y0 + lato);
+      const x = x0 + scostamentoAllineamento(larghezzaDisponibilePx, lato, d.allineamento);
+      rettangoloVuoto(tela, x, y0, x + lato, y0 + lato);
       continue;
     }
     if (d.tipo === "rettangolo") {
       const larghezzaLogoPx = Math.round(d.larghezzaMm * K);
       const altezzaLogoPx = Math.round(d.altezzaMm * K);
-      rettangoloVuoto(tela, x0, y0, x0 + larghezzaLogoPx, y0 + altezzaLogoPx);
+      const x = x0 + scostamentoAllineamento(larghezzaDisponibilePx, larghezzaLogoPx, d.allineamento);
+      rettangoloVuoto(tela, x, y0, x + larghezzaLogoPx, y0 + altezzaLogoPx);
       continue;
     }
     if (d.tipo === "filetto") {
@@ -642,7 +661,9 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
       continue;
     }
     const h = Math.max(1, Math.round(d.altezzaMm * K * 0.5));
-    rettangoloPieno(tela, x0, y0, x0 + larghezzaDisponibilePx * d.frazione, y0 + h);
+    const larghezzaBarraPx = larghezzaDisponibilePx * d.frazione;
+    const x = x0 + scostamentoAllineamento(larghezzaDisponibilePx, larghezzaBarraPx, d.allineamento);
+    rettangoloPieno(tela, x, y0, x + larghezzaBarraPx, y0 + h);
   }
   return pngDaTela(tela);
 }

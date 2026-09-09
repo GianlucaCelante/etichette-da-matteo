@@ -1,8 +1,9 @@
 import { useCallback, type ChangeEvent } from "react";
 import { useLogoEsiste } from "../../api/hooks";
-import { NOMIBLOCCO, SCALETTA_CORPO } from "../../api/tipi";
+import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco } from "../../api/tipi";
 import { IconaVia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
+import ControlloAllineamento from "./ControlloAllineamento";
 
 const ALTEZZE_LOGO_MM = Array.from({ length: 26 }, (_, i) => i + 5);
 
@@ -12,6 +13,7 @@ interface ProprietaRigaBloccoTelefono {
   onCambiaCorpo: (chiave: string, corpo: number) => void;
   onRimuovi: (chiave: string) => void;
   onCambiaTesto: (chiave: string, testo: string) => void;
+  onCambiaAllineamento: (chiave: string, allineamento: AllineamentoBlocco) => void;
 }
 
 // La riga di un blocco sul telefono (revisione di questo giro): solo
@@ -19,12 +21,13 @@ interface ProprietaRigaBloccoTelefono {
 // Niente maniglia ne' trascinamento, niente tasto a tre stati per la
 // colonna: quelli restano un affare da PC (BloccoRiga.tsx), dove lo spazio
 // e la precisione del mouse li rendono comodi.
-export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCorpo, onRimuovi, onCambiaTesto }: ProprietaRigaBloccoTelefono) {
+export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCorpo, onRimuovi, onCambiaTesto, onCambiaAllineamento }: ProprietaRigaBloccoTelefono) {
   const libero = blocco.tipo === "testo" || blocco.tipo === "testoGrande";
   const eLogo = blocco.tipo === "logo";
   const { data: logoEsiste } = useLogoEsiste();
   const notaLogo = eLogo && !logoEsiste;
-  const suDueRighe = libero || notaLogo;
+  const mostraAllineamento = !BLOCCHI_SENZA_ALLINEAMENTO.includes(blocco.tipo);
+  const suDueRighe = libero || notaLogo || mostraAllineamento;
 
   const clicSw = useCallback(() => onToggleAcceso(blocco.chiave), [onToggleAcceso, blocco.chiave]);
   const cambiaCorpo = useCallback(
@@ -35,6 +38,10 @@ export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCor
   const cambiaTesto = useCallback(
     (evento: ChangeEvent<HTMLInputElement>) => onCambiaTesto(blocco.chiave, evento.target.value),
     [onCambiaTesto, blocco.chiave],
+  );
+  const cambiaAllineamento = useCallback(
+    (a: AllineamentoBlocco) => onCambiaAllineamento(blocco.chiave, a),
+    [onCambiaAllineamento, blocco.chiave],
   );
 
   return (
@@ -63,6 +70,12 @@ export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCor
           <IconaVia larghezza={14} spessoreTratto={2} />
         </button>
       </div>
+      {mostraAllineamento && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11.5px] font-bold text-[var(--spento)]">Allinea</span>
+          <ControlloAllineamento valore={blocco.allineamento} nomeBlocco={NOMIBLOCCO[blocco.tipo]} onCambia={cambiaAllineamento} />
+        </div>
+      )}
       {libero && (
         <input
           className="testoLibero"

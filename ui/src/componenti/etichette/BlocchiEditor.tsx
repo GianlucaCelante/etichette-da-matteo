@@ -6,6 +6,7 @@ import {
   BLOCCHI_LIBERI,
   LARGHEZZE_DESTRA,
   NOMIBLOCCO,
+  type AllineamentoBlocco,
   type ColonnaBlocco,
   type LarghezzaDestra,
   type TipoBlocco,
@@ -134,6 +135,11 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     (chiave: string, testo: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
     [blocchi, onCambiaBlocchi],
   );
+  const onCambiaAllineamento = useCallback(
+    (chiave: string, allineamento: AllineamentoBlocco) =>
+      onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, allineamento } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
 
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
@@ -186,6 +192,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         onCicloColonna={onCicloColonna}
         onRimuovi={onRimuovi}
         onCambiaTesto={onCambiaTesto}
+        onCambiaAllineamento={onCambiaAllineamento}
       />,
     );
   });

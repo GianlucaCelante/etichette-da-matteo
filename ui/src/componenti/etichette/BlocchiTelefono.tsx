@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { TipoBlocco } from "../../api/tipi";
+import type { AllineamentoBlocco, TipoBlocco } from "../../api/tipi";
 import { IconaPiu } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { nuovaChiave } from "./bozza";
@@ -33,6 +33,11 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
     (chiave: string, testo: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, testo } : b))),
     [blocchi, onCambiaBlocchi],
   );
+  const onCambiaAllineamento = useCallback(
+    (chiave: string, allineamento: AllineamentoBlocco) =>
+      onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, allineamento } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
 
   const aggiungiBlocco = useCallback(
     (tipo: TipoBlocco) => {
@@ -49,7 +54,15 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
   return (
     <div className="vassoio">
       {blocchi.map((b) => (
-        <RigaBloccoTelefono key={b.chiave} blocco={b} onToggleAcceso={onToggleAcceso} onCambiaCorpo={onCambiaCorpo} onRimuovi={onRimuovi} onCambiaTesto={onCambiaTesto} />
+        <RigaBloccoTelefono
+          key={b.chiave}
+          blocco={b}
+          onToggleAcceso={onToggleAcceso}
+          onCambiaCorpo={onCambiaCorpo}
+          onRimuovi={onRimuovi}
+          onCambiaTesto={onCambiaTesto}
+          onCambiaAllineamento={onCambiaAllineamento}
+        />
       ))}
       <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
         <IconaPiu larghezza={20} spessoreTratto={2.2} />

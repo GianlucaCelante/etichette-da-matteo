@@ -304,3 +304,30 @@ export function IconaRipristina({ larghezza, spessoreTratto, className }: Propri
     </IconaBase>
   );
 }
+
+// Le tre icone dell'allineamento del blocco: tre righe, la prima sempre a
+// tutta larghezza (il riferimento), le altre due piu' corte e spostate a
+// dire da che parte sta il testo.
+export function IconaAllineaSinistra({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 7h16M4 12h10M4 17h13" />
+    </IconaBase>
+  );
+}
+
+export function IconaAllineaCentro({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 7h16M7 12h10M5.5 17h13" />
+    </IconaBase>
+  );
+}
+
+export function IconaAllineaDestra({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 7h16M10 12h10M7 17h13" />
+    </IconaBase>
+  );
+}

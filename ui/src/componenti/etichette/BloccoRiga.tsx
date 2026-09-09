@@ -2,9 +2,10 @@ import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "reac
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useLogoEsiste } from "../../api/hooks";
-import { NOMIBLOCCO, SCALETTA_CORPO, type ColonnaBlocco } from "../../api/tipi";
+import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
 import { IconaManiglia, IconaVia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
+import { ControlloAllineamentoCompatto } from "./ControlloAllineamento";
 import IconaColonna from "./IconaColonna";
 
 const PROSSIMA_COLONNA: Record<ColonnaBlocco, ColonnaBlocco> = { piena: "sx", sx: "dx", dx: "piena" };
@@ -21,6 +22,7 @@ interface ProprietaBloccoRiga {
   onCicloColonna: (chiave: string) => void;
   onRimuovi: (chiave: string) => void;
   onCambiaTesto: (chiave: string, testo: string) => void;
+  onCambiaAllineamento: (chiave: string, allineamento: AllineamentoBlocco) => void;
 }
 
 // Una riga del vassoio: maniglia (solo lei si trascina), interruttore,
@@ -35,6 +37,7 @@ export default function BloccoRiga({
   onCicloColonna,
   onRimuovi,
   onCambiaTesto,
+  onCambiaAllineamento,
 }: ProprietaBloccoRiga) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: blocco.chiave });
   const stile = useMemo<CSSProperties>(
@@ -50,6 +53,7 @@ export default function BloccoRiga({
   // ".libero" mette la riga su due righe (testa sopra, il resto sotto): serve
   // sia al campo di testo dei blocchi liberi sia alla nota del logo mancante.
   const suDueRighe = libero || notaLogo;
+  const mostraAllineamento = !BLOCCHI_SENZA_ALLINEAMENTO.includes(blocco.tipo);
 
   const clicSw = useCallback(() => onToggleAcceso(blocco.chiave), [onToggleAcceso, blocco.chiave]);
   const cambiaCorpo = useCallback(
@@ -61,6 +65,10 @@ export default function BloccoRiga({
   const cambiaTesto = useCallback(
     (evento: ChangeEvent<HTMLInputElement>) => onCambiaTesto(blocco.chiave, evento.target.value),
     [onCambiaTesto, blocco.chiave],
+  );
+  const cambiaAllineamento = useCallback(
+    (a: AllineamentoBlocco) => onCambiaAllineamento(blocco.chiave, a),
+    [onCambiaAllineamento, blocco.chiave],
   );
 
   const nomeProssimaColonna: Record<ColonnaBlocco, string> = { piena: "piena larghezza", sx: "colonna sinistra", dx: "colonna destra" };
@@ -94,6 +102,9 @@ export default function BloccoRiga({
               </option>
             ))}
           </select>
+        )}
+        {mostraAllineamento && (
+          <ControlloAllineamentoCompatto valore={blocco.allineamento} nomeBlocco={NOMIBLOCCO[blocco.tipo]} onCambia={cambiaAllineamento} />
         )}
         <button
           type="button"

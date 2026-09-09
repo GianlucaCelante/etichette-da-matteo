@@ -48,6 +48,12 @@ export interface Versione {
 
 export type ColonnaBlocco = "piena" | "sx" | "dx";
 
+// Come si allinea il blocco nella sua riga (o nella sua colonna, in una
+// zona a due colonne): assente = "sinistra", come se non ci fosse mai
+// stato. Ignorato per "valori", "riga" e "spazio"; per "qr" e "logo" e' la
+// posizione orizzontale (docs/api.md, BloccoDto).
+export type AllineamentoBlocco = "sinistra" | "centro" | "destra";
+
 // Famiglia "dati": prendono il contenuto dal prodotto in stampa.
 // "dataProduzione" e "sigla" sono i due blocchi aggiunti in questo giro (li
 // usa l'etichetta "Cucina" al posto dei due testi liberi del prototipo).
@@ -76,7 +82,13 @@ export interface Blocco {
   colonna: ColonnaBlocco;
   // solo per "testo" e "testoGrande": il contenuto fisso del blocco.
   testo?: string;
+  // assente = "sinistra": non serve mandarlo per forza quando e' quello.
+  allineamento?: AllineamentoBlocco;
 }
+
+// I tipi per cui l'allineamento non si mostra: "valori" ha gia' la sua
+// tabella voce/valore, "riga" e "spazio" non hanno testo da allineare.
+export const BLOCCHI_SENZA_ALLINEAMENTO: readonly TipoBlocco[] = ["valori", "riga", "spazio"];
 
 export interface Produttore {
   ragioneSociale: string;
