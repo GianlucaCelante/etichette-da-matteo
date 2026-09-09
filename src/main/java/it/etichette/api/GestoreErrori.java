@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.IOException;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Ogni errore delle API risponde con {@code {"errore": "..."}} e il codice HTTP adeguato.
@@ -70,8 +72,22 @@ public class GestoreErrori {
         log.debug("connessione interrotta dal client: {}", e.getMessage());
     }
 
+    /**
+     * Stessa cosa quando il socket muore mentre si scrive un corpo binario (es. il PNG
+     * dell'anteprima, chiesto e poi abbandonato dal browser che ha già cambiato prodotto): Tomcat
+     * non sempre lo incarta in {@link ClientAbortException}, arriva una {@link IOException} nuda
+     * con il messaggio del sistema (in italiano su Windows). Si riconosce dal messaggio.
+     */
+    private static final Pattern CONNESSIONE_CADUTA = Pattern.compile(
+            "connessione interrotta|connection reset|connection was aborted|forcibly closed|broken pipe|connessione .* chiusa",
+            Pattern.CASE_INSENSITIVE);
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> gestisciErroreGenerico(Exception e) {
+        if (e instanceof IOException && e.getMessage() != null && CONNESSIONE_CADUTA.matcher(e.getMessage()).find()) {
+            log.debug("connessione interrotta dal client mentre si scriveva la risposta: {}", e.getMessage());
+            return null;
+        }
         log.error("errore non gestito in una richiesta API", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("errore", "errore interno: " + e.getMessage()));

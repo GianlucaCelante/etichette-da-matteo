@@ -563,8 +563,13 @@ function geometriaAllaLarghezza(prodotto, etichetta, larghezzaMm, opzioni = {}) 
 // si taglia li'. Se no l'etichetta corre lungo il nastro, alta quanto il
 // rotolo (la forma "lunga"), e si cerca per bisezione la lunghezza minima
 // che la contiene - mai piu' alta che larga, in nessuna delle due forme.
-const LUNGHEZZA_MIN_MM = 20;
-const LUNGHEZZA_MAX_MM = 280;
+// docs/api.md, "Geometria" (deciso il 9 settembre 2026 sul mockup finale):
+// minimo 25,4 mm (il minimo del nastro continuo per la stampante), cercata
+// per bisezione fra W e 300 mm - non piu' 20/280 del prototipo, superati da
+// questa decisione.
+const LUNGHEZZA_MIN_MM = 25.4;
+const LUNGHEZZA_MAX_MM = 300;
+const AVVISO_NON_STA = "Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi";
 // Le due dimensioni tornate qui (e usate per disegnare il PNG) sono quelle
 // vere/utili del rotolo (58,9 o 98,6 mm): il numero tondo (62 o 102) e'
 // solo quello che si mostra nella didascalia (vedi misuraVisualizzata),
@@ -584,7 +589,11 @@ function misuraEtichetta(prodotto, etichetta, rotolo, opzioni = {}) {
     else basso = meta;
   }
   const finale = geometriaAllaLarghezza(prodotto, etichetta, Math.ceil(alto), opzioni);
-  return { ...finale, larghezzaMm: Math.ceil(alto), altezzaMm: ALT, lungo: true };
+  // Oltre i 300 mm, il contenuto non ci sta comunque: avviso, e il disegno
+  // (piu' alto della tela, fissa a ALT) esce tagliato di suo, senza bisogno
+  // di ritagliarlo apposta - la tela e' quella e basta.
+  const avvisi = finale.altezzaMm > ALT ? [...finale.avvisi, AVVISO_NON_STA] : finale.avvisi;
+  return { ...finale, larghezzaMm: Math.ceil(alto), altezzaMm: ALT, avvisi, lungo: true };
 }
 // Il numero tondo del rotolo (62 o 102) al posto del lato utile preciso
 // (58,9 o 98,6), solo per la didascalia: come nel prototipo, "larghezza"

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type React from "react";
 import type { Rotolo } from "../api/tipi";
 import { useAdattaAnteprima } from "../hooks/useAdattaAnteprima";
-import { IconaLente } from "./Icone";
+import { IconaAllarme, IconaLente } from "./Icone";
 import LenteEtichetta from "./LenteEtichetta";
 
 interface ProprietaRiquadroAnteprima {
@@ -11,12 +11,21 @@ interface ProprietaRiquadroAnteprima {
   titolo: string;
   sottotitolo?: string;
   rotolo: Rotolo;
-  misure: { larghezzaMm: number; altezzaMm: number } | undefined;
+  misure: { larghezzaMm: number; altezzaMm: number; avvisi: string[] } | undefined;
   // 232px in Stampa, 200px in Etichette (anteprima(p,et,maxW,maxH) del
   // prototipo): il budget di altezza della cornice, cresciuto del 38% sul
   // rotolo da 102 mm - la stessa proporzione dell'altro lato, altrimenti
   // un'etichetta quasi quadrata sul 102 ci starebbe schiacciata.
   maxH: number;
+}
+
+// L'avviso "non sta" e' l'unico grave (contenuto tagliato davvero): gli
+// altri (es. "Il titolo e' stato mandato a capo") sono solo da notare. Si
+// riconosce dal testo perche' /misure manda un elenco di stringhe, non
+// oggetti con una gravita' propria (docs/api.md).
+const AVVISO_GRAVE = "non sta";
+function eGrave(avviso: string): boolean {
+  return avviso.toLowerCase().includes(AVVISO_GRAVE);
 }
 
 // L'anteprima con la lente del prototipo (".anteprima" + ".cornice" +
@@ -89,6 +98,20 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
       </div>
       {didascalia && (
         <div className="text-[12px] text-[var(--spento)]">{caricando ? "Aggiorno l'anteprima…" : didascalia}</div>
+      )}
+      {/* Gli avvisi della resa (docs/api.md, "Geometria"): uno per riga, sotto
+          la didascalia. Quello "non sta" e' grave (il contenuto e' uscito
+          tagliato davvero): in grassetto, gli altri no - stesso colore ambra
+          del resto del sistema (pastiglia "in corso" ecc.). */}
+      {!caricando && misure && misure.avvisi.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {misure.avvisi.map((avviso) => (
+            <div key={avviso} className={"flex items-start gap-1.5 text-[12px] text-[var(--ambra)]" + (eGrave(avviso) ? " font-bold" : "")}>
+              <IconaAllarme larghezza={13} spessoreTratto={2.2} className="flex-shrink-0 mt-[1px]" />
+              <span>{avviso}</span>
+            </div>
+          ))}
+        </div>
       )}
       {lenteAperta && src && (
         <LenteEtichetta titolo={titolo} sottotitolo={sottotitolo ?? didascalia} src={src} onChiudi={chiudiLente} />
