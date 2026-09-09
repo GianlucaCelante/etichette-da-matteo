@@ -121,9 +121,6 @@ function PannelloProdotto({
   const { rif, scala } = useScalaAnteprima(rotolo);
   const srcAnteprima = useAnteprimaProdottoSrc(prodotto.id, { rotolo, scala, quantita, scadenza, lotto });
   const { data: misure } = useMisureProdotto(prodotto.id, rotolo);
-  const didascalia = misure
-    ? `Anteprima rotolo ${rotolo} mm · ${misure.larghezzaMm.toLocaleString("it-IT")} × ${misure.altezzaMm.toLocaleString("it-IT")} mm`
-    : undefined;
 
   return (
     <div className="flex flex-col gap-3 min-h-0 flex-1">
@@ -136,7 +133,7 @@ function PannelloProdotto({
         <div className="h text-[19px] font-semibold min-w-0 truncate">{prodotto.nome}</div>
       </div>
       <div ref={rif} className="min-w-0">
-        <RiquadroAnteprima src={srcAnteprima} titolo={prodotto.nome} didascalia={didascalia} />
+        <RiquadroAnteprima src={srcAnteprima} titolo={prodotto.nome} rotolo={rotolo} misure={misure} maxH={232} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -397,7 +394,7 @@ export default function Stampa() {
   return (
     <div className={"schermo vistaStampa" + (dettaglio ? " dettaglio" : "")}>
       {portaleStato}
-      <div className="colonna colonnaElenco flex-1 min-w-0 gap-3">
+      <div className="colonnaElenco flex-1 min-w-0 gap-3">
         <div className="flex gap-3">
           <div className="cerca flex-1">
             <IconaCerca larghezza={20} spessoreTratto={2} />

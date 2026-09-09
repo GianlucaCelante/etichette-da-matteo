@@ -588,7 +588,7 @@ export default function Etichette() {
   // 500 ms di ritardo invece dei 400 di Stampa: qui la bozza cambia insieme
   // su piu' fronti (campi del prodotto e blocchi insieme).
   const bozzaAnteprima = prodottoInModifica ? { prodotto: prodottoInModifica, rotolo, scala } : null;
-  const { src: srcAnteprima, caricando: caricandoAnteprima } = useAnteprimaProdottoInModifica(bozzaAnteprima, 500);
+  const { src: srcAnteprima, misure: misureAnteprima, caricando: caricandoAnteprima } = useAnteprimaProdottoInModifica(bozzaAnteprima, 500);
 
   // "Stampa di prova" della vista Etichette: prova il prodotto in modifica su
   // una copia sola, riusando gli stessi pannelli e eventi SSE della vista
@@ -837,7 +837,7 @@ export default function Etichette() {
       {portaleAzioni}
 
       <div className="schermo">
-        <div className="colonna soloPC flex-none w-[240px] min-w-0 gap-1">
+        <div className="colonna soloPC flex-[0_1_240px] min-w-[190px] gap-1">
           <div className="cerca h-11 text-[15px]">
             <IconaCerca larghezza={18} spessoreTratto={2} />
             <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca prodotto" />
@@ -903,7 +903,14 @@ export default function Etichette() {
               quelle restano un affare da PC). */}
           <div className="soloTel flex flex-col gap-3">
             <div ref={rifAnteprimaTel} className="min-w-0">
-              <RiquadroAnteprima src={srcAnteprima} caricando={caricandoAnteprima} titolo={bozzaProdotto?.nome ?? ""} didascalia={`Anteprima rotolo ${rotolo} mm`} />
+              <RiquadroAnteprima
+                src={srcAnteprima}
+                caricando={caricandoAnteprima}
+                titolo={bozzaProdotto?.nome ?? ""}
+                rotolo={rotolo}
+                misure={misureAnteprima}
+                maxH={200}
+              />
             </div>
             {sezioni.map((s) => (
               <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
@@ -969,7 +976,9 @@ export default function Etichette() {
                   src={srcAnteprima}
                   caricando={caricandoAnteprima}
                   titolo={bozzaProdotto?.nome ?? ""}
-                  didascalia={`Anteprima rotolo ${rotolo} mm`}
+                  rotolo={rotolo}
+                  misure={misureAnteprima}
+                  maxH={200}
                 />
               </div>
               {bozzaBlocchi && bozzaProdotto && (

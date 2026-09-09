@@ -154,6 +154,13 @@ export async function anteprimaProdottoBlob(corpo: { prodotto: Prodotto; rotolo?
   return risposta.blob();
 }
 
+// Le misure della stessa bozza (corta o lunga, e le due dimensioni per la
+// didascalia): stesso corpo di anteprimaProdottoBlob, per la cornice che
+// deve adattarsi mentre si scrive (RiquadroAnteprima).
+export async function misureProdottoInModifica(corpo: { prodotto: Prodotto; rotolo?: Rotolo }): Promise<MisureRisposta> {
+  return richiedi<MisureRisposta>("/resa/anteprima/misure", { method: "POST", body: JSON.stringify(corpo) });
+}
+
 /* ============================ logo ============================ */
 
 // L'immagine del logo, come il QR: un src diretto, niente client JSON.

@@ -209,7 +209,7 @@ function etichettaVendita() {
       bl("lotto", 7, "sx"),
       bl("quantita", 28, "sx"),
       bl("valori", 7, "dx"),
-      bl("produttore", 7),
+      bl("produttore", 7, "sx"),
     ],
   };
 }
@@ -457,18 +457,16 @@ function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
   }
 }
 
-// La geometria in millimetri, comune al PNG e a /misure: elenco di "disegni"
-// (righe di testo, filetti, quadrati) con la loro posizione verticale, piu'
-// larghezza e altezza totali della sagoma.
-function calcolaGeometria(prodotto, etichetta, { rotolo = 62, scadenza, lotto } = {}) {
-  const larghezzaMm = LARGHEZZA_MM[rotolo] || LARGHEZZA_MM[62];
-  const larghezzaUtileMm = larghezzaMm - MARGINE_MM * 2;
-  const prodottoEffettivo = prodotto;
-  const avvisi = [];
+// L'altezza (e i "disegni", relativi a yMm=0) di una sequenza di blocchi
+// impilati uno sotto l'altro, alla larghezza utile data: usata sia per i
+// blocchi "piena" sia, con una larghezza piu' stretta, per ciascuna delle
+// due colonne di una zona (vedi geometriaAllaLarghezza).
+function altezzaBlocchi(blocchi, prodotto, etichetta, larghezzaUtileMm, opzioni) {
   const disegni = [];
-  let yMm = MARGINE_MM;
-  for (const b of etichetta.blocchi) {
-    const info = infoBlocco(b, prodottoEffettivo, etichetta, larghezzaUtileMm, { scadenza, lotto });
+  const avvisi = [];
+  let yMm = 0;
+  for (const b of blocchi) {
+    const info = infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, opzioni);
     if (!info) continue;
     if (b.tipo === "titolo" && info.righe.length > 1) avvisi.push("Il titolo è stato mandato a capo");
     if (info.quadratoMm) {
@@ -497,41 +495,145 @@ function calcolaGeometria(prodotto, etichetta, { rotolo = 62, scadenza, lotto } 
     }
     yMm += 0.8;
   }
+  return { disegni, altezzaMm: yMm, avvisi };
+}
+
+const GAP_ZONA_MM = 1.4;
+const QUOTA_FRAZIONI = { "1/4": 0.25, "1/3": 1 / 3, "1/2": 0.5, "2/3": 2 / 3 };
+
+// La geometria in millimetri per una data larghezza del nastro (bordi
+// compresi): elenco di "disegni" (righe di testo, filetti, quadrati; ognuno
+// con la sua posizione xMm/yMm e la larghezza a disposizione per la sua
+// barra) piu' l'altezza totale che ne esce a quella larghezza. E' la stessa
+// funzione sia per la forma corta sia per quella lunga (misuraEtichetta):
+// cambia solo la larghezza che le si passa. I blocchi "sx"/"dx" vanno
+// affiancati in una zona a due colonne (come rendiEtichetta del prototipo),
+// non impilati: senza, un'etichetta come "Base pizza low carb" (scadenza,
+// lotto, quantita' e produttore a sinistra, i valori nutrizionali a destra)
+// verrebbe sempre troppo alta, in nessuna larghezza.
+function geometriaAllaLarghezza(prodotto, etichetta, larghezzaMm, opzioni = {}) {
+  const larghezzaUtileMm = larghezzaMm - MARGINE_MM * 2;
+  const attivi = etichetta.blocchi.filter((b) => b.acceso);
+  const pezzi = [];
+  let zona = null;
+  for (const b of attivi) {
+    if (b.colonna !== "sx" && b.colonna !== "dx") {
+      zona = null;
+      pezzi.push({ tipo: "piena", blocco: b });
+    } else {
+      if (!zona) { zona = { tipo: "zona", sx: [], dx: [] }; pezzi.push(zona); }
+      zona[b.colonna].push(b);
+    }
+  }
+  const quotaDx = QUOTA_FRAZIONI[etichetta.zona?.larghezzaDestra] ?? 1 / 3;
+  const avvisi = [];
+  const disegni = [];
+  let yMm = MARGINE_MM;
+  for (const pezzo of pezzi) {
+    if (pezzo.tipo === "piena") {
+      const r = altezzaBlocchi([pezzo.blocco], prodotto, etichetta, larghezzaUtileMm, opzioni);
+      for (const d of r.disegni) disegni.push({ ...d, yMm: d.yMm + yMm, xMm: MARGINE_MM, larghezzaDisponibileMm: larghezzaUtileMm });
+      avvisi.push(...r.avvisi);
+      yMm += r.altezzaMm;
+      continue;
+    }
+    // zona: sx e dx affiancate (gap fra le due, dx anche con un piccolo
+    // rientro proprio, come il padding-left del prototipo): l'altezza della
+    // zona e' la piu' alta delle due colonne, non la somma.
+    const sxLarghezzaMm = Math.max(6, larghezzaUtileMm * (1 - quotaDx) - GAP_ZONA_MM);
+    const dxLarghezzaMm = Math.max(6, larghezzaUtileMm * quotaDx - GAP_ZONA_MM);
+    const sx = altezzaBlocchi(pezzo.sx, prodotto, etichetta, sxLarghezzaMm, opzioni);
+    const dx = pezzo.dx.length ? altezzaBlocchi(pezzo.dx, prodotto, etichetta, dxLarghezzaMm, opzioni) : { disegni: [], altezzaMm: 0, avvisi: [] };
+    for (const d of sx.disegni) disegni.push({ ...d, yMm: d.yMm + yMm, xMm: MARGINE_MM, larghezzaDisponibileMm: sxLarghezzaMm });
+    for (const d of dx.disegni) {
+      disegni.push({ ...d, yMm: d.yMm + yMm, xMm: MARGINE_MM + sxLarghezzaMm + GAP_ZONA_MM, larghezzaDisponibileMm: dxLarghezzaMm });
+    }
+    avvisi.push(...sx.avvisi, ...dx.avvisi);
+    yMm += Math.max(sx.altezzaMm, dx.altezzaMm) + 0.8;
+  }
   yMm += MARGINE_MM;
   return { larghezzaMm, altezzaMm: yMm, disegni, avvisi };
+}
+
+// Che etichetta esce dal rotolo, stessa regola del prototipo (misuraEtichetta,
+// artefatti-claude/banco-etichette-2026-09-08.html): il nastro e' largo
+// quanto il rotolo (58,9 o 98,6 mm) e la stampante taglia alla lunghezza che
+// serve. Si prova prima col testo a tutta larghezza di nastro: se il
+// contenuto sta in un'etichetta non piu' alta che larga (la forma "corta"),
+// si taglia li'. Se no l'etichetta corre lungo il nastro, alta quanto il
+// rotolo (la forma "lunga"), e si cerca per bisezione la lunghezza minima
+// che la contiene - mai piu' alta che larga, in nessuna delle due forme.
+const LUNGHEZZA_MIN_MM = 20;
+const LUNGHEZZA_MAX_MM = 280;
+// Le due dimensioni tornate qui (e usate per disegnare il PNG) sono quelle
+// vere/utili del rotolo (58,9 o 98,6 mm): il numero tondo (62 o 102) e'
+// solo quello che si mostra nella didascalia (vedi misuraVisualizzata),
+// non quello con cui si disegna - se no il disegno non tornerebbe con la
+// larghezza vera del nastro (LARGHEZZA_PX_PIENA).
+function misuraEtichetta(prodotto, etichetta, rotolo, opzioni = {}) {
+  const ALT = LARGHEZZA_MM[rotolo] || LARGHEZZA_MM[62];
+  const corta = geometriaAllaLarghezza(prodotto, etichetta, ALT, opzioni);
+  if (corta.altezzaMm <= ALT) {
+    return { ...corta, altezzaMm: Math.max(LUNGHEZZA_MIN_MM, corta.altezzaMm), lungo: false };
+  }
+  let basso = ALT, alto = LUNGHEZZA_MAX_MM;
+  for (let i = 0; i < 12; i++) {
+    const meta = (basso + alto) / 2;
+    const prova = geometriaAllaLarghezza(prodotto, etichetta, meta, opzioni);
+    if (prova.altezzaMm <= ALT) alto = meta;
+    else basso = meta;
+  }
+  const finale = geometriaAllaLarghezza(prodotto, etichetta, Math.ceil(alto), opzioni);
+  return { ...finale, larghezzaMm: Math.ceil(alto), altezzaMm: ALT, lungo: true };
+}
+// Il numero tondo del rotolo (62 o 102) al posto del lato utile preciso
+// (58,9 o 98,6), solo per la didascalia: come nel prototipo, "larghezza"
+// nella forma corta e "altezza" nella forma lunga sono il lato che coincide
+// col rotolo, e li' si mostra il nominale, non il decimale.
+function misuraVisualizzata(m, rotolo) {
+  const nominale = rotolo === 102 ? 102 : 62;
+  return m.lungo ? { ...m, altezzaMm: nominale } : { ...m, larghezzaMm: nominale };
 }
 
 function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
   const rotolo = opzioni.rotolo === 102 ? 102 : 62;
   const scala = opzioni.scala && opzioni.scala > 0 ? opzioni.scala : 1;
-  const geometria = calcolaGeometria(prodotto, etichetta, { rotolo, scadenza: opzioni.scadenza, lotto: opzioni.lotto });
+  const geometria = misuraEtichetta(prodotto, etichetta, rotolo, { scadenza: opzioni.scadenza, lotto: opzioni.lotto });
   const larghezzaPxPiena = LARGHEZZA_PX_PIENA[rotolo];
-  const K = (larghezzaPxPiena / geometria.larghezzaMm) * scala; // px per mm, alla scala richiesta
+  const nominaleMm = LARGHEZZA_MM[rotolo] || LARGHEZZA_MM[62];
+  // Sempre gli stessi pixel per millimetro (quelli del rotolo a 300 dpi),
+  // sia per la forma corta (larga quanto il rotolo) sia per quella lunga
+  // (alta quanto il rotolo, il rotolo resta comunque il lato fisso): se no
+  // le due forme uscirebbero a una scala diversa l'una dall'altra.
+  const K = (larghezzaPxPiena / nominaleMm) * scala; // px per mm, alla scala richiesta
   const larghezzaPx = Math.max(24, Math.round(geometria.larghezzaMm * K));
   const altezzaPx = Math.max(24, Math.round(geometria.altezzaMm * K));
-  const margineDxPx = Math.round(MARGINE_MM * K);
   const tela = nuovaTela(larghezzaPx, altezzaPx);
   rettangoloVuoto(tela, 0, 0, larghezzaPx - 1, altezzaPx - 1);
   for (const d of geometria.disegni) {
     const y0 = Math.round(d.yMm * K);
+    // xMm/larghezzaDisponibileMm vengono dalla geometria (piena, oppure una
+    // delle due colonne di una zona sx/dx): senza, si ricade sul margine
+    // pieno di prima (compatibilita' per chi non passa ancora questi campi).
+    const x0 = Math.round((d.xMm ?? MARGINE_MM) * K);
+    const larghezzaDisponibilePx = Math.round((d.larghezzaDisponibileMm ?? geometria.larghezzaMm - MARGINE_MM * 2) * K);
     if (d.tipo === "quadrato") {
       const lato = Math.round(d.latoMm * K);
-      rettangoloVuoto(tela, margineDxPx, y0, margineDxPx + lato, y0 + lato);
+      rettangoloVuoto(tela, x0, y0, x0 + lato, y0 + lato);
       continue;
     }
     if (d.tipo === "rettangolo") {
       const larghezzaLogoPx = Math.round(d.larghezzaMm * K);
       const altezzaLogoPx = Math.round(d.altezzaMm * K);
-      rettangoloVuoto(tela, margineDxPx, y0, margineDxPx + larghezzaLogoPx, y0 + altezzaLogoPx);
+      rettangoloVuoto(tela, x0, y0, x0 + larghezzaLogoPx, y0 + altezzaLogoPx);
       continue;
     }
     if (d.tipo === "filetto") {
-      rettangoloPieno(tela, margineDxPx, y0, larghezzaPx - margineDxPx, y0 + Math.max(1, Math.round(d.altezzaMm * K)));
+      rettangoloPieno(tela, x0, y0, x0 + larghezzaDisponibilePx, y0 + Math.max(1, Math.round(d.altezzaMm * K)));
       continue;
     }
     const h = Math.max(1, Math.round(d.altezzaMm * K * 0.5));
-    const larghezzaUtilePx = larghezzaPx - margineDxPx * 2;
-    rettangoloPieno(tela, margineDxPx, y0, margineDxPx + larghezzaUtilePx * d.frazione, y0 + h);
+    rettangoloPieno(tela, x0, y0, x0 + larghezzaDisponibilePx * d.frazione, y0 + h);
   }
   return pngDaTela(tela);
 }
@@ -1135,12 +1237,29 @@ const server = http.createServer(async (req, res) => {
       const scala = Number(corpo.scala) > 0 ? Number(corpo.scala) : 1;
       return rispondiPng(res, renderEtichettaPng(prodotto, prodotto.etichetta, { rotolo, scala }));
     }
+    // Le misure della stessa bozza (per la cornice: corta o lunga, e la
+    // didascalia "... × ... mm"), non solo il PNG: stesso corpo di
+    // /api/resa/anteprima.png, cambia solo la risposta.
+    if (percorso === "/api/resa/anteprima/misure" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      const prodotto = corpo.prodotto;
+      if (!prodotto || !prodotto.etichetta || !Array.isArray(prodotto.etichetta.blocchi)) {
+        return erroreJson(res, 400, "Manca il prodotto da rendere");
+      }
+      const rotolo = corpo.rotolo === 102 ? 102 : 62;
+      const geometria = misuraVisualizzata(misuraEtichetta(prodotto, prodotto.etichetta, rotolo), rotolo);
+      return rispondiJson(res, 200, {
+        larghezzaMm: Math.round(geometria.larghezzaMm * 10) / 10,
+        altezzaMm: Math.round(geometria.altezzaMm * 10) / 10,
+        avvisi: geometria.avvisi,
+      });
+    }
     const misureProdotto = percorso.match(/^\/api\/resa\/prodotti\/(\d+)\/misure$/);
     if (misureProdotto && req.method === "GET") {
       const prodotto = trovaProdotto(Number(misureProdotto[1]));
       if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
       const rotolo = Number(url.searchParams.get("rotolo")) === 102 ? 102 : 62;
-      const geometria = calcolaGeometria(prodotto, prodotto.etichetta, { rotolo });
+      const geometria = misuraVisualizzata(misuraEtichetta(prodotto, prodotto.etichetta, rotolo), rotolo);
       return rispondiJson(res, 200, {
         larghezzaMm: Math.round(geometria.larghezzaMm * 10) / 10,
         altezzaMm: Math.round(geometria.altezzaMm * 10) / 10,

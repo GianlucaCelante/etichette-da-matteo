@@ -124,6 +124,10 @@ svg { display: block; flex-shrink: 0; }
   background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 16px;
   display: flex; flex-direction: column; min-height: 0;
 }
+/* la colonna di sinistra di Stampa (ricerca, gettoni, griglia) nel prototipo
+   e' un div nudo, senza la carta bianca: solo la scheda del prodotto a
+   destra ce l'ha (vistaStampa, "sx" non e' ".colonna"). */
+.colonnaElenco { display: flex; flex-direction: column; min-height: 0; }
 .scorre { overflow-y: auto; overscroll-behavior: contain; }
 .scorre::-webkit-scrollbar { width: 8px; }
 .scorre::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
@@ -341,13 +345,24 @@ svg { display: block; flex-shrink: 0; }
 
 /* ---------- anteprima e lente ---------- */
 .anteprima { position: relative; }
+/* corta o lunga, la cornice e' sempre larga quanto il posto a disposizione
+   al piu' (mai di piu': e' l'immagine dentro, non lei, a sforare quando
+   l'etichetta e' un nastro lungo - vedi useAdattaAnteprima) e alta quanto
+   la misura adattata: le dimensioni vere arrivano dallo style in linea. */
 .cornice {
-  overflow-y: auto; overflow-x: hidden; max-height: 260px; border-radius: 2px; position: relative;
-  flex-shrink: 0; width: 100%; display: block; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
+  overflow-y: hidden; overflow-x: auto; border-radius: 2px; position: relative;
+  flex-shrink: 0; display: block; align-self: flex-start; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
 }
-.cornice::-webkit-scrollbar { width: 6px; }
+.cornice::-webkit-scrollbar { height: 6px; }
+.cornice::-webkit-scrollbar-track { background: transparent; }
+.cornice.continua::-webkit-scrollbar-track { background: var(--barra); border-radius: 3px; }
 .cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
-.cornice img { display: block; width: 100%; max-width: 100%; height: auto; }
+/* il nastro continua oltre il riquadro: lo si dice sfumando il bordo destro */
+.cornice.continua {
+  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+}
+.cornice img { display: block; }
 .lupa {
   position: absolute; top: 6px; left: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
   color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none;

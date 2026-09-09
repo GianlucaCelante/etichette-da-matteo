@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useDebounced } from "../hooks/useDebounced";
-import { anteprimaProdottoBlob, api, caricaLogo, eliminaLogo, logoEsiste, percorsoResaProdotto } from "./client";
+import { anteprimaProdottoBlob, api, caricaLogo, eliminaLogo, logoEsiste, misureProdottoInModifica, percorsoResaProdotto } from "./client";
 import type {
   EventoStampa,
   Impostazioni,
+  MisureRisposta,
   NuovoProdotto,
   OrdineProdotti,
   ParametriResa,
@@ -276,6 +277,11 @@ interface BozzaAnteprima {
 
 interface AnteprimaProdotto {
   src: string | undefined;
+  // Le stesse due misure di useMisureProdotto, ma per la bozza (non ancora
+  // salvata): la cornice (RiquadroAnteprima) ne ha bisogno per sapere se
+  // l'etichetta e' corta o lunga anche mentre si scrive, non solo a
+  // prodotto salvato.
+  misure: MisureRisposta | undefined;
   caricando: boolean;
   errore: boolean;
 }
@@ -288,6 +294,7 @@ interface AnteprimaProdotto {
 export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, ritardoMs = 400): AnteprimaProdotto {
   const differita = useDebounced(bozza, ritardoMs);
   const [src, setSrc] = useState<string | undefined>(undefined);
+  const [misure, setMisure] = useState<MisureRisposta | undefined>(undefined);
   const [caricando, setCaricando] = useState(false);
   const [errore, setErrore] = useState(false);
   const urlPrecedente = useRef<string | undefined>(undefined);
@@ -297,13 +304,14 @@ export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, rit
     let annullato = false;
     setCaricando(true);
     setErrore(false);
-    anteprimaProdottoBlob(differita)
-      .then((blob) => {
+    Promise.all([anteprimaProdottoBlob(differita), misureProdottoInModifica(differita)])
+      .then(([blob, misureNuove]) => {
         if (annullato) return;
         const url = URL.createObjectURL(blob);
         if (urlPrecedente.current) URL.revokeObjectURL(urlPrecedente.current);
         urlPrecedente.current = url;
         setSrc(url);
+        setMisure(misureNuove);
       })
       .catch(() => {
         if (!annullato) setErrore(true);
@@ -323,5 +331,5 @@ export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, rit
     [],
   );
 
-  return { src, caricando, errore };
+  return { src, misure, caricando, errore };
 }
