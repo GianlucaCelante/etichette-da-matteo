@@ -52,6 +52,21 @@ public class MonitorStampante {
      */
     private static final long ATTESA_RIPRISTINO_PRE_STAMPA_MS = 2000;
 
+    /**
+     * Soglie per distinguere "la stampante non risponde" (porta aperta, risposta vuota o troppo
+     * corta a {@code ESC i S}: {@link StampanteNonRispondeException}) da "scollegata" davvero
+     * (fatto osservato sull'hardware il 2026-09-09: mentre la stampante e' bloccata nel proprio
+     * errore interno, ad es. "supporto non alimentabile", non risponde nemmeno allo stato per
+     * decine di secondi pur restando fisicamente collegata). Sotto la soglia si ritenta soltanto,
+     * senza toccare la porta ne' il lavoro in corso; raggiunta la soglia si pubblica uno stato
+     * "errore/non risponde" (o "in pausa" durante un lavoro) ma si continua a interrogare; solo se
+     * anche {@link RicercaPorta#cerca()} non trova piu' il dispositivo si tratta come scollegata
+     * per davvero.
+     */
+    private static final int SOGLIA_NON_RISPONDE = 3;
+    private static final int SOGLIA_VERIFICA_DISPOSITIVO = 5;
+    private static final String MESSAGGIO_NON_RISPONDE = "La stampante non risponde: controlla coperchio e rotolo";
+
     private final RicercaPorta ricerca;
     private final Porta porta;
     private final CodaDiStampa coda;
@@ -95,6 +110,15 @@ public class MonitorStampante {
     private volatile StatoStampante statoCorrente = StatoStampante.scollegata();
     private volatile boolean attivo = true;
     private Thread thread;
+
+    /**
+     * Mancate risposte consecutive (letto e scritto SOLO dal thread del monitor, mai da fuori:
+     * niente volatile). Azzerato in {@link #richiediStato} appena arriva una risposta valida;
+     * usato da {@link #incrementaEVerificaScollegata} per decidere quando pubblicare "non
+     * risponde" ({@link #SOGLIA_NON_RISPONDE}) e quando verificare per davvero la presenza del
+     * dispositivo ({@link #SOGLIA_VERIFICA_DISPOSITIVO}).
+     */
+    private int mancateRisposteConsecutive = 0;
 
     /** Comodo per i test diretti (PortaFinta): stampante sempre abilitata. */
     public MonitorStampante(RicercaPorta ricerca, Porta porta, CodaDiStampa coda, ApplicationEventPublisher eventi) {
@@ -170,11 +194,15 @@ public class MonitorStampante {
         }
         List<String> percorsi = ricerca.cerca();
         if (percorsi.isEmpty()) {
+            // Ricerca ogni secondo finche' non ricompare (mappatura §9.1): niente WARN ad ogni
+            // giro (sarebbe spam per un'attesa che puo' durare minuti), un DEBUG basta.
+            log.debug("nessuna stampante trovata, continuo a cercare.");
             pubblicaStato(StatoStampante.scollegata());
             return false;
         }
         try {
             porta.apri(percorsi.get(0));
+            log.info("Stampante connessa: {}", percorsi.get(0));
             return true;
         } catch (IOException e) {
             log.debug("apertura porta fallita: {}", e.getMessage());
@@ -187,20 +215,72 @@ public class MonitorStampante {
         try {
             EsitoStato esito = ProtocolloQl.decodificaStato(richiediStato());
             pubblicaStato(descrivi(esito));
+        } catch (StampanteNonRispondeException e) {
+            log.debug("la stampante non risponde: {}", e.getMessage());
+            if (incrementaEVerificaScollegata()) {
+                disconnetti();
+                return;
+            }
+            if (mancateRisposteConsecutive >= SOGLIA_NON_RISPONDE) {
+                pubblicaStato(new StatoStampante(StatoStampante.ERRORE, MESSAGGIO_NON_RISPONDE, statoCorrente.rotolo(),
+                        List.of(), StatoStampante.MODELLO, LocalDateTime.now()));
+            }
         } catch (IOException e) {
-            log.warn("stampante scollegata durante la lettura di stato: {}", e.getMessage());
+            log.warn("Stampante scollegata durante la lettura di stato: {}", e.getMessage());
             disconnetti();
         }
     }
 
-    /** drain + ESC i S + poll: replica di statusRequest negli spike (mappatura §5). */
+    /**
+     * Incrementa il contatore delle mancate risposte consecutive e, ogni
+     * {@link #SOGLIA_VERIFICA_DISPOSITIVO} mancate risposte, verifica con
+     * {@link RicercaPorta#cerca()} se il dispositivo e' ancora li' - non ad ogni giro, per non
+     * interrogare SetupApi troppo spesso mentre si aspetta solo che la stampante torni a
+     * rispondere. Azzera il contatore e ritorna {@code true} SOLO se il dispositivo non si trova
+     * davvero piu' (scollegata per davvero, non solo muta); altrimenti ritorna {@code false} e la
+     * chiamante deve solo ritentare al giro successivo.
+     */
+    private boolean incrementaEVerificaScollegata() {
+        mancateRisposteConsecutive++;
+        if (mancateRisposteConsecutive % SOGLIA_VERIFICA_DISPOSITIVO == 0 && ricerca.cerca().isEmpty()) {
+            log.warn("Stampante scollegata: dispositivo non piu' trovato dopo {} mancate risposte di fila.",
+                    mancateRisposteConsecutive);
+            mancateRisposteConsecutive = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Come {@link #incrementaEVerificaScollegata}, ma per le fasi di attesa DURANTE un lavoro
+     * (punto 2): se non e' scollegata per davvero pubblica il progresso "in pausa" - col messaggio
+     * dell'ultimo errore noto sotto soglia, {@link #MESSAGGIO_NON_RISPONDE} raggiunta la soglia -
+     * cosi' il lavoro resta in pausa e continua a interrogare invece di chiudersi in errore.
+     */
+    private boolean gestisciMancataRispostaDuranteLavoro(LavoroStampa lavoro) {
+        log.debug("la stampante non risponde durante il lavoro {}.", lavoro.id);
+        if (incrementaEVerificaScollegata()) {
+            return true;
+        }
+        String messaggio = mancateRisposteConsecutive >= SOGLIA_NON_RISPONDE ? MESSAGGIO_NON_RISPONDE : statoCorrente.messaggio();
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, messaggio);
+        return false;
+    }
+
+    /**
+     * drain + ESC i S + poll: replica di statusRequest negli spike (mappatura §5). Una risposta
+     * vuota o troppo corta con la porta ancora aperta NON e' un errore di trasporto: lancia
+     * {@link StampanteNonRispondeException} invece della generica {@link IOException}, cosi' chi
+     * chiama puo' distinguerla da una vera disconnessione (vedi la classe).
+     */
     private byte[] richiediStato() throws IOException {
         svuotaCoda();
         porta.scrivi(new byte[]{0x1B, 'i', 'S'});
         byte[] raw = porta.leggiPoll(1500, 150, 64);
         if (raw.length < 32) {
-            throw new IOException("risposta di stato troppo corta: " + raw.length + " byte");
+            throw new StampanteNonRispondeException("risposta di stato troppo corta: " + raw.length + " byte");
         }
+        mancateRisposteConsecutive = 0;
         return raw;
     }
 
@@ -365,9 +445,16 @@ public class MonitorStampante {
 
         if (esito.haErrori()) {
             pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, descrivi(esito).messaggio());
-            if (!attendiRipristino(lavoro)) {
+            EsitoAttesa esitoAttesa = attendiRipristino(lavoro);
+            if (esitoAttesa == EsitoAttesa.ANNULLATA) {
                 pubblicaProgresso(lavoro, EventoStampa.ANNULLATA, "Stampa annullata");
                 coda.completa(lavoro.id);
+                return false;
+            }
+            if (esitoAttesa == EsitoAttesa.SCOLLEGATA) {
+                pubblicaProgresso(lavoro, EventoStampa.ERRORE, "Stampante scollegata");
+                coda.completa(lavoro.id);
+                disconnetti();
                 return false;
             }
             esito = leggiStatoOFallisci(lavoro);
@@ -385,12 +472,33 @@ public class MonitorStampante {
         return true;
     }
 
-    /** Legge e pubblica lo stato; se l'I/O fallisce, chiude il lavoro come errore e disconnette. */
+    /**
+     * Legge e pubblica lo stato. Una risposta vuota (porta aperta ma stampante muta, punto 1) NON
+     * chiude subito il lavoro: si delega ad {@link #attendiRipristino} (che ritenta ogni 2 s finche'
+     * non risponde di nuovo o l'utente annulla) e, tornata raggiungibile, si rilegge lo stato vero
+     * e proprio. Solo una vera {@link IOException} di trasporto, o la sparizione del dispositivo
+     * dopo troppe mancate risposte, chiude il lavoro come errore e disconnette.
+     */
     private EsitoStato leggiStatoOFallisci(LavoroStampa lavoro) {
         try {
             EsitoStato esito = ProtocolloQl.decodificaStato(richiediStato());
             pubblicaStato(descrivi(esito));
             return esito;
+        } catch (StampanteNonRispondeException e) {
+            log.info("La stampante non risponde prima di iniziare la stampa: interrogo finche' non torna raggiungibile o si annulla.");
+            EsitoAttesa esitoAttesa = attendiRipristino(lavoro);
+            if (esitoAttesa == EsitoAttesa.ANNULLATA) {
+                pubblicaProgresso(lavoro, EventoStampa.ANNULLATA, "Stampa annullata");
+                coda.completa(lavoro.id);
+                return null;
+            }
+            if (esitoAttesa == EsitoAttesa.SCOLLEGATA) {
+                pubblicaProgresso(lavoro, EventoStampa.ERRORE, "Stampante scollegata");
+                coda.completa(lavoro.id);
+                disconnetti();
+                return null;
+            }
+            return leggiStatoOFallisci(lavoro); // tornata raggiungibile: rilegge lo stato vero e proprio
         } catch (IOException e) {
             pubblicaProgresso(lavoro, EventoStampa.ERRORE, "Stampante scollegata");
             coda.completa(lavoro.id);
@@ -469,6 +577,12 @@ public class MonitorStampante {
             EsitoStato statoFinale = ProtocolloQl.decodificaStato(richiediStato());
             pubblicaStato(descrivi(statoFinale));
             return EsitoCopia.SENZA_CONFERMA;
+        } catch (StampanteNonRispondeException e) {
+            // La stampante non risponde nemmeno a questo ESC i S finale: NON e' una disconnessione
+            // (punto 1), quindi resta SENZA_CONFERMA - non chiude ne' la porta ne' il lavoro come
+            // scollegato, solo come "nessuna conferma", esattamente il caso gia' gestito sopra.
+            log.info("Nessuna conferma e la stampante non risponde nemmeno a ESC i S: segnalo senza disconnettere.");
+            return EsitoCopia.SENZA_CONFERMA;
         } catch (IOException e) {
             return EsitoCopia.ERRORE_IO;
         }
@@ -537,6 +651,15 @@ public class MonitorStampante {
             EsitoStato esito;
             try {
                 esito = ProtocolloQl.decodificaStato(richiediStato());
+            } catch (StampanteNonRispondeException e) {
+                // Punto 2: una risposta vuota qui NON chiude il lavoro, si resta in pausa e si
+                // ritenta - solo se il dispositivo sparisce per davvero si esce come ERRORE_IO
+                // (la chiamante, eseguiLavoro, disconnette e pubblica l'esito).
+                if (gestisciMancataRispostaDuranteLavoro(lavoro)) {
+                    return EsitoCopia.ERRORE_IO;
+                }
+                dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
+                continue;
             } catch (IOException e) {
                 return EsitoCopia.ERRORE_IO;
             }
@@ -643,6 +766,17 @@ public class MonitorStampante {
                 log.info("Ancora in errore dopo la cancellazione del buffer: torno a interrogare attivamente.");
                 return gestisciErroreAMetaCopia(lavoro, esito);
             }
+        } catch (StampanteNonRispondeException e) {
+            // Punto 2: subito dopo la cancellazione la stampante non risponde. Non e' un errore di
+            // trasporto: si torna alla fase di interrogazione attiva (stessa logica di un errore
+            // vero) e, tornata raggiungibile/pulita, si ripete l'intero passaggio cancellazione +
+            // espulsione da capo (potrebbe essere di nuovo in errore, o solo stata lenta a rispondere).
+            log.info("La stampante non risponde subito dopo la cancellazione del buffer: torno a interrogare attivamente.");
+            EsitoCopia esitoAttesa = attendiStatoPulitoAttivamente(lavoro);
+            if (esitoAttesa != null) {
+                return esitoAttesa;
+            }
+            return cancellaBufferEspelliERimanda(lavoro);
         } catch (IOException e) {
             return EsitoCopia.ERRORE_IO;
         }
@@ -719,23 +853,30 @@ public class MonitorStampante {
      * differenza di un errore a meta' copia, gestito invece da {@link #gestisciErroreAMetaCopia}
      * in puro ascolto passivo.
      */
-    private boolean attendiRipristino(LavoroStampa lavoro) {
+    private EsitoAttesa attendiRipristino(LavoroStampa lavoro) {
         while (true) {
             if (lavoro.annullato.get()) {
-                return false;
+                return EsitoAttesa.ANNULLATA;
             }
             try {
                 EsitoStato esito = ProtocolloQl.decodificaStato(richiediStato());
                 pubblicaStato(descrivi(esito));
                 if (!esito.haErrori()) {
-                    return true;
+                    return EsitoAttesa.PRONTA;
+                }
+            } catch (StampanteNonRispondeException e) {
+                if (gestisciMancataRispostaDuranteLavoro(lavoro)) {
+                    return EsitoAttesa.SCOLLEGATA;
                 }
             } catch (IOException e) {
-                return false;
+                return EsitoAttesa.SCOLLEGATA;
             }
             dormi(ATTESA_RIPRISTINO_PRE_STAMPA_MS);
         }
     }
+
+    /** Esito di {@link #attendiRipristino}: pronta a stampare, annullata dall'utente, o VERAMENTE scollegata (mai per una semplice mancata risposta, vedi punto 1). */
+    private enum EsitoAttesa {PRONTA, ANNULLATA, SCOLLEGATA}
 
     private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio) {
         int copiaMostrata = lavoro.copiaCorrente + (EventoStampa.IN_CORSO.equals(stato) ? 1 : 0);

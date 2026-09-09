@@ -6,8 +6,10 @@ import org.junit.jupiter.api.Test;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -289,10 +291,216 @@ class MonitorStampanteRipresaTest {
     }
 
     // ---------------------------------------------------------------------------------------
+    // Correzione del 2026-09-09 (fatto osservato sull'hardware, log 09:32:05-09:33:57): mentre la
+    // stampante e' bloccata nel proprio errore interno non risponde nemmeno a ESC i S per decine
+    // di secondi pur restando collegata. Una risposta vuota/troppo corta ({@link
+    // StampanteNonRispondeException}) NON deve piu' essere scambiata per una disconnessione.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void treRisposteVuoteDuranteLaPausaNonChiudonoIlLavoroEPoiProseguonoConCancellazioneEdEspulsione() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x10)); // errore a meta' copia (coperchio aperto)
+
+        // fase 1 (interrogazione attiva): 3 mancate risposte di fila (porta aperta ma stampante
+        // muta), poi finalmente pulita. Ogni richiediStato() e' un accodaNessunDato() (svuotaCoda)
+        // seguito da un secondo accodaNessunDato() (la lettura vera, "nessun dato").
+        for (int i = 0; i < 3; i++) {
+            porta.accodaNessunDato();
+            porta.accodaNessunDato();
+        }
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1: finalmente pulita
+
+        // fase 2 (ascolto passivo) disattivata: attesaRistampaBaseMs=0 la fa uscire SUBITO, senza
+        // fare nessuna leggiPoll reale - cosi' tutto puo' essere precaricato qui sopra, senza un
+        // thread separato che rincorra una finestra millisecondi (che con 3 mancate risposte, ognuna
+        // con un vero dormi(2 s), sposterebbe troppo avanti l'inizio della fase 3).
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 3: cancella il buffer, poi rilegge -> pulito
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione: "in stampa"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione: "completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione: "tornata in ricezione"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+        porta.accodaRisposta(stato(0x06, 0x00, 0));
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(0, 0);
+        monitor.avvia();
+
+        // le 3 mancate risposte comportano 3 dormi(2 s) reali prima di tornare pulita.
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA, 12_000);
+
+        boolean vistoNonRisponde = pubblicati.stream().anyMatch(e -> e instanceof EventoStampa ev
+                && EventoStampa.IN_PAUSA.equals(ev.stato())
+                && ev.messaggio().equals("La stampante non risponde: controlla coperchio e rotolo"));
+        assertThat(vistoNonRisponde).isTrue(); // raggiunta la soglia di 3, l'utente vede il messaggio dedicato
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(4);
+        assertThat(grandi.get(0).length).isEqualTo(445); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (invalidate + ESC @)
+        assertThat(grandi.get(2).length).isEqualTo(743); // job di espulsione (300 righe tutte bianche)
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(300);
+        assertThat(grandi.get(3).length).isEqualTo(445); // job copia 1 di nuovo (rimandata)
+
+        assertThat(porta.isAperta()).isTrue(); // le mancate risposte non hanno mai chiuso la porta
+    }
+
+    @Test
+    void unaMancataRispostaDuranteLaRipresaDaUnErroreDiSupportoNonAlimentabileNonInterrompeIlRecupero() throws InterruptedException {
+        PortaFinta porta = new PortaFinta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // controllaPrimaDiStampare
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // errore a meta' copia: "supporto non alimentabile o rotolo finito"
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1 (1o giro): subito pulita
+        // fase 2 (1o giro) disattivata (attesaRistampaBaseMs=0): nessuna leggiPoll reale, quindi
+        // tutto il resto puo' essere precaricato qui, senza un thread separato a rincorrere una
+        // finestra millisecondi (che dopo la mancata risposta, con un vero dormi(2 s), si sarebbe
+        // spostata troppo avanti).
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 3 (1o giro): cancella il buffer -> pulito
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione (1o tentativo): "in stampa"
+        porta.accodaRisposta(stato(0x02, 0, 0x40)); // NUOVO errore "supporto non alimentabile" durante l'espulsione stessa
+        // fase 1 (2o giro): la stampante e' ancora bloccata e non risponde una volta, poi torna pulita.
+        porta.accodaNessunDato();
+        porta.accodaNessunDato(); // svuotaCoda + lettura vera vuota -> StampanteNonRispondeException
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 1 (2o giro): dopo il dormi(2 s), finalmente pulita
+        // fase 2 (2o giro) disattivata anch'essa.
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // fase 3 (2o giro): cancella il buffer di nuovo -> pulito
+        porta.accodaRisposta(stato(0x06, 0x01, 0)); // espulsione (2o tentativo): "in stampa"
+        porta.accodaRisposta(stato(0x01, 0, 0)); // espulsione (2o tentativo): "completata"
+        porta.accodaRisposta(stato(0x06, 0x00, 0)); // espulsione (2o tentativo): "tornata in ricezione" -> riuscita
+        porta.accodaRisposta(stato(0x01, 0, 0)); // rinvio della copia: completa normalmente
+        porta.accodaRisposta(stato(0x06, 0x00, 0));
+        porta.accodaNessunDato();
+        porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+
+        monitor = new MonitorStampante(() -> List.of("percorso-finto"), porta, coda, pubblicati::add);
+        monitor.impostaAttesaRistampaPerTest(0, 0);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.COMPLETATA, 8_000);
+
+        List<byte[]> grandi = scrittureGrandi(porta);
+        assertThat(grandi).hasSize(6);
+        assertThat(grandi.get(0).length).isEqualTo(445); // job copia 1
+        assertThat(grandi.get(1).length).isEqualTo(402); // cancellazione (1o tentativo)
+        assertThat(grandi.get(2).length).isEqualTo(743); // job di espulsione (1o tentativo, interrotto)
+        assertThat(numeroLineeJob(grandi.get(2))).isEqualTo(300);
+        assertThat(grandi.get(3).length).isEqualTo(402); // cancellazione (2o tentativo, dopo essere tornati a interrogare)
+        assertThat(grandi.get(4).length).isEqualTo(743); // job di espulsione (2o tentativo, riuscito)
+        assertThat(numeroLineeJob(grandi.get(4))).isEqualTo(300);
+        assertThat(grandi.get(5).length).isEqualTo(445); // job copia 1 di nuovo (rimandata)
+
+        assertThat(porta.isAperta()).isTrue(); // la mancata risposta durante la ripresa non ha mai chiuso la porta
+    }
+
+    @Test
+    void unaVeraIOExceptionDiTrasportoDisconnetteELavoroFinisceInErroreComeOggi() throws InterruptedException {
+        PortaCheSiGuasta porta = new PortaCheSiGuasta();
+        CodaDiStampa coda = new CodaDiStampa();
+        List<Object> pubblicati = new CopyOnWriteArrayList<>();
+
+        coda.accoda(immagineDiProva(), 102, 1);
+
+        // La primissima lettura (svuotaCoda, dentro richiediStato di controllaPrimaDiStampare)
+        // fallisce con un vero errore di trasporto - non una risposta vuota - e deve continuare a
+        // significare "scollegata", esattamente come prima di questa correzione.
+        porta.guastaProssimaLettura();
+
+        // Trova il dispositivo SOLO alla primissima ricerca (per la connessione iniziale): dopo la
+        // disconnessione la ricerca non lo trova piu', cosi' il monitor non lo riapre subito e
+        // l'asserzione sotto puo' osservare la porta davvero chiusa (altrimenti la riconnessione
+        // automatica, che qui trova sempre il dispositivo, la riaprirebbe prima del controllo).
+        AtomicBoolean primaRicerca = new AtomicBoolean(true);
+        RicercaPorta ricerca = () -> primaRicerca.compareAndSet(true, false) ? List.of("percorso-finto") : List.of();
+
+        monitor = new MonitorStampante(ricerca, porta, coda, pubblicati::add);
+        monitor.avvia();
+
+        aspettaEvento(pubblicati, EventoStampa.ERRORE);
+
+        boolean vistoScollegata = pubblicati.stream().anyMatch(e -> e instanceof EventoStampa ev
+                && EventoStampa.ERRORE.equals(ev.stato())
+                && ev.messaggio().equals("Stampante scollegata"));
+        assertThat(vistoScollegata).isTrue();
+        assertThat(porta.isAperta()).isFalse(); // vera disconnessione: la porta e' stata chiusa, non solo "muta"
+    }
+
+    /**
+     * Avvolge {@link PortaFinta} per poter simulare, UNA VOLTA sola, un vero errore di trasporto
+     * (non una semplice risposta vuota) alla prossima {@link #leggiPoll}: serve al test che
+     * verifica come, dopo la correzione del 2026-09-09, un'{@link IOException} di trasporto vera
+     * continua a significare "scollegata" esattamente come prima.
+     */
+    private static final class PortaCheSiGuasta implements Porta {
+        private final PortaFinta delegato = new PortaFinta();
+        private volatile boolean prossimaLetturaGuasta = false;
+
+        void guastaProssimaLettura() {
+            prossimaLetturaGuasta = true;
+        }
+
+        @Override
+        public void apri(String percorso) throws IOException {
+            delegato.apri(percorso);
+        }
+
+        @Override
+        public void scrivi(byte[] dati) throws IOException {
+            delegato.scrivi(dati);
+        }
+
+        @Override
+        public byte[] leggiPoll(int maxMs, int quietMs, int dimensioneLettura) throws IOException {
+            if (prossimaLetturaGuasta) {
+                prossimaLetturaGuasta = false;
+                throw new IOException("errore di trasporto simulato (es. dispositivo scomparso a meta' lettura)");
+            }
+            return delegato.leggiPoll(maxMs, quietMs, dimensioneLettura);
+        }
+
+        @Override
+        public void chiudi() {
+            delegato.chiudi();
+        }
+
+        @Override
+        public boolean isAperta() {
+            return delegato.isAperta();
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
 
     /** Aspetta che arrivi un {@link EventoStampa} con lo stato indicato, entro 5 s. */
     private void aspettaEvento(List<Object> pubblicati, String statoAtteso) throws InterruptedException {
-        long scadenza = System.currentTimeMillis() + 5000;
+        aspettaEvento(pubblicati, statoAtteso, 5000);
+    }
+
+    /** Come sopra, ma con un timeout indicato: i test con piu' mancate risposte di fila (ognuna con
+     * un vero {@code dormi(2 s)} prima di ritentare, punto 1/2 della correzione del 2026-09-09)
+     * hanno bisogno di piu' dei 5 s di default. */
+    private void aspettaEvento(List<Object> pubblicati, String statoAtteso, long timeoutMs) throws InterruptedException {
+        long scadenza = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < scadenza) {
             boolean trovato = pubblicati.stream()
                     .anyMatch(e -> e instanceof EventoStampa ev && statoAtteso.equals(ev.stato()));
@@ -301,7 +509,7 @@ class MonitorStampanteRipresaTest {
             }
             Thread.sleep(10);
         }
-        throw new AssertionError("evento di stampa \"" + statoAtteso + "\" non arrivato entro 5 s. Eventi pubblicati: " + pubblicati);
+        throw new AssertionError("evento di stampa \"" + statoAtteso + "\" non arrivato entro " + timeoutMs + " ms. Eventi pubblicati: " + pubblicati);
     }
 
     /**
