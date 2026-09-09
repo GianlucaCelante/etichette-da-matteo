@@ -71,6 +71,13 @@ export const api = {
   provaStampa: () => richiedi<ProvaStampaRisposta>("/stampante/prova", { method: "POST" }),
   annullaStampa: (lavoroId: string) =>
     richiedi<void>(`/stampe/${encodeURIComponent(lavoroId)}/annulla`, { method: "POST" }),
+  // Risposta alla domanda "nastro" del pannello di pausa (docs/api.md,
+  // "Errore di nastro a meta' copia"): 204, 404 lavoro sconosciuto, 409 se
+  // il lavoro non sta (piu') aspettando una risposta.
+  proseguiStampa: (lavoroId: string) =>
+    richiedi<void>(`/stampe/${encodeURIComponent(lavoroId)}/prosegui`, { method: "POST" }),
+  ristampaStampa: (lavoroId: string) =>
+    richiedi<void>(`/stampe/${encodeURIComponent(lavoroId)}/ristampa`, { method: "POST" }),
   impostazioni: () => richiedi<Impostazioni>("/impostazioni"),
   salvaImpostazioni: (dati: Impostazioni) =>
     richiedi<Impostazioni>("/impostazioni", { method: "PUT", body: JSON.stringify(dati) }),

@@ -20,6 +20,11 @@ export interface EventoStampa {
   copieTotali: number;
   stato: StatoLavoro;
   messaggio: string;
+  // Presente solo con stato "in_pausa" per l'errore di nastro a meta' copia
+  // (docs/api.md, "Stampe"): l'interfaccia chiede se l'etichetta e' uscita
+  // intera prima di proseguire o ristampare. Assente/null negli altri casi,
+  // compresa la pausa automatica del coperchio aperto.
+  domanda?: "nastro" | null;
 }
 
 export interface ProvaStampaRisposta {

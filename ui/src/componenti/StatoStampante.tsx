@@ -4,7 +4,7 @@ import type { StatoStampante as StatoStampanteTipo } from "../api/tipi";
 const TESTO_STATO: Record<StatoStampanteTipo, string> = {
   pronta: "Pronta",
   in_stampa: "In stampa",
-  errore: "Coperchio aperto",
+  errore: "Errore",
   scollegata: "Scollegata",
 };
 
@@ -40,8 +40,12 @@ export default function StatoStampante() {
   // aperto"): affiancarlo sempre a TESTO_STATO duplicava il testo. Per pronta
   // e in_stampa accanto va solo il rotolo; il messaggio si vede solo quando
   // c'e' un problema (errore/scollegata), dove non c'entra il rotolo.
+  // Con "errore" il grassetto e' il messaggio stesso del servizio ("Coperchio aperto",
+  // "Supporto non alimentabile o rotolo finito", "Nessun rotolo caricato", "Stampante non
+  // risponde"): l'etichetta fissa "Coperchio aperto" valeva solo finche' era l'unico errore.
   const inErrore = data.stato === "errore" || data.stato === "scollegata";
-  const accanto = inErrore ? data.messaggio : data.rotolo ? `rotolo ${data.rotolo} mm` : "nessun rotolo";
+  const accanto = data.stato === "scollegata" ? data.messaggio : inErrore ? "" : data.rotolo ? `rotolo ${data.rotolo} mm` : "nessun rotolo";
+  const grassetto = data.stato === "errore" && data.messaggio ? data.messaggio : TESTO_STATO[data.stato];
   // Da pronta, come nel prototipo: il grassetto e' il modello della
   // stampante (solo su schermo largo, dove c'e' posto) e non ripete "Pronta",
   // gia' detto dal colore verde del pallino.
@@ -60,8 +64,8 @@ export default function StatoStampante() {
   return (
     <span className={"pastiglia " + classeDiStato(data.stato)}>
       <span className="punto" />
-      <b>{TESTO_STATO[data.stato]}</b>
-      <span className="font-normal">{accanto}</span>
+      <b>{grassetto}</b>
+      {accanto && <span className="font-normal">{accanto}</span>}
     </span>
   );
 }

@@ -1,11 +1,12 @@
 import { useCallback, useMemo, type CSSProperties } from "react";
-import { IconaAllarme, IconaPiu, IconaSinistra, IconaSpunta, IconaStampa, IconaVia } from "../Icone";
+import { IconaAllarme, IconaCercaDiNuovo, IconaPiu, IconaSinistra, IconaSpunta, IconaStampa, IconaVia } from "../Icone";
 import { elencaCopie, formattaDataItaliana } from "./formattazione";
 
 // I tre pannelli dell'avanzamento di una stampa, guidati dagli eventi SSE
 // "stampa": in corso (con la barra e l'elenco delle copie), errore (coperchio
-// aperto e simili), fatta (Stampata/Serie fermata). Condivisi fra la vista
-// Stampa e la "Stampa di prova" della vista Etichette, cosi' il
+// aperto e simili, oppure la domanda "nastro" quando il servizio non sa se
+// l'etichetta e' uscita intera), fatta (Stampata/Serie fermata). Condivisi
+// fra la vista Stampa e la "Stampa di prova" della vista Etichette, cosi' il
 // comportamento resta identico nei due punti (docs/api.md, "Stampe").
 
 export function PannelloInCorso({
@@ -69,7 +70,75 @@ export function PannelloInCorso({
   );
 }
 
-export function PannelloErrore({ messaggio, onFerma }: { messaggio: string; onFerma: () => void }) {
+export function PannelloErrore({
+  messaggio,
+  domanda,
+  copiaCorrente,
+  copieTotali,
+  onFerma,
+  onProsegui,
+  onRistampa,
+  rispondendo,
+  giaRipartito,
+}: {
+  messaggio: string;
+  // Presente e "nastro" solo per l'errore di nastro a meta' copia
+  // (docs/api.md, "Errore di nastro a meta' copia"): il pannello chiede se
+  // l'etichetta e' uscita intera invece di limitarsi ad avvisare. Assente o
+  // null: pausa automatica (coperchio aperto e simili), pannello di sempre.
+  domanda?: "nastro" | null;
+  copiaCorrente?: number;
+  copieTotali?: number;
+  onFerma: () => void;
+  onProsegui?: () => void;
+  onRistampa?: () => void;
+  // "Sì"/"No" gia' cliccato: restano disabilitati finche' non arriva il
+  // prossimo evento (in_corso, completata...), cosi' non si manda due volte.
+  rispondendo?: boolean;
+  // 409 dal servizio: qualcun altro (o il timeout di un minuto) ha gia'
+  // deciso al posto nostro. Si tolgono i due bottoni, resta solo l'annulla.
+  giaRipartito?: boolean;
+}) {
+  if (domanda === "nastro") {
+    return (
+      <div className="flex flex-col gap-3 min-h-0 flex-1">
+        <div className="avviso">
+          <span className="flex-shrink-0">
+            <IconaAllarme larghezza={22} spessoreTratto={2} />
+          </span>
+          <div>
+            <div className="text-[16px] font-bold text-[var(--rossocupo)]">
+              Problema con il nastro sulla copia {copiaCorrente} di {copieTotali}
+            </div>
+            <div className="text-[13.5px] leading-snug mt-1">{messaggio}.</div>
+            <div className="text-[13.5px] font-bold leading-snug mt-1">L&apos;etichetta è uscita intera?</div>
+          </div>
+        </div>
+        <div className="flex-1" />
+        <div className="flex flex-col gap-2.5">
+          {!giaRipartito && (
+            <>
+              <button type="button" className="btn primario grande" onClick={onProsegui} disabled={rispondendo}>
+                <IconaSpunta larghezza={20} spessoreTratto={2.4} />
+                <span>Sì, prosegui</span>
+              </button>
+              <button type="button" className="btn grande" onClick={onRistampa} disabled={rispondendo}>
+                <IconaCercaDiNuovo larghezza={20} spessoreTratto={2} />
+                <span>No, ristampala</span>
+              </button>
+              <div className="text-[12.5px] text-[var(--tenue)] text-center leading-snug">
+                Se nessuno risponde entro un minuto da quando la stampante è di nuovo pronta, la ristampo.
+              </div>
+            </>
+          )}
+          <button type="button" className="btn" onClick={onFerma}>
+            <IconaVia larghezza={20} spessoreTratto={2} />
+            <span>Annulla la stampa</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3 min-h-0 flex-1">
       <div className="avviso">

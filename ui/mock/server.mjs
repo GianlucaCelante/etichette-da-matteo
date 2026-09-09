@@ -916,7 +916,7 @@ function leggiDimensioniImmagine(buf, mime) {
 }
 
 /* ============================ stampe: lavori attivi ============================ */
-const lavoriAttivi = new Map(); // lavoroId -> { annullato }
+const lavoriAttivi = new Map(); // lavoroId -> { annullato, copiaCorrente, inPausa, avanti, finisci, copie }
 
 // "prova" (revisione di questo giro): la "Stampa di prova" di Etichette
 // finisce comunque nello storico (per non perdere traccia di cosa e' uscito
@@ -924,7 +924,7 @@ const lavoriAttivi = new Map(); // lavoroId -> { annullato }
 // "usi"/"ultimoUso" del prodotto (altrimenti falserebbe "più usati").
 function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, prova = false }) {
   const lavoroId = "stampa-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const lavoro = { annullato: false, copiaCorrente: 0 };
+  const lavoro = { annullato: false, copiaCorrente: 0, inPausa: false, copie };
   lavoriAttivi.set(lavoroId, lavoro);
 
   stampante = { ...stampante, stato: "in_stampa", messaggio: "Stampa in corso" };
@@ -969,10 +969,19 @@ function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, disposi
     });
     setTimeout(() => {
       if (lavoro.annullato) return finisci("annullata");
+      // In pausa (errore di nastro simulato da /api/mock/errore-nastro): non
+      // si tocca nulla finche' non arriva /prosegui o /ristampa, che
+      // richiamano avanti()/finisci() direttamente da fuori.
+      if (lavoro.inPausa) return;
       if (lavoro.copiaCorrente >= copie) return finisci("completata");
       avanti();
     }, RITARDO_PER_COPIA_MS);
   }
+  // Esposte cosi' gli endpoint di /prosegui, /ristampa e /mock/errore-nastro
+  // possono richiamarle da fuori (docs/api.md, "Errore di nastro a meta'
+  // copia").
+  lavoro.avanti = avanti;
+  lavoro.finisci = finisci;
   avanti();
   return lavoroId;
 }
@@ -1031,10 +1040,81 @@ const server = http.createServer(async (req, res) => {
       const [, lavoroId] = annulla;
       const id = decodeURIComponent(lavoroId);
       const lavoro = lavoriAttivi.get(id);
-      if (lavoro) lavoro.annullato = true;
-      else mandaEvento("stampa", { lavoroId: id, copiaCorrente: 0, copieTotali: 0, stato: "annullata", messaggio: "Annullata" });
+      if (lavoro) {
+        lavoro.annullato = true;
+        // In pausa (domanda "nastro"): nessun timer la riprendera' da sola,
+        // e la copia interrotta non conta come uscita (docs/api.md, "Errore
+        // di nastro a meta' copia": "con le copie uscite prima di quella
+        // interrotta").
+        if (lavoro.inPausa && typeof lavoro.finisci === "function") {
+          lavoro.copiaCorrente = Math.max(0, lavoro.copiaCorrente - 1);
+          lavoro.finisci("annullata");
+        }
+      } else {
+        mandaEvento("stampa", { lavoroId: id, copiaCorrente: 0, copieTotali: 0, stato: "annullata", messaggio: "Annullata" });
+      }
       res.writeHead(204).end();
       return;
+    }
+
+    // La domanda "nastro" (docs/api.md, "Errore di nastro a meta' copia"):
+    // /prosegui conta la copia interrotta come uscita e va avanti con le
+    // rimanenti; /ristampa la rifa' da capo (si riparte dalla stessa copia).
+    // Entrambe 204, 404 lavoro sconosciuto, 409 se non e' (piu') in pausa.
+    const prosegui = percorso.match(/^\/api\/stampe\/([^/]+)\/prosegui$/);
+    if (prosegui && req.method === "POST") {
+      const lavoro = lavoriAttivi.get(decodeURIComponent(prosegui[1]));
+      if (!lavoro || typeof lavoro.avanti !== "function") return erroreJson(res, 404, "Lavoro non trovato");
+      if (!lavoro.inPausa) return erroreJson(res, 409, "La stampa non è in attesa di una risposta");
+      lavoro.inPausa = false;
+      // Lo stato della stampante resta "in_stampa" per tutta la pausa, come
+      // per il coperchio aperto (Impostazioni.tsx tratta "in_pausa" come
+      // "in_stampa"): non c'e' nulla da rimettere apposto qui.
+      res.writeHead(204).end();
+      if (lavoro.copiaCorrente >= lavoro.copie) lavoro.finisci("completata");
+      else lavoro.avanti();
+      return;
+    }
+    const ristampa = percorso.match(/^\/api\/stampe\/([^/]+)\/ristampa$/);
+    if (ristampa && req.method === "POST") {
+      const lavoro = lavoriAttivi.get(decodeURIComponent(ristampa[1]));
+      if (!lavoro || typeof lavoro.avanti !== "function") return erroreJson(res, 404, "Lavoro non trovato");
+      if (!lavoro.inPausa) return erroreJson(res, 409, "La stampa non è in attesa di una risposta");
+      lavoro.inPausa = false;
+      // La copia interrotta si rifa': si toglie qui, avanti() la rimette
+      // stampando di nuovo lo stesso numero.
+      lavoro.copiaCorrente = Math.max(0, lavoro.copiaCorrente - 1);
+      res.writeHead(204).end();
+      lavoro.avanti();
+      return;
+    }
+    // Solo per le prove manuali: mette in pausa il lavoro di stampa in corso
+    // con la domanda "nastro", come se la stampante avesse segnalato
+    // «supporto non alimentabile o rotolo finito» a meta' di una copia. Lo
+    // stato della stampante resta "in_stampa" (non "errore": quello e' gia'
+    // preso dal coperchio aperto, vedi StatoStampante.tsx "TESTO_STATO"), il
+    // messaggio del problema sta solo nell'evento "stampa".
+    if (percorso === "/api/mock/errore-nastro" && req.method === "POST") {
+      let lavoroId = null;
+      let lavoro = null;
+      for (const [id, l] of lavoriAttivi) {
+        if (typeof l.avanti === "function" && !l.annullato && !l.inPausa) {
+          lavoroId = id;
+          lavoro = l;
+        }
+      }
+      if (!lavoro) return erroreJson(res, 404, "Nessuna stampa in corso");
+      lavoro.inPausa = true;
+      const messaggio = "Supporto non alimentabile o rotolo finito";
+      mandaEvento("stampa", {
+        lavoroId,
+        copiaCorrente: lavoro.copiaCorrente,
+        copieTotali: lavoro.copie,
+        stato: "in_pausa",
+        domanda: "nastro",
+        messaggio,
+      });
+      return rispondiJson(res, 200, { lavoroId });
     }
 
     if (percorso === "/api/stampe" && req.method === "POST") {

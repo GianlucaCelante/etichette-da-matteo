@@ -86,6 +86,14 @@ export function useAnnullaStampa() {
   return useMutation({ mutationFn: (lavoroId: string) => api.annullaStampa(lavoroId) });
 }
 
+export function useProseguiStampa() {
+  return useMutation({ mutationFn: (lavoroId: string) => api.proseguiStampa(lavoroId) });
+}
+
+export function useRistampaStampa() {
+  return useMutation({ mutationFn: (lavoroId: string) => api.ristampaStampa(lavoroId) });
+}
+
 function risolviLavoroNullo() {
   return Promise.resolve(null);
 }

@@ -9,10 +9,13 @@ import {
   useMisureProdotto,
   useProdotti,
   useProdotto,
+  useProseguiStampa,
+  useRistampaStampa,
   useRistampaUltima,
   useStampante,
   useStorico,
 } from "../api/hooks";
+import { ErroreRichiesta } from "../api/client";
 import { useScalaAnteprima } from "../api/resa";
 import type { Prodotto } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
@@ -219,6 +222,12 @@ export default function Stampa() {
   const [scadenza, setScadenza] = useState("");
   const [lotto, setLotto] = useState("");
   const [riepilogo, setRiepilogo] = useState<Riepilogo | null>(null);
+  // La domanda "nastro" (docs/api.md, "Errore di nastro a meta' copia"):
+  // tenute per "lavoroId:copiaCorrente" cosi' i bottoni restano disabilitati
+  // (o spariscono, col 409) solo per la pausa a cui si e' gia' risposto, non
+  // per un'eventuale pausa successiva sulla stessa stampa.
+  const [rispostaInviata, setRispostaInviata] = useState<string | null>(null);
+  const [nastroRipartitoLavoro, setNastroRipartitoLavoro] = useState<string | null>(null);
 
   const { data: prodottiOrdinati } = useProdotti({ ordine: filtro === "usati" ? "usati" : "nome" });
   const lista = (prodottiOrdinati ?? []).filter((p) => p.nome.toLowerCase().includes(cerca.toLowerCase()));
@@ -230,6 +239,8 @@ export default function Stampa() {
   const creaStampa = useCreaStampa();
   const ristampaUltima = useRistampaUltima();
   const annullaStampa = useAnnullaStampa();
+  const proseguiStampa = useProseguiStampa();
+  const ristampaStampa = useRistampaStampa();
   const { data: lavoro } = useLavoroStampa();
 
   useEffect(() => {
@@ -261,6 +272,12 @@ export default function Stampa() {
   const evento = lavoro && riepilogo && lavoro.lavoroId === riepilogo.lavoroId ? lavoro : null;
   const stampaTerminata = evento ? evento.stato === "completata" || evento.stato === "annullata" : false;
   const stampaBloccante = !!riepilogo && !stampaTerminata;
+  // La domanda "nastro" del pannello di pausa: la chiave identifica QUESTA
+  // pausa (lavoro + copia interrotta), cosi' una pausa successiva sulla
+  // stessa stampa non resta bloccata dalla risposta data alla precedente.
+  const chiaveDomanda = evento && evento.stato === "in_pausa" && evento.domanda === "nastro" ? `${evento.lavoroId}:${evento.copiaCorrente}` : null;
+  const rispostaBloccata = (chiaveDomanda !== null && rispostaInviata === chiaveDomanda) || proseguiStampa.isPending || ristampaStampa.isPending;
+  const nastroGiaRipartito = !!evento && evento.lavoroId === nastroRipartitoLavoro;
   const lottoMancante = schemaAttuale === "mano" && !lotto.trim();
   // Sotto Scadenza, come nel prototipo ("Oggi + N giorni"): se la data e'
   // ancora quella proposta per il prodotto si dice quanti giorni sono, se
@@ -359,6 +376,37 @@ export default function Stampa() {
     annullaStampa.mutate(riepilogo.lavoroId, { onError: () => avvisa("Non sono riuscito a fermare la stampa.") });
   }, [riepilogo, annullaStampa, avvisa]);
 
+  // "Sì, prosegui" / "No, ristampala" sulla domanda "nastro": stessa forma
+  // per le due, cambia solo la mutazione. Il 409 vuol dire che qualcun altro
+  // (o il timeout di un minuto lato servizio) ha gia' risposto al posto
+  // nostro: si avvisa e si tolgono i bottoni (docs/api.md, "Stampe").
+  const rispondiPausa = useCallback(
+    (mutazione: ReturnType<typeof useProseguiStampa>, testoErrore: string) => {
+      if (!riepilogo || !chiaveDomanda) return;
+      setRispostaInviata(chiaveDomanda);
+      mutazione.mutate(riepilogo.lavoroId, {
+        onError: (errore) => {
+          if (errore instanceof ErroreRichiesta && errore.stato === 409) {
+            setNastroRipartitoLavoro(riepilogo.lavoroId);
+            avvisa("La stampa è già ripartita.");
+          } else {
+            setRispostaInviata(null);
+            avvisa(testoErrore);
+          }
+        },
+      });
+    },
+    [riepilogo, chiaveDomanda, avvisa],
+  );
+  const cliccaProsegui = useCallback(
+    () => rispondiPausa(proseguiStampa, "Non sono riuscito a confermare."),
+    [rispondiPausa, proseguiStampa],
+  );
+  const cliccaRistampa = useCallback(
+    () => rispondiPausa(ristampaStampa, "Non sono riuscito a chiedere la ristampa."),
+    [rispondiPausa, ristampaStampa],
+  );
+
   const ripetiStampa = useCallback(
     (copieRichieste: number) => {
       if (!riepilogo) return;
@@ -449,8 +497,18 @@ export default function Stampa() {
 
       <div className="colonna scheda pannelloProdotto w-full md:w-[420px] flex-shrink-0 min-w-0 gap-3">
         {riepilogo && prodotto ? (
-          evento?.stato === "errore" ? (
-            <PannelloErrore messaggio={evento.messaggio} onFerma={fermaSerie} />
+          evento?.stato === "errore" || evento?.stato === "in_pausa" ? (
+            <PannelloErrore
+              messaggio={evento.messaggio}
+              domanda={evento.domanda}
+              copiaCorrente={evento.copiaCorrente}
+              copieTotali={riepilogo.copieTotali}
+              onFerma={fermaSerie}
+              onProsegui={cliccaProsegui}
+              onRistampa={cliccaRistampa}
+              rispondendo={rispostaBloccata}
+              giaRipartito={nastroGiaRipartito}
+            />
           ) : stampaTerminata && evento ? (
             <PannelloFatta
               prodottoNome={riepilogo.prodottoNome}
