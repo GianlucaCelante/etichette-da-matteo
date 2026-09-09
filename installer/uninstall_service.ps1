@@ -30,6 +30,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WinswExe  = Join-Path $ScriptDir "Etichette.exe"
 $DataDir   = "C:\ProgramData\Etichette"
 $FirewallRuleName = "Etichette"
+$FirewallRuleNameMdns = "Etichette mDNS"
 $ShortcutName = "Etichette.lnk"
 # 30s: coerente con lo <stoptimeout> di Etichette.xml, per dare tempo alla
 # chiusura pulita di Spring Boot e all'handle della stampante di liberarsi.
@@ -167,6 +168,7 @@ if (-not (Test-Path $WinswExe)) {
 }
 
 Remove-EtichetteFirewallRule -DisplayName $FirewallRuleName
+Remove-EtichetteFirewallRule -DisplayName $FirewallRuleNameMdns
 Remove-EtichetteShortcuts
 
 if ($RemoveData) {

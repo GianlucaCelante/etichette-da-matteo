@@ -21,8 +21,9 @@ Sul PC di Matteo gira anche il gestionale delle casse. L'installer tocca
 - la propria cartella in `C:\Program Files\Etichette\`;
 - la propria cartella dati in `C:\ProgramData\Etichette\`;
 - il proprio servizio Windows (`Etichette`);
-- **una** regola del firewall (TCP 8765, profili Dominio, Privato e
-  Pubblico - il confine di fiducia e' la rete locale, non la
+- **due** regole del firewall (TCP 8765 per l'interfaccia web e UDP 5353
+  per le risposte mDNS di `etichette.local`, entrambe profili Dominio,
+  Privato e Pubblico - il confine di fiducia e' la rete locale, non la
   classificazione che Windows da' alla rete, mai la porta 80);
 - le proprie scorciatoie (desktop pubblico, avvio automatico e menu Start di
   tutti gli utenti).
@@ -156,7 +157,7 @@ indipendente, per il momento esatto dell'aggiornamento.
 ## Come si disinstalla
 
 Da "Programmi e funzionalita'" (o `msiexec /x Etichette-1.0.0.msi`): ferma
-e toglie il servizio, la regola del firewall e le scorciatoie, ma **lascia
+e toglie il servizio, le regole del firewall e le scorciatoie, ma **lascia
 `C:\ProgramData\Etichette` con i dati** (database SQLite, log, backup) - per
 decisione di progetto, cosi' una disinstallazione per sbaglio non perde lo
 storico.
@@ -232,8 +233,8 @@ quella si prova sul PC di sviluppo con gli spike in `tools/spike-jna/` e
 3. Installa: doppio clic sull'MSI.
 4. Verifica:
    - `Get-Service Etichette` -> `Running`;
-   - `Get-NetFirewallRule -DisplayName Etichette` -> presente, profili
-     Domain/Private/Public;
+   - `Get-NetFirewallRule -DisplayName Etichette` e `-DisplayName "Etichette mDNS"`
+     -> presenti, profili Domain/Private/Public;
    - scorciatoia "Etichette" sul desktop pubblico e in
      `shell:common startup`;
    - `C:\ProgramData\Etichette\` creata con `log\` e `backup\`;

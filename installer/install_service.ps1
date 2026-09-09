@@ -53,6 +53,8 @@ $LogDir     = Join-Path $DataDir "log"
 $BackupDir  = Join-Path $DataDir "backup"
 $FirewallRuleName = "Etichette"
 $FirewallPort = 8765
+$FirewallRuleNameMdns = "Etichette mDNS"
+$MdnsPort = 5353
 $AppUrl     = "http://localhost:8765/"
 $ShortcutName = "Etichette.lnk"
 $ServiceStopTimeoutSeconds = 30
@@ -99,12 +101,53 @@ function New-DataDirectories {
     }
 }
 
+function Set-OrCreateFirewallRule {
+    # Aggiorna la regola se esiste gia' (idempotente: cosi' un "installa
+    # sopra" corregge da solo, per esempio, chi l'aveva ancora sul profilo
+    # Private,Domain), altrimenti la crea.
+    param(
+        [Parameter(Mandatory = $true)] [string]$DisplayName,
+        [Parameter(Mandatory = $true)] [string]$Protocol,
+        [Parameter(Mandatory = $true)] [int]$LocalPort,
+        [Parameter(Mandatory = $true)] [string]$Description
+    )
+
+    try {
+        $existing = Get-NetFirewallRule -DisplayName $DisplayName -ErrorAction SilentlyContinue
+        if ($existing) {
+            $existing | Set-NetFirewallRule `
+                -Direction Inbound `
+                -Action Allow `
+                -Protocol $Protocol `
+                -LocalPort $LocalPort `
+                -Profile Domain,Private,Public `
+                -Enabled True `
+                -Description $Description `
+                -ErrorAction Stop
+        } else {
+            New-NetFirewallRule `
+                -DisplayName $DisplayName `
+                -Direction Inbound `
+                -Action Allow `
+                -Protocol $Protocol `
+                -LocalPort $LocalPort `
+                -Profile Domain,Private,Public `
+                -Enabled True `
+                -Description $Description `
+                | Out-Null
+        }
+    } catch {
+        Write-Warning "Impossibile configurare la regola firewall '$DisplayName' per la porta ${LocalPort}: $($_.Exception.Message)"
+        Write-Warning "L'installazione continua; la regola va creata a mano."
+    }
+}
+
 function Set-EtichetteFirewallRule {
-    Write-Host "[2/4] Configuro il firewall di Windows (TCP $FirewallPort)..." -ForegroundColor Green
+    Write-Host "[2/4] Configuro il firewall di Windows (TCP $FirewallPort, UDP $MdnsPort)..." -ForegroundColor Green
 
     $newRuleCmd = Get-Command New-NetFirewallRule -ErrorAction SilentlyContinue
     if ($null -eq $newRuleCmd) {
-        Write-Warning "New-NetFirewallRule non disponibile; la regola del firewall va creata a mano."
+        Write-Warning "New-NetFirewallRule non disponibile; le regole del firewall vanno create a mano."
         return
     }
 
@@ -115,37 +158,15 @@ function Set-EtichetteFirewallRule {
     # sviluppo). Nessun login sull'app e il router NAT separa gia' da
     # internet, quindi va bene. Mai la porta 80, che potrebbe servire al
     # gestionale di cassa.
-    try {
-        $existing = Get-NetFirewallRule -DisplayName $FirewallRuleName -ErrorAction SilentlyContinue
-        if ($existing) {
-            # Aggiorno la regola gia' registrata invece di ricrearla, cosi'
-            # un "installa sopra" corregge da solo il profilo su chi
-            # l'aveva ancora su Private,Domain.
-            $existing | Set-NetFirewallRule `
-                -Direction Inbound `
-                -Action Allow `
-                -Protocol TCP `
-                -LocalPort $FirewallPort `
-                -Profile Domain,Private,Public `
-                -Enabled True `
-                -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
-                -ErrorAction Stop
-        } else {
-            New-NetFirewallRule `
-                -DisplayName $FirewallRuleName `
-                -Direction Inbound `
-                -Action Allow `
-                -Protocol TCP `
-                -LocalPort $FirewallPort `
-                -Profile Domain,Private,Public `
-                -Enabled True `
-                -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale." `
-                | Out-Null
-        }
-    } catch {
-        Write-Warning "Impossibile configurare la regola firewall '$FirewallRuleName' per la porta ${FirewallPort}: $($_.Exception.Message)"
-        Write-Warning "L'installazione continua; i telefoni potrebbero non raggiungere il servizio finche' la regola non viene creata a mano."
-    }
+    Set-OrCreateFirewallRule -DisplayName $FirewallRuleName -Protocol TCP -LocalPort $FirewallPort `
+        -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale."
+
+    # Seconda regola, UDP 5353: le domande mDNS dei telefoni per
+    # "etichette.local" (JmDNS) su rete Pubblica non arrivavano al processo
+    # Java senza una regola dedicata, anche con la porta 8765 gia' aperta
+    # (verificato sul PC di sviluppo: il QR funzionava, .local no).
+    Set-OrCreateFirewallRule -DisplayName $FirewallRuleNameMdns -Protocol UDP -LocalPort $MdnsPort `
+        -Description "Risposte mDNS (etichette.local) del servizio Etichette."
 }
 
 function Get-EdgePath {

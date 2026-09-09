@@ -18,8 +18,8 @@ Sul PC di sviluppo ci sono .NET 8, Node 24, Python 3.12 e Java 17, quindi si pot
 | Interfaccia | **React 19 + TypeScript + Vite 7**, Tailwind, React Router, TanStack Query | Stesso delle app RMP; i design finali sono HTML e CSS e si portano quasi pari |
 | Aggiornamenti in tempo reale | **Server-Sent Events** (`SseEmitter`) per stato stampante e avanzamento copie | Un solo verso, dal PC ai dispositivi; più semplice del WebSocket e sufficiente. I comandi sono POST normali |
 | Finestra sul PC | L'interfaccia come **PWA installata in Edge** (`manifest.json`), aperta all'accesso dell'utente | Edge c'è su ogni Windows; niente JavaFX o Chromium incorporato. La stessa PWA si aggiunge alla schermata iniziale dei telefoni |
-| Installazione | **`jpackage` → MSI** con JRE inclusa, **WinSW** per il servizio Windows, script PowerShell per la regola del firewall | Stessi strumenti e stessi script di `agent-java/scripts` |
-| Rete | Il servizio annuncia `etichette.local` in mDNS (JmDNS) senza toccare il nome del PC; funziona da iPhone e da PC. Per Android, dove `.local` non è affidabile, il QR nelle Impostazioni porta l'indirizzo IP e la porta | Il PC di Matteo non si rinomina (ci gira il gestionale); l'IP fisso resta una prenotazione sul router, come già scritto |
+| Installazione | **`jpackage` → MSI** con JRE inclusa, **WinSW** per il servizio Windows, script PowerShell per le regole del firewall | Stessi strumenti e stessi script di `agent-java/scripts` |
+| Rete | Il servizio annuncia `etichette.local` in mDNS (JmDNS) senza toccare il nome del PC; funziona da iPhone e da PC. Per Android, dove `.local` non è affidabile, il QR nelle Impostazioni porta l'indirizzo IP e la porta. Due regole firewall: TCP 8765 per l'interfaccia web, UDP 5353 per le risposte mDNS, altrimenti `.local` non arriva ai telefoni su rete Pubblica | Il PC di Matteo non si rinomina (ci gira il gestionale); l'IP fisso resta una prenotazione sul router, come già scritto |
 | Test | JUnit 5 sul servizio e sulla resa (immagini di riferimento), Vitest sull'interfaccia, Playwright per i percorsi principali | Stessi dell'ecosistema RMP |
 
 ## Come si incastrano i pezzi
