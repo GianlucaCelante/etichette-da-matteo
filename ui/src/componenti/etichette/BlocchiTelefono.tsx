@@ -1,5 +1,5 @@
 import { useCallback, useState, type ReactNode } from "react";
-import type { AllineamentoBlocco, TipoBlocco } from "../../api/tipi";
+import type { AllineamentoBlocco, ColonnaBlocco, TipoBlocco } from "../../api/tipi";
 import { IconaPiu } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { nuovaChiave } from "./bozza";
@@ -15,8 +15,8 @@ interface ProprietaBlocchiTelefono {
 // Il vassoio dei blocchi sul telefono (revisione di questo giro): stesso
 // elenco e stessa tavolozza per aggiungerne di nuovi del vassoio PC
 // (BlocchiEditor.tsx), ma righe semplificate (RigaBloccoTelefono) e senza
-// trascinamento: sul telefono l'ordine e la colonna sx/dx restano quelli
-// gia' decisi al PC.
+// trascinamento: l'ordine resta un affare da PC, ma la colonna sx/dx si puo'
+// cambiare anche qui (10 settembre, i tre bottoni della posizione).
 export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaBlocchiTelefono) {
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
 
@@ -29,6 +29,11 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
     [blocchi, onCambiaBlocchi],
   );
   const onRimuovi = useCallback((chiave: string) => onCambiaBlocchi(blocchi.filter((b) => b.chiave !== chiave)), [blocchi, onCambiaBlocchi]);
+  const onCambiaColonna = useCallback(
+    (chiave: string, colonna: ColonnaBlocco) =>
+      onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, colonna } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
   const onCambiaAllineamento = useCallback(
     (chiave: string, allineamento: AllineamentoBlocco) =>
       onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, allineamento } : b))),
@@ -68,6 +73,7 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
         blocco={b}
         onToggleAcceso={onToggleAcceso}
         onCambiaCorpo={onCambiaCorpo}
+        onCambiaColonna={onCambiaColonna}
         onRimuovi={onRimuovi}
         onCambiaAllineamento={onCambiaAllineamento}
       />

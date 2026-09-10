@@ -304,6 +304,12 @@ export default function Etichette() {
   // Appena creato (nuovo o duplicato): il nome va selezionato per riscriverlo
   // subito, come nel prototipo ("si scrive subito").
   const appenaCreatoRef = useRef(false);
+  // Appena eliminata (deciso da Gianluca): dopo confermaElimina, prodottoId
+  // torna a null apposta (nessuna etichetta scelta) - senza questa guardia
+  // l'effetto piu' sotto che sceglie il primo dell'elenco scattava subito e
+  // sembrava che l'eliminazione non fosse successa. Si toglie appena
+  // l'utente sceglie o crea qualcosa (impostaProdotto/nuovoProdotto sotto).
+  const appenaEliminatoRef = useRef(false);
   // Arrivando da Stampa col bottone "Nuova etichetta" (/etichette?nuovo=1):
   // nuovoInCorsoRef diventa vero durante il render stesso (sotto), appena si
   // vede il parametro, prima che qualunque effetto giri - cosi' l'effetto
@@ -359,21 +365,45 @@ export default function Etichette() {
 
   // Se non c'e' ancora un prodotto scelto (primo accesso, o quello nell'URL
   // non esiste piu'), si prende il primo dell'elenco - ma non se si sta per
-  // crearne uno nuovo arrivando da Stampa (nuovoInCorsoRef, sopra): senza
-  // questo controllo si vedrebbe per un attimo il primo della lista prima di
-  // passare al prodotto appena creato.
+  // crearne uno nuovo arrivando da Stampa (nuovoInCorsoRef, sopra), ne'
+  // appena dopo un'eliminazione (appenaEliminatoRef, sopra): senza questi
+  // controlli si vedrebbe per un attimo il primo della lista invece dello
+  // stato vuoto voluto.
   useEffect(() => {
-    if (prodottoId === null && prodotti?.[0] && !nuovoInCorsoRef.current) setProdottoId(prodotti[0].id);
+    if (prodottoId === null && prodotti?.[0] && !nuovoInCorsoRef.current && !appenaEliminatoRef.current) setProdottoId(prodotti[0].id);
   }, [prodottoId, prodotti]);
 
   // L'URL segue la scelta, cosi' si puo' arrivare qui gia' su un prodotto
-  // preciso (il tasto "matita" di Stampa) e ricaricando si resta li'.
+  // preciso (il tasto "matita" di Stampa) e ricaricando si resta li'; senza
+  // scelta (dopo un'eliminazione) il parametro sparisce.
   useEffect(() => {
-    if (prodottoId !== null) setSearchParams({ prodotto: String(prodottoId) }, { replace: true });
+    if (prodottoId !== null) {
+      setSearchParams({ prodotto: String(prodottoId) }, { replace: true });
+      return;
+    }
+    setSearchParams(
+      (precedenti) => {
+        if (!precedenti.has("prodotto")) return precedenti;
+        const nuovi = new URLSearchParams(precedenti);
+        nuovi.delete("prodotto");
+        return nuovi;
+      },
+      { replace: true },
+    );
   }, [prodottoId, setSearchParams]);
 
   useEffect(() => {
-    if (!prodotto) return;
+    if (!prodotto) {
+      // Nessuna etichetta scelta (dopo un'eliminazione, o all'avvio prima
+      // che se ne scelga una): la bozza precedente non deve restare in giro,
+      // altrimenti la colonna centrale continuerebbe a mostrare l'ultima
+      // etichetta invece dello stato vuoto.
+      setBozzaProdotto(null);
+      setBozzaBlocchi(null);
+      storiaRef.current = { passi: [], indice: 0 };
+      setVersioneStoria((v) => v + 1);
+      return;
+    }
     // Difesa (gia' valida col servizio vero, che manda sempre "zona" e
     // "blocchi": non ci si affida comunque, come un'etichetta appena creata
     // senza contenuto ancora non dovrebbe mai crashare l'interfaccia).
@@ -540,18 +570,20 @@ export default function Etichette() {
   // solo la prima volta, e senza scriverlo nel localStorage (quello resta
   // solo per il bottone «›», vedi toggleElenco).
   const impostaProdotto = useCallback((id: number) => {
+    appenaEliminatoRef.current = false;
     setProdottoId(id);
     setElencoCollassato(true);
   }, []);
   const scegliProdotto = useCallback((id: number) => provaAzione(() => impostaProdotto(id)), [provaAzione, impostaProdotto]);
 
   // Senza corpo: il servizio crea il prodotto nuovo del prototipo (nome
-  // "Prodotto nuovo", etichetta minima) - niente piu' galleria da cui
+  // "Etichetta nuova", etichetta minima) - niente piu' galleria da cui
   // scegliere un'etichetta di partenza.
   const nuovoProdotto = useCallback(() => {
     creaProdottoMut.mutate(undefined, {
       onSuccess: (dati) => {
         appenaCreatoRef.current = true;
+        appenaEliminatoRef.current = false;
         setProdottoId(dati.id);
         setElencoCollassato(true);
       },
@@ -689,7 +721,12 @@ export default function Etichette() {
       onSuccess: () => {
         setEliminaChiesto(false);
         avvisa(`Eliminata: ${prodotto.nome}.`);
+        // Nessuna scelta automatica dopo un'eliminazione (deciso da
+        // Gianluca): l'elenco si riapre su PC, la colonna centrale mostra lo
+        // stato vuoto finche' non si sceglie o si crea qualcosa.
+        appenaEliminatoRef.current = true;
         setProdottoId(null);
+        setElencoCollassato(false);
       },
       onError: () => avvisa("Non sono riuscito a eliminarla."),
     });
@@ -790,6 +827,10 @@ export default function Etichette() {
   const riassuntoLotto = schemaLottoSommario ? `${schemaLottoSommario.nome} · ${schemaLottoSommario.oggi ?? "da scrivere"}` : undefined;
 
   const prodottiTrovati = (prodotti ?? []).filter((p) => p.nome.toLowerCase().includes(cercaEt.toLowerCase()));
+  // Lo stato vuoto della colonna centrale (nessuna etichetta scelta): due
+  // testi diversi a seconda che l'elenco sia proprio vuoto o no (deciso da
+  // Gianluca).
+  const nessunaEtichettaInElenco = (prodotti?.length ?? 0) === 0;
 
   // Il campo "Nome" (il nome in elenco, non quello stampato): sempre
   // visibile, non e' legato a nessun blocco dell'etichetta. "Nome" e "Nome
@@ -994,44 +1035,47 @@ export default function Etichette() {
   // prova, Salva prodotto) stanno nella testata condivisa, come nel
   // prototipo (funzione strumentiEtichetta/comandiDiTestata), non in una
   // barra propria della vista.
+  // Senza etichetta scelta niente da annullare, duplicare, provare o
+  // salvare: la testata resta col solo titolo (deciso da Gianluca, 10
+  // settembre), non bottoni disabilitati che non hanno senso.
   const portaleStrumenti = usePortaleStrumenti(
-    <>
-      <button type="button" className="btn tondo" onClick={clicAnnulla} disabled={!puoAnnullare} title="Annulla (Ctrl+Z)" aria-label="Annulla">
-        <IconaAnnulla larghezza={18} spessoreTratto={2} />
-      </button>
-      <button type="button" className="btn tondo" onClick={clicRipristina} disabled={!puoRipristinare} title="Ripristina (Ctrl+Y)" aria-label="Ripristina">
-        <IconaRipristina larghezza={18} spessoreTratto={2} />
-      </button>
-      <div className="sep" />
-      {prodotto && (
+    prodotto ? (
+      <>
+        <button type="button" className="btn tondo" onClick={clicAnnulla} disabled={!puoAnnullare} title="Annulla (Ctrl+Z)" aria-label="Annulla">
+          <IconaAnnulla larghezza={18} spessoreTratto={2} />
+        </button>
+        <button type="button" className="btn tondo" onClick={clicRipristina} disabled={!puoRipristinare} title="Ripristina (Ctrl+Y)" aria-label="Ripristina">
+          <IconaRipristina larghezza={18} spessoreTratto={2} />
+        </button>
+        <div className="sep" />
         <button type="button" className="btn conTesto" onClick={duplicaProdotto} disabled={duplicaProdottoMut.isPending || provaBloccante}>
           <IconaDuplica larghezza={17} spessoreTratto={2} />
           <span>Duplica</span>
         </button>
-      )}
-      {prodotto && (
         <button type="button" className="btn conTesto elimina" onClick={chiediElimina} disabled={eliminaProdottoMut.isPending || provaBloccante}>
           <IconaCestino larghezza={17} spessoreTratto={2} />
           <span>Elimina</span>
         </button>
-      )}
-    </>,
+      </>
+    ) : null,
   );
   const portaleAzioni = usePortaleAzioni(
-    <>
-      <button
-        type="button"
-        className="btn soloPC"
-        onClick={stampaDiProva}
-        disabled={!prodottoInModifica || stampante?.stato !== "pronta" || provaProdottoMut.isPending || provaBloccante}
-      >
-        <IconaStampa larghezza={18} spessoreTratto={2} />
-        <span>Stampa di prova</span>
-      </button>
-      <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}>
-        Salva etichetta
-      </button>
-    </>,
+    prodotto ? (
+      <>
+        <button
+          type="button"
+          className="btn soloPC"
+          onClick={stampaDiProva}
+          disabled={!prodottoInModifica || stampante?.stato !== "pronta" || provaProdottoMut.isPending || provaBloccante}
+        >
+          <IconaStampa larghezza={18} spessoreTratto={2} />
+          <span>Stampa di prova</span>
+        </button>
+        <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}>
+          Salva etichetta
+        </button>
+      </>
+    ) : null,
   );
 
   return (
@@ -1090,7 +1134,12 @@ export default function Etichette() {
           </div>
         )}
 
-        <div className="colonna scheda scorre flex-none w-full md:flex-[0_1_456px] min-w-0 gap-3">
+        <div
+          className={
+            "colonna scheda scorre flex-none w-full min-w-0 gap-3" +
+            (bozzaProdotto ? " md:flex-[0_1_456px]" : " md:flex-1")
+          }
+        >
           <div className="campo soloTel">
             <div className="etichettina">Etichetta</div>
             <div className="casella p-0">
@@ -1105,73 +1154,97 @@ export default function Etichette() {
             </div>
           </div>
 
-          {/* PC: un gruppo per sezione (il primo, "Etichetta", comincia con
-              il nome), apribile/chiudibile come sul telefono (deciso da
-              Gianluca), elenco di cio' che manca */}
-          <div className="soloPC flex flex-col gap-3">
-            {sezioniComplete.map((s) => (
-              <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoPC ?? s.sottoTel} aperto={apertoGruppoPC(s.chiave)} onToggle={toggleGruppoPC}>
-                {s.campi}
-              </Gruppo>
-            ))}
-            {fuoriProdotto.length > 0 && (
-              <div className="fuoriEtichetta">
-                {(fuoriProdotto.length === 1 ? "Non compare su questa etichetta: " : "Non compaiono su questa etichetta: ") +
-                  inElenco(fuoriProdotto) +
-                  (fuoriProdotto.length === 1 ? ". Accendi il blocco per compilarlo." : ". Accendi i blocchi per compilarli.")}
+          {bozzaProdotto ? (
+            <>
+              {/* PC: un gruppo per sezione (il primo, "Etichetta", comincia
+                  con il nome), apribile/chiudibile come sul telefono (deciso
+                  da Gianluca), elenco di cio' che manca */}
+              <div className="soloPC flex flex-col gap-3">
+                {sezioniComplete.map((s) => (
+                  <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoPC ?? s.sottoTel} aperto={apertoGruppoPC(s.chiave)} onToggle={toggleGruppoPC}>
+                    {s.campi}
+                  </Gruppo>
+                ))}
+                {fuoriProdotto.length > 0 && (
+                  <div className="fuoriEtichetta">
+                    {(fuoriProdotto.length === 1 ? "Non compare su questa etichetta: " : "Non compaiono su questa etichetta: ") +
+                      inElenco(fuoriProdotto) +
+                      (fuoriProdotto.length === 1 ? ". Accendi il blocco per compilarlo." : ". Accendi i blocchi per compilarli.")}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Telefono: anteprima in cima, poi un gruppo alla volta (il primo,
-              "Etichetta", comincia col nome), i blocchi per ultimi, con le
-              righe semplificate (niente trascinamento ne' colonna sx/dx:
-              quelle restano un affare da PC). */}
-          <div className="soloTel flex flex-col gap-3">
-            <div ref={rifAnteprimaTel} className={"min-w-0 anteprimaAncorata" + (anteprimaStaccata ? " staccata" : "")}>
-              <RiquadroAnteprima
-                src={srcAnteprima}
-                caricando={caricandoAnteprima}
-                titolo={bozzaProdotto?.nome ?? ""}
-                rotolo={rotolo}
-                misure={misureAnteprima}
-                compatta
-                maxH={112}
-              />
-            </div>
-            {sezioniComplete.map((s) => (
-              <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel ?? s.sottoPC} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
-                {s.campi}
-              </Gruppo>
-            ))}
-            {fuoriProdotto.length > 0 && (
-              <div className="fuoriEtichetta">
-                {(fuoriProdotto.length === 1 ? "Non compare su questa etichetta: " : "Non compaiono su questa etichetta: ") +
-                  inElenco(fuoriProdotto) +
-                  (fuoriProdotto.length === 1 ? ". Accendi il blocco per compilarlo." : ". Accendi i blocchi per compilarli.")}
-              </div>
-            )}
-            {bozzaBlocchi && (
-              <Gruppo
-                chiave="blocchi"
-                titolo="Blocchi dell'etichetta"
-                sotto={`${bloccheAccesi} accesi su ${bloccheTotali}`}
-                aperto={gruppoAperto === "blocchi"}
-                onToggle={toggleGruppo}
-              >
-                <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={setBozzaBlocchi} />
-                <div className="piedeRotolo">
-                  <span className="etichettina">Rotolo</span>
-                  <span className="font-bold text-[14px]">{rotolo} mm</span>
-                  <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
+              {/* Telefono: anteprima in cima, poi un gruppo alla volta (il
+                  primo, "Etichetta", comincia col nome), i blocchi per
+                  ultimi, con le righe semplificate (niente trascinamento
+                  ne' colonna sx/dx: quelle restano un affare da PC). */}
+              <div className="soloTel flex flex-col gap-3">
+                <div ref={rifAnteprimaTel} className={"min-w-0 anteprimaAncorata" + (anteprimaStaccata ? " staccata" : "")}>
+                  <RiquadroAnteprima
+                    src={srcAnteprima}
+                    caricando={caricandoAnteprima}
+                    titolo={bozzaProdotto?.nome ?? ""}
+                    rotolo={rotolo}
+                    misure={misureAnteprima}
+                    compatta
+                    maxH={112}
+                  />
                 </div>
-              </Gruppo>
-            )}
-          </div>
+                {sezioniComplete.map((s) => (
+                  <Gruppo key={s.chiave} chiave={s.chiave} titolo={s.titolo} sotto={s.sottoTel ?? s.sottoPC} aperto={gruppoAperto === s.chiave} onToggle={toggleGruppo}>
+                    {s.campi}
+                  </Gruppo>
+                ))}
+                {fuoriProdotto.length > 0 && (
+                  <div className="fuoriEtichetta">
+                    {(fuoriProdotto.length === 1 ? "Non compare su questa etichetta: " : "Non compaiono su questa etichetta: ") +
+                      inElenco(fuoriProdotto) +
+                      (fuoriProdotto.length === 1 ? ". Accendi il blocco per compilarlo." : ". Accendi i blocchi per compilarli.")}
+                  </div>
+                )}
+                {bozzaBlocchi && (
+                  <Gruppo
+                    chiave="blocchi"
+                    titolo="Blocchi dell'etichetta"
+                    sotto={`${bloccheAccesi} accesi su ${bloccheTotali}`}
+                    aperto={gruppoAperto === "blocchi"}
+                    onToggle={toggleGruppo}
+                  >
+                    <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={setBozzaBlocchi} />
+                    <div className="piedeRotolo">
+                      <span className="etichettina">Rotolo</span>
+                      <span className="font-bold text-[14px]">{rotolo} mm</span>
+                      <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
+                    </div>
+                  </Gruppo>
+                )}
+              </div>
+            </>
+          ) : (
+            // Nessuna etichetta scelta (dopo un'eliminazione, o l'elenco e'
+            // proprio vuoto): stesso stato su PC e telefono, con lo stesso
+            // bottone "Nuova etichetta" del riquadro tratteggiato sopra.
+            <div className="flex flex-col items-center text-center gap-2.5 py-14 px-6">
+              <div className="h text-[18px] font-semibold">
+                {nessunaEtichettaInElenco ? "Non c'è ancora nessuna etichetta." : "Nessuna etichetta scelta"}
+              </div>
+              {!nessunaEtichettaInElenco && (
+                <div className="text-[14px] text-[var(--tenue)] max-w-[280px]">Scegline una dall&apos;elenco, oppure creane una nuova.</div>
+              )}
+              <button type="button" className="btn primario mt-2" onClick={clicNuovoProdotto} disabled={creaProdottoMut.isPending}>
+                <IconaPiu larghezza={17} spessoreTratto={2.2} />
+                <span>Nuova etichetta</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="colonna scorre flex-1 min-w-0 gap-3 soloPC">
-          {provaLavoroId ? (
+        {/* Nessuna etichetta scelta: la colonna sparisce del tutto (deciso
+            da Gianluca il 10/9, corregge la scelta precedente), cosi' la
+            centrale si allarga e si centra nello spazio libero. */}
+        {bozzaProdotto && (
+          <div className="colonna scorre flex-1 min-w-0 gap-3 soloPC">
+            {(provaLavoroId ? (
             eventoProva?.stato === "errore" ? (
               <PannelloErrore messaggio={eventoProva.messaggio} onFerma={fermaProva} />
             ) : provaTerminata && eventoProva ? (
@@ -1229,8 +1302,9 @@ export default function Etichette() {
                 </>
               )}
             </>
-          )}
+          ))}
         </div>
+        )}
       </div>
 
       {eliminaChiesto && prodotto && (

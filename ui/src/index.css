@@ -302,7 +302,7 @@ svg { display: block; flex-shrink: 0; }
   border: 1px solid var(--bordo2); border-radius: 9px; background: #fff; padding: 9px 11px;
   font: inherit; font-size: 14px; font-weight: 400; color: inherit;
 }
-.maniglia { width: 16px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--tratteggio); cursor: grab; padding: 3px 0; touch-action: none; }
+.maniglia { width: 14px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--tratteggio); cursor: grab; padding: 3px 0; touch-action: none; }
 .posto { font-size: 10px; line-height: 11px; font-weight: 700; color: var(--spento); font-variant-numeric: tabular-nums; }
 .sw { width: 40px; height: 22px; border-radius: 11px; background: var(--verde); position: relative; flex-shrink: 0; }
 .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
@@ -317,12 +317,20 @@ svg { display: block; flex-shrink: 0; }
 }
 .lato { width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
 .lato.on { background: var(--testo); border-color: var(--testo); color: #fff; }
-.lato.allineamentoCompatto { color: var(--testo); }
-/* le tre icone dell'allineamento del blocco: stessa altezza/stile di .lato,
-   ma un gruppo segmentato (come .quote) invece di un bottone solo che gira. */
-.allineamento { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
-.allineamento button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; }
-.allineamento button.on { background: var(--testo); color: #fff; }
+/* le tre icone dell'allineamento (o della posizione) di un blocco: stessa
+   altezza/stile di .lato, ma un gruppo segmentato (come .quote) invece di un
+   bottone solo che gira. Usate da sole (col riquadro suo) sul telefono. */
+.allineamento, .posizione { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
+.allineamento button, .posizione button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; }
+.allineamento button.on, .posizione button.on { background: var(--testo); color: #fff; }
+/* Su PC (BloccoRiga.tsx, 10 settembre) l'allineamento e la posizione stanno
+   nella stessa riga del blocco, in un riquadro solo (BottoniAllineamento +
+   BottoniPosizione "nudi", senza il loro riquadro, con un separatore leggero
+   in mezzo): risparmia lo spazio dei due riquadri separati. */
+.azioniBlocco { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
+.azioniBlocco button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
+.azioniBlocco button.on { background: var(--testo); color: #fff; }
+.azioniBlocco .separatore { width: 1px; height: 16px; background: var(--bordo2); flex-shrink: 0; }
 .via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
 /* Il gruppo "due colonne" (deciso da Gianluca, non nel mockup): i blocchi sx/dx
    consecutivi stanno dentro questo riquadro verde, che li segnala come un

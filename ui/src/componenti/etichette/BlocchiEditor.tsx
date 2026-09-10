@@ -112,11 +112,9 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     (chiave: string, corpo: number) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, corpo } : b))),
     [blocchi, onCambiaBlocchi],
   );
-  const onCicloColonna = useCallback(
-    (chiave: string) => {
-      const prossima: Record<ColonnaBlocco, ColonnaBlocco> = { piena: "sx", sx: "dx", dx: "piena" };
-      onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, colonna: prossima[b.colonna] } : b)));
-    },
+  const onCambiaColonna = useCallback(
+    (chiave: string, colonna: ColonnaBlocco) =>
+      onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, colonna } : b))),
     [blocchi, onCambiaBlocchi],
   );
   const onRimuovi = useCallback(
@@ -176,7 +174,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         indice={indice}
         onToggleAcceso={onToggleAcceso}
         onCambiaCorpo={onCambiaCorpo}
-        onCicloColonna={onCicloColonna}
+        onCambiaColonna={onCambiaColonna}
         onRimuovi={onRimuovi}
         onCambiaAllineamento={onCambiaAllineamento}
       />
