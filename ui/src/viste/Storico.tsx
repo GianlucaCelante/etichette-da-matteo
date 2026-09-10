@@ -102,7 +102,7 @@ function RigaStoricoTel({ riga, onRistampa, occupata }: { riga: StoricoRiga; onR
   );
 }
 
-// Lo storico stampe: filtri per periodo, ricerca per prodotto o lotto,
+// Lo storico stampe: filtri per periodo, ricerca per etichetta o lotto,
 // ristampa riga per riga, esportazione come tabella (docs/api.md,
 // "Storico"; funzionalita-prima-versione.md).
 export default function Storico() {
@@ -130,7 +130,7 @@ export default function Storico() {
   );
 
   const esporta = useCallback(() => {
-    const intestazione = ["Ora", "Prodotto", "Copie", "Lotto", "Quantità", "Scadenza", "Da"].join("\t");
+    const intestazione = ["Ora", "Etichetta", "Copie", "Lotto", "Quantità", "Scadenza", "Da"].join("\t");
     const corpo = (righe ?? []).map((r) =>
       [formattaOra(r.stampatoIl), r.prodottoNome, r.copie, r.lotto, r.quantita, formattaData(r.scadenza), r.dispositivoNome].join("\t"),
     );
@@ -172,12 +172,12 @@ export default function Storico() {
           </div>
           <div className="cerca flex-1 min-w-[220px] h-11 text-[15px]">
             <IconaCerca larghezza={18} spessoreTratto={2} />
-            <input value={q} onChange={cambiaQ} placeholder="Cerca per prodotto o lotto…" aria-label="Cerca per prodotto o lotto" />
+            <input value={q} onChange={cambiaQ} placeholder="Cerca per etichetta o lotto…" aria-label="Cerca per etichetta o lotto" />
           </div>
         </div>
 
         <div className="tabella grigliaStorico soloPC">
-          {["Ora", "Prodotto", "Lotto", "Quantità", "Scadenza", "Da", ""].map((t) => (
+          {["Ora", "Etichetta", "Lotto", "Quantità", "Scadenza", "Da", ""].map((t) => (
             <div key={t} className="etichettina">
               {t}
             </div>

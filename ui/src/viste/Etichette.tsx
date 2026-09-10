@@ -240,7 +240,7 @@ function CampoLottoRapido({ usaLottoBlocco }: { usaLottoBlocco: boolean }) {
         {schemaInfo?.codice === "mano" ? "a mano: si scrive prima di stampare" : `oggi: ${schemaInfo?.oggi ?? "…"}`}
       </div>
       <div className={"text-[12px] " + (usaLottoBlocco ? "text-[var(--tenue)]" : "text-[var(--spento)]")}>
-        {usaLottoBlocco ? "Vale per tutti i prodotti. Prima di stampare si può cambiare." : "Non compare su questa etichetta"}
+        {usaLottoBlocco ? "Vale per tutte le etichette. Prima di stampare si può cambiare." : "Non compare su questa etichetta"}
       </div>
     </div>
   );
@@ -299,11 +299,22 @@ export default function Etichette() {
   const [eliminaChiesto, setEliminaChiesto] = useState(false);
   const [provaLavoroId, setProvaLavoroId] = useState<string | null>(null);
   // L'azione rimasta in sospeso mentre si chiede conferma di scartare le
-  // modifiche non salvate (cambio di prodotto, "+ Nuovo prodotto…", "Duplica").
+  // modifiche non salvate (cambio di prodotto, "+ Nuova etichetta…", "Duplica").
   const [azionePendente, setAzionePendente] = useState<(() => void) | null>(null);
   // Appena creato (nuovo o duplicato): il nome va selezionato per riscriverlo
   // subito, come nel prototipo ("si scrive subito").
   const appenaCreatoRef = useRef(false);
+  // Arrivando da Stampa col bottone "Nuova etichetta" (/etichette?nuovo=1):
+  // nuovoInCorsoRef diventa vero durante il render stesso (sotto), appena si
+  // vede il parametro, prima che qualunque effetto giri - cosi' l'effetto
+  // che sceglie il primo prodotto dell'elenco non si mette in mezzo mentre
+  // la creazione e' ancora in corso (il parametro si toglie dall'URL subito,
+  // ma la creazione resta appesa un attimo, il tempo della richiesta).
+  // nuovoRichiestoRef e' la guardia (come appenaCreatoRef) che fa partire
+  // nuovoProdotto() una volta sola, nell'effetto piu' sotto.
+  const nuovoInCorsoRef = useRef(false);
+  const nuovoRichiestoRef = useRef(false);
+  if (searchParams.get("nuovo") === "1") nuovoInCorsoRef.current = true;
 
   // La cronologia di Annulla/Ripristina vive in un ref (non in stato React):
   // cambia a ogni battuta, e rifarla passare per un render ogni volta
@@ -331,10 +342,28 @@ export default function Etichette() {
   const rotolo = stampante?.rotolo ?? 62;
   const { rifPC: rifAnteprimaPC, rifTel: rifAnteprimaTel, scala } = useScalaAnteprimaDoppia(rotolo);
 
-  // Se non c'e' ancora un prodotto scelto (primo accesso, o quello nell'URL
-  // non esiste piu'), si prende il primo dell'elenco.
+  // L'anteprima ancorata in cima alla scheda sul telefono (deciso da
+  // Gianluca, 10 settembre): l'ombra sotto compare solo quando la scheda e'
+  // scorsa (l'anteprima e' davvero "staccata" da dove sta per natura), non
+  // sempre - si legge dallo scroll di ".schermo" (non della colonna: sul
+  // telefono e' lei a scorrere, la colonna e' overflow:visible).
+  const rifSchedaTel = useRef<HTMLDivElement>(null);
+  const [anteprimaStaccata, setAnteprimaStaccata] = useState(false);
   useEffect(() => {
-    if (prodottoId === null && prodotti?.[0]) setProdottoId(prodotti[0].id);
+    const nodo = rifSchedaTel.current;
+    if (!nodo) return;
+    const suScroll = () => setAnteprimaStaccata(nodo.scrollTop > 0);
+    nodo.addEventListener("scroll", suScroll, { passive: true });
+    return () => nodo.removeEventListener("scroll", suScroll);
+  }, []);
+
+  // Se non c'e' ancora un prodotto scelto (primo accesso, o quello nell'URL
+  // non esiste piu'), si prende il primo dell'elenco - ma non se si sta per
+  // crearne uno nuovo arrivando da Stampa (nuovoInCorsoRef, sopra): senza
+  // questo controllo si vedrebbe per un attimo il primo della lista prima di
+  // passare al prodotto appena creato.
+  useEffect(() => {
+    if (prodottoId === null && prodotti?.[0] && !nuovoInCorsoRef.current) setProdottoId(prodotti[0].id);
   }, [prodottoId, prodotti]);
 
   // L'URL segue la scelta, cosi' si puo' arrivare qui gia' su un prodotto
@@ -367,7 +396,7 @@ export default function Etichette() {
     });
     const blocchiSalvi = etichetta?.blocchi ?? [];
     setBozzaBlocchi(blocchiInBozza(blocchiSalvi));
-    // Il gruppo "Prodotto" c'e' sempre (il nome non dipende da nessun
+    // Il gruppo "Etichetta" c'e' sempre (il nome non dipende da nessun
     // blocco): e' quello che si apre di default, come S.gruppi.prodotto nel
     // prototipo.
     setGruppoAperto("prodotto");
@@ -382,14 +411,14 @@ export default function Etichette() {
 
   // Il prodotto appena creato o duplicato entra in elenco, si apre e il nome
   // e' gia' selezionato: si scrive subito (prototipo, funzione
-  // mettiProdotto). Un effetto a parte, dopo che "Nome del prodotto" e'
-  // davvero nel DOM col suo valore: dentro l'effetto sopra il campo avrebbe
-  // ancora il valore del prodotto precedente (bozzaProdotto non e' stato
-  // ancora applicato al render).
+  // mettiProdotto). Un effetto a parte, dopo che "Nome" e' davvero nel DOM
+  // col suo valore: dentro l'effetto sopra il campo avrebbe ancora il
+  // valore del prodotto precedente (bozzaProdotto non e' stato ancora
+  // applicato al render).
   useEffect(() => {
     if (!appenaCreatoRef.current || !bozzaProdotto) return;
     appenaCreatoRef.current = false;
-    const campo = document.querySelector('input[aria-label="Nome del prodotto"]');
+    const campo = document.querySelector('input[aria-label="Nome"]');
     if (campo instanceof HTMLInputElement) {
       campo.focus();
       campo.select();
@@ -506,7 +535,7 @@ export default function Etichette() {
   const annullaScarta = useCallback(() => setAzionePendente(null), []);
 
   const cambiaCercaEt = useCallback((evento: ChangeEvent<HTMLInputElement>) => setCercaEt(evento.target.value), []);
-  // Scegliere un prodotto (clic sulla voce, o dopo "Nuovo prodotto") riduce
+  // Scegliere un prodotto (clic sulla voce, o dopo "Nuova etichetta") riduce
   // da solo l'elenco alla barra stretta (deciso da Gianluca): sempre, non
   // solo la prima volta, e senza scriverlo nel localStorage (quello resta
   // solo per il bottone «›», vedi toggleElenco).
@@ -526,10 +555,30 @@ export default function Etichette() {
         setProdottoId(dati.id);
         setElencoCollassato(true);
       },
-      onError: () => avvisa("Non sono riuscito a creare il prodotto."),
+      onError: () => avvisa("Non sono riuscito a creare l'etichetta."),
     });
   }, [creaProdottoMut, avvisa]);
   const clicNuovoProdotto = useCallback(() => provaAzione(nuovoProdotto), [provaAzione, nuovoProdotto]);
+
+  // Arrivando da Stampa col bottone "Nuova etichetta" (/etichette?nuovo=1):
+  // la stessa nuovoProdotto() del bottone qui sopra, una volta sola
+  // (nuovoRichiestoRef, dichiarato con nuovoInCorsoRef/appenaCreatoRef piu'
+  // sopra) - il parametro si toglie subito dall'URL, cosi' un ricaricamento
+  // della pagina non ne crea un'altra.
+  useEffect(() => {
+    if (nuovoRichiestoRef.current || searchParams.get("nuovo") !== "1") return;
+    nuovoRichiestoRef.current = true;
+    setSearchParams(
+      (precedenti) => {
+        const nuovi = new URLSearchParams(precedenti);
+        nuovi.delete("nuovo");
+        return nuovi;
+      },
+      { replace: true },
+    );
+    nuovoProdotto();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- si consuma solo all'avvio, come il parametro "prodotto" sopra
+  }, []);
 
   // "Duplica prodotto": copia tutto, etichetta compresa (funzione
   // duplicaProdotto del prototipo).
@@ -541,7 +590,7 @@ export default function Etichette() {
         appenaCreatoRef.current = true;
         provaAzione(() => impostaProdotto(dati.id));
       },
-      onError: () => avvisa("Non sono riuscito a duplicare il prodotto."),
+      onError: () => avvisa("Non sono riuscito a duplicare l'etichetta."),
     });
   }, [prodotto, duplicaProdottoMut, avvisa, provaAzione, impostaProdotto]);
 
@@ -639,10 +688,10 @@ export default function Etichette() {
     eliminaProdottoMut.mutate(prodotto.id, {
       onSuccess: () => {
         setEliminaChiesto(false);
-        avvisa(`Eliminato: ${prodotto.nome}.`);
+        avvisa(`Eliminata: ${prodotto.nome}.`);
         setProdottoId(null);
       },
-      onError: () => avvisa("Non sono riuscito a eliminarlo."),
+      onError: () => avvisa("Non sono riuscito a eliminarla."),
     });
   }, [prodotto, eliminaProdottoMut, avvisa]);
 
@@ -686,14 +735,14 @@ export default function Etichette() {
       {
         onSuccess: () => {
           // Salvato: la cronologia riparte da qui, poi si passa a Stampa
-          // gia' su questo prodotto, con l'avviso "Prodotto salvato" (testo
+          // gia' su questo prodotto, con l'avviso "Etichetta salvata" (testo
           // esatto).
           storiaRef.current = { passi: [], indice: 0 };
           setVersioneStoria((v) => v + 1);
-          avvisa("Prodotto salvato");
+          avvisa("Etichetta salvata");
           navigate(`/stampa?prodotto=${prodotto.id}`);
         },
-        onError: () => avvisa("Non sono riuscito a salvare il prodotto."),
+        onError: () => avvisa("Non sono riuscito a salvare l'etichetta."),
       },
     );
   }, [prodotto, prodottoInModifica, salvaProdottoMut, avvisa, navigate]);
@@ -742,15 +791,21 @@ export default function Etichette() {
 
   const prodottiTrovati = (prodotti ?? []).filter((p) => p.nome.toLowerCase().includes(cercaEt.toLowerCase()));
 
-  // Il campo "Nome del prodotto" (il nome in elenco, non quello stampato):
-  // sempre visibile, non e' legato a nessun blocco dell'etichetta.
+  // Il campo "Nome" (il nome in elenco, non quello stampato): sempre
+  // visibile, non e' legato a nessun blocco dell'etichetta. "Nome" e "Nome
+  // stampato" (piu' sotto, nel gruppo "Etichetta") si assomigliavano troppo
+  // con "Nome del prodotto"/"Nome sull'etichetta": qui restano corti, con
+  // l'aiuto sotto a dire di quale dei due si tratta (deciso da Gianluca).
   const campoNome = bozzaProdotto ? (
-    <CampoTesto key="nome" etichetta="Nome del prodotto" valore={bozzaProdotto.nome} campo="nome" onCambia={aggiornaNome} grassetto />
+    <div className="flex flex-col gap-1.5">
+      <CampoTesto key="nome" etichetta="Nome" valore={bozzaProdotto.nome} campo="nome" onCambia={aggiornaNome} grassetto />
+      <div className="text-[12px] text-[var(--spento)]">Come lo trovi nell&apos;elenco.</div>
+    </div>
   ) : null;
 
   // I gruppi della scheda, con nomi, ordine e campi come nel prototipo
   // (vistaEtichette, variabile "sezioni"): non piu' un riquadro per blocco
-  // acceso, ma gruppi fissi ("Prodotto", "Ingredienti"...) che compaiono solo
+  // acceso, ma gruppi fissi ("Etichetta", "Ingredienti"...) che compaiono solo
   // se hanno almeno un campo da mostrare. "Data di produzione" e "Sigla" sono
   // in piu' (blocchi aggiunti dopo il prototipo, docs/api.md): restano in
   // fondo, con lo stesso trattamento degli altri gruppi.
@@ -767,7 +822,7 @@ export default function Etichette() {
   const usaDataProduzione = ce("dataProduzione");
   const usaSigla = ce("sigla");
 
-  // Il riassunto del gruppo "Prodotto" quando e' chiuso (nome, scadenza,
+  // Il riassunto del gruppo "Etichetta" quando e' chiuso (nome, scadenza,
   // quantita': "Base pizza low carb · 7 giorni · 2148 g"), uguale su PC e
   // telefono.
   const riassuntoProdotto = [bozzaProdotto?.nome, usaScadenza ? plurale(bozzaProdotto?.giorniScadenza ?? 0, "giorno", "giorni") : null, usaQuantita ? bozzaProdotto?.quantita : null]
@@ -793,13 +848,13 @@ export default function Etichette() {
         [
           {
             chiave: "prodotto",
-            titolo: "Prodotto",
+            titolo: "Etichetta",
             sottoPC: riassuntoProdotto,
             sottoTel: riassuntoProdotto,
             campi: [
               campoNome,
               usaTitolo && (
-                <CampoTesto key="nomeStampa" etichetta="Nome sull'etichetta" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} grassetto />
+                <CampoTesto key="nomeStampa" etichetta="Nome stampato" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} grassetto />
               ),
               usaScadenza && (
                 <CampoInline key="giorni" etichetta="Scadenza">
@@ -974,7 +1029,7 @@ export default function Etichette() {
         <span>Stampa di prova</span>
       </button>
       <button type="button" className="btn primario" onClick={salvare} disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}>
-        Salva prodotto
+        Salva etichetta
       </button>
     </>,
   );
@@ -984,14 +1039,14 @@ export default function Etichette() {
       {portaleStrumenti}
       {portaleAzioni}
 
-      <div className="schermo">
+      <div className="schermo" ref={rifSchedaTel}>
         {elencoCollassato ? (
           // Ridotto a una barra stretta (deciso da Gianluca): il bottone
           // «›» la riapre, il nome del prodotto scelto resta leggibile in
           // verticale (con lo stesso nome per intero nel title, come una
           // conferma per chi preferisce il tooltip al testo ruotato).
           <div className="colonna soloPC elencoCollassato">
-            <button type="button" className="riapriElenco" onClick={toggleElenco} title="Mostra l'elenco dei prodotti" aria-label="Mostra l'elenco dei prodotti">
+            <button type="button" className="riapriElenco" onClick={toggleElenco} title="Mostra l'elenco delle etichette" aria-label="Mostra l'elenco delle etichette">
               <IconaDestra larghezza={16} spessoreTratto={2} />
             </button>
             {prodotto && (
@@ -1005,9 +1060,9 @@ export default function Etichette() {
             <div className="flex items-center gap-1.5">
               <div className="cerca h-11 text-[15px] flex-1 min-w-0">
                 <IconaCerca larghezza={18} spessoreTratto={2} />
-                <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca prodotto" />
+                <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca etichetta" />
               </div>
-              <button type="button" className="riduciElenco" onClick={toggleElenco} title="Riduci l'elenco dei prodotti" aria-label="Riduci l'elenco dei prodotti">
+              <button type="button" className="riduciElenco" onClick={toggleElenco} title="Riduci l'elenco delle etichette" aria-label="Riduci l'elenco delle etichette">
                 <IconaSinistra larghezza={16} spessoreTratto={2} />
               </button>
             </div>
@@ -1018,7 +1073,7 @@ export default function Etichette() {
               disabled={creaProdottoMut.isPending}
             >
               <IconaPiu larghezza={17} spessoreTratto={2.2} />
-              <span>Nuovo prodotto</span>
+              <span>Nuova etichetta</span>
             </button>
             <div className="scorre flex flex-col gap-1 flex-1 min-h-0">
               {prodottiTrovati.map((p) => (
@@ -1030,27 +1085,27 @@ export default function Etichette() {
                   onScegli={scegliProdotto}
                 />
               ))}
-              {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessun prodotto con questo nome.</div>}
+              {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessuna etichetta con questo nome.</div>}
             </div>
           </div>
         )}
 
         <div className="colonna scheda scorre flex-none w-full md:flex-[0_1_456px] min-w-0 gap-3">
           <div className="campo soloTel">
-            <div className="etichettina">Prodotto</div>
+            <div className="etichettina">Etichetta</div>
             <div className="casella p-0">
-              <select value={prodottoId ?? ""} onChange={cambiaProdottoSelect} aria-label="Prodotto" className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3 h-[50px]">
+              <select value={prodottoId ?? ""} onChange={cambiaProdottoSelect} aria-label="Etichetta" className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3 h-[50px]">
                 {(prodotti ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nome}
                   </option>
                 ))}
-                <option value="nuovo">+ Nuovo prodotto…</option>
+                <option value="nuovo">+ Nuova etichetta…</option>
               </select>
             </div>
           </div>
 
-          {/* PC: un gruppo per sezione (il primo, "Prodotto", comincia con
+          {/* PC: un gruppo per sezione (il primo, "Etichetta", comincia con
               il nome), apribile/chiudibile come sul telefono (deciso da
               Gianluca), elenco di cio' che manca */}
           <div className="soloPC flex flex-col gap-3">
@@ -1069,18 +1124,19 @@ export default function Etichette() {
           </div>
 
           {/* Telefono: anteprima in cima, poi un gruppo alla volta (il primo,
-              "Prodotto", comincia col nome), i blocchi per ultimi, con le
+              "Etichetta", comincia col nome), i blocchi per ultimi, con le
               righe semplificate (niente trascinamento ne' colonna sx/dx:
               quelle restano un affare da PC). */}
           <div className="soloTel flex flex-col gap-3">
-            <div ref={rifAnteprimaTel} className="min-w-0">
+            <div ref={rifAnteprimaTel} className={"min-w-0 anteprimaAncorata" + (anteprimaStaccata ? " staccata" : "")}>
               <RiquadroAnteprima
                 src={srcAnteprima}
                 caricando={caricandoAnteprima}
                 titolo={bozzaProdotto?.nome ?? ""}
                 rotolo={rotolo}
                 misure={misureAnteprima}
-                maxH={200}
+                compatta
+                maxH={112}
               />
             </div>
             {sezioniComplete.map((s) => (
@@ -1199,7 +1255,7 @@ export default function Etichette() {
       {azionePendente && (
         <Finestra
           titolo="Modifiche non salvate: le scarto?"
-          sottotitolo="Non hai salvato le ultime modifiche a questo prodotto: cambiando ora le perdi."
+          sottotitolo="Non hai salvato le ultime modifiche a questa etichetta: cambiando ora le perdi."
           onChiudi={annullaScarta}
           piede={
             <>

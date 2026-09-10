@@ -285,7 +285,7 @@ svg { display: block; flex-shrink: 0; }
 .nomeRiquadro { font-size: 14px; font-weight: 700; }
 .sottoRiquadro { font-weight: 400; font-size: 12.5px; color: var(--spento); }
 .blocco {
-  min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+  min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 5px;
   border: 1px solid var(--bordo); border-left: 4px solid var(--verde); border-radius: 9px; background: var(--carta);
   box-shadow: 0 1px 3px rgba(58, 49, 40, .07); font-size: 12.5px; font-weight: 700;
 }
@@ -296,8 +296,8 @@ svg { display: block; flex-shrink: 0; }
 /* riga semplificata del telefono (revisione di questo giro): il nome non si
    tronca mai, anche a costo di andare a capo. */
 .blocco.telefono .nome { white-space: normal; overflow: visible; text-overflow: unset; }
-.blocco.libero { flex-direction: column; align-items: stretch; gap: 8px; padding: 9px 10px; }
-.blocco .testa { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.blocco.libero { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px; }
+.blocco .testa { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 .blocco .testoLibero {
   border: 1px solid var(--bordo2); border-radius: 9px; background: #fff; padding: 9px 11px;
   font: inherit; font-size: 14px; font-weight: 400; color: inherit;
@@ -309,7 +309,7 @@ svg { display: block; flex-shrink: 0; }
 .sw.off { background: #C6B7A3; }
 .sw.off::after { right: calc(100% - 19px); }
 .misura {
-  height: 26px; min-width: 62px; padding: 0 4px 0 9px; border: 1px solid var(--bordo2); border-radius: 8px;
+  height: 26px; min-width: 46px; padding: 0 4px 0 9px; border: 1px solid var(--bordo2); border-radius: 8px;
   background: var(--carta); font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--testo);
   appearance: none; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239C8C7C' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -364,6 +364,14 @@ svg { display: block; flex-shrink: 0; }
 
 /* ---------- anteprima e lente ---------- */
 .anteprima { position: relative; }
+/* L'anteprima ancorata in cima alla scheda sul telefono (Etichette, deciso
+   da Gianluca il 10 settembre): resta visibile mentre si scorrono i gruppi
+   sotto. Sfondo pieno (uguale a quello della colonna che la contiene, non
+   trasparente) perche' il contenuto scorso ci passa sotto; l'ombra compare
+   solo quando e' davvero staccata dal suo posto naturale (la colonna e'
+   scorsa: vedi anteprimaStaccata in Etichette.tsx), non sempre. */
+.anteprimaAncorata { position: sticky; top: 0; z-index: 3; background: var(--carta); padding-bottom: 8px; margin-bottom: -8px; }
+.anteprimaAncorata.staccata { box-shadow: 0 6px 10px -8px rgba(58, 49, 40, .45); }
 /* corta o lunga, la cornice e' sempre larga quanto il posto a disposizione
    al piu' (mai di piu': e' l'immagine dentro, non lei, a sforare quando
    l'etichetta e' un nastro lungo - vedi useAdattaAnteprima) e alta quanto

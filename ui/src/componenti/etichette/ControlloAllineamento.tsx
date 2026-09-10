@@ -33,8 +33,11 @@ function BottoneAllineamento({
 
 // Le tre icone sinistra/centro/destra per l'allineamento di un blocco
 // (funzione decisa a parte, non nel mockup: nella riga del blocco, stesso
-// stile/altezza del bottone ".lato" gia' li'). Assente = "sinistra".
-// Usato sul telefono, dove c'e' una riga apposta e lo spazio non manca.
+// stile/altezza del bottone ".lato" gia' li'). Assente = "sinistra". Sempre
+// e tre, mai un bottone solo che gira (Gianluca l'aveva chiesto una volta,
+// poi tornato indietro il 10 settembre: meglio guadagnare spazio altrove che
+// nascondere bottoni). Stessa forma su PC (seconda riga della riga-blocco,
+// vedi BloccoRiga.tsx) e telefono (RigaBloccoTelefono.tsx).
 export default function ControlloAllineamento({
   valore,
   nomeBlocco,
@@ -51,50 +54,5 @@ export default function ControlloAllineamento({
         <BottoneAllineamento key={v} valore={v} Icona={Icona} etichetta={etichetta} attivo={attuale === v} nomeBlocco={nomeBlocco} onScegli={onCambia} />
       ))}
     </div>
-  );
-}
-
-const PROSSIMO_ALLINEAMENTO: Record<AllineamentoBlocco, AllineamentoBlocco> = {
-  sinistra: "centro",
-  centro: "destra",
-  destra: "sinistra",
-};
-const ICONA_PER_ALLINEAMENTO: Record<AllineamentoBlocco, typeof IconaAllineaSinistra> = {
-  sinistra: IconaAllineaSinistra,
-  centro: IconaAllineaCentro,
-  destra: IconaAllineaDestra,
-};
-const NOME_ALLINEAMENTO: Record<AllineamentoBlocco, string> = { sinistra: "sinistra", centro: "centro", destra: "destra" };
-
-// Versione compatta per il vassoio PC: la colonna non ha posto per tre
-// bottoni senza troncare il nome del blocco, quindi qui e' un solo bottone
-// (stessa misura di ".lato", il bottone della colonna accanto) che mostra
-// l'icona dell'allineamento attuale e gira al prossimo a ogni clic.
-// Il bottone non e' mai "acceso" (scuro): lo stato lo dice l'icona, sempre nel colore del
-// testo. Evidenziare solo centro e destra lasciava sinistra spento e sembrava incoerente
-// (osservazione di Gianluca del 9 settembre 2026).
-export function ControlloAllineamentoCompatto({
-  valore,
-  nomeBlocco,
-  onCambia,
-}: {
-  valore: AllineamentoBlocco | undefined;
-  nomeBlocco: string;
-  onCambia: (v: AllineamentoBlocco) => void;
-}) {
-  const attuale = valore ?? "sinistra";
-  const prossimo = PROSSIMO_ALLINEAMENTO[attuale];
-  const Icona = ICONA_PER_ALLINEAMENTO[attuale];
-  const clic = useCallback(() => onCambia(prossimo), [onCambia, prossimo]);
-  return (
-    <button
-      type="button"
-      className="lato allineamentoCompatto"
-      onClick={clic}
-      title={`Allineamento: ${NOME_ALLINEAMENTO[attuale]} · clicca per cambiare`}
-      aria-label={`Allineamento di ${nomeBlocco}: ${NOME_ALLINEAMENTO[attuale]}. Clicca per passare a ${NOME_ALLINEAMENTO[prossimo]}.`}
-    >
-      <Icona larghezza={13} spessoreTratto={2} />
-    </button>
   );
 }

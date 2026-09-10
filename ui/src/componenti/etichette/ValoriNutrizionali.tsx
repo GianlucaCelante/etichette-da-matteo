@@ -93,7 +93,7 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
         </button>
       </div>
       <div className="scheda overflow-hidden">
-        {valori.length === 0 && <div className="px-3.5 py-3 text-[var(--tenue)] text-[14px]">Nessun valore su questo prodotto.</div>}
+        {valori.length === 0 && <div className="px-3.5 py-3 text-[var(--tenue)] text-[14px]">Nessun valore su questa etichetta.</div>}
         {valori.length > 0 && (
           <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento}>
             <SortableContext items={valori.map((v) => v.chiave)} strategy={verticalListSortingStrategy}>

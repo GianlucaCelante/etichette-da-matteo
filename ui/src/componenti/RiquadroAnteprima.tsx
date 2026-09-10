@@ -17,6 +17,11 @@ interface ProprietaRiquadroAnteprima {
   // rotolo da 102 mm - la stessa proporzione dell'altro lato, altrimenti
   // un'etichetta quasi quadrata sul 102 ci starebbe schiacciata.
   maxH: number;
+  // Forma compatta (deciso da Gianluca, 10 settembre: l'anteprima ancorata
+  // in cima alla scheda sul telefono, sempre visibile mentre si scorre):
+  // niente didascalia sotto la cornice, cosi' ruba meno spazio. Gli avvisi
+  // restano (sono un avviso vero, non solo una didascalia).
+  compatta?: boolean;
 }
 
 // L'avviso "non sta" e' l'unico grave (contenuto tagliato davvero): gli
@@ -36,7 +41,7 @@ function eGrave(avviso: string): boolean {
 // cornice si adatta come nel prototipo (adatta()): corta e larga quanto
 // c'e' posto, oppure lunga e stretta con scorrimento orizzontale se non
 // entra in altezza - vedi useAdattaAnteprima.
-export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo, rotolo, misure, maxH }: ProprietaRiquadroAnteprima) {
+export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo, rotolo, misure, maxH, compatta }: ProprietaRiquadroAnteprima) {
   const [lenteAperta, setLenteAperta] = useState(false);
   const apriLente = useCallback(() => setLenteAperta(true), []);
   const chiudiLente = useCallback(() => setLenteAperta(false), []);
@@ -96,7 +101,7 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
           <IconaLente larghezza={16} spessoreTratto={2.2} />
         </span>
       </div>
-      {didascalia && (
+      {!compatta && didascalia && (
         <div className="text-[12px] text-[var(--spento)]">{caricando ? "Aggiorno l'anteprima…" : didascalia}</div>
       )}
       {/* Gli avvisi della resa (docs/api.md, "Geometria"): uno per riga, sotto

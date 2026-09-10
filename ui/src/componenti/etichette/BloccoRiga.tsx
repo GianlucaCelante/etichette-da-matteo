@@ -4,7 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
 import { IconaManiglia, IconaVia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
-import { ControlloAllineamentoCompatto } from "./ControlloAllineamento";
+import ControlloAllineamento from "./ControlloAllineamento";
 import IconaColonna from "./IconaColonna";
 
 const PROSSIMA_COLONNA: Record<ColonnaBlocco, ColonnaBlocco> = { piena: "sx", sx: "dx", dx: "piena" };
@@ -23,11 +23,14 @@ interface ProprietaBloccoRiga {
 }
 
 // Una riga del vassoio: maniglia (solo lei si trascina), interruttore, nome,
-// corpo in punti, larghezza a tre stati. Il testo dei blocchi liberi e il
-// caricamento del logo non stanno piu' qui (deciso da Gianluca,
-// funzionalita-prima-versione.md 9 settembre sera): ogni blocco che ha
-// qualcosa da impostare ha il suo gruppo nella colonna dei valori, la riga
-// resta solo il comando rapido (acceso/spento, corpo, colonna).
+// corpo in punti, larghezza a tre stati e, quando il blocco ce l'ha, i tre
+// bottoni di allineamento su una seconda riga (come sul telefono: tornati
+// sempre visibili il 10 settembre, il bottone unico che girava confondeva).
+// Il testo dei blocchi liberi e il caricamento del logo non stanno piu' qui
+// (deciso da Gianluca, funzionalita-prima-versione.md 9 settembre sera):
+// ogni blocco che ha qualcosa da impostare ha il suo gruppo nella colonna
+// dei valori, la riga resta solo il comando rapido (acceso/spento, corpo,
+// colonna, allineamento).
 export default function BloccoRiga({
   blocco,
   indice,
@@ -64,7 +67,7 @@ export default function BloccoRiga({
     <div
       ref={setNodeRef}
       style={stile}
-      className={"blocco" + (blocco.acceso ? "" : " spento") + (isDragging ? " trascina" : "")}
+      className={"blocco" + (blocco.acceso ? "" : " spento") + (mostraAllineamento ? " libero" : "") + (isDragging ? " trascina" : "")}
     >
       <div className="testa">
         <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${NOMIBLOCCO[blocco.tipo]}`}>
@@ -74,24 +77,21 @@ export default function BloccoRiga({
         <button type="button" className={"sw" + (blocco.acceso ? "" : " off")} onClick={clicSw} aria-pressed={blocco.acceso} aria-label={blocco.acceso ? `Spegni ${NOMIBLOCCO[blocco.tipo]}` : `Accendi ${NOMIBLOCCO[blocco.tipo]}`} />
         <span className="nome">{NOMIBLOCCO[blocco.tipo]}</span>
         {eLogo ? (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label="Altezza del logo, in millimetri">
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title="Altezza del logo, in millimetri" aria-label="Altezza del logo, in millimetri">
             {ALTEZZE_LOGO_MM.map((v) => (
               <option key={v} value={v}>
-                alto {v} mm
+                {v}
               </option>
             ))}
           </select>
         ) : (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
             {SCALETTA_CORPO.map((v) => (
               <option key={v} value={v}>
-                {v} pt
+                {v}
               </option>
             ))}
           </select>
-        )}
-        {mostraAllineamento && (
-          <ControlloAllineamentoCompatto valore={blocco.allineamento} nomeBlocco={NOMIBLOCCO[blocco.tipo]} onCambia={cambiaAllineamento} />
         )}
         <button
           type="button"
@@ -106,6 +106,12 @@ export default function BloccoRiga({
           <IconaVia larghezza={14} spessoreTratto={2} />
         </button>
       </div>
+      {mostraAllineamento && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11.5px] font-bold text-[var(--spento)]">Allinea</span>
+          <ControlloAllineamento valore={blocco.allineamento} nomeBlocco={NOMIBLOCCO[blocco.tipo]} onCambia={cambiaAllineamento} />
+        </div>
+      )}
     </div>
   );
 }

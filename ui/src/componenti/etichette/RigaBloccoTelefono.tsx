@@ -43,18 +43,18 @@ export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCor
         <button type="button" className={"sw" + (blocco.acceso ? "" : " off")} onClick={clicSw} aria-pressed={blocco.acceso} aria-label={blocco.acceso ? `Spegni ${NOMIBLOCCO[blocco.tipo]}` : `Accendi ${NOMIBLOCCO[blocco.tipo]}`} />
         <span className="nome">{NOMIBLOCCO[blocco.tipo]}</span>
         {eLogo ? (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label="Altezza del logo, in millimetri">
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title="Altezza del logo, in millimetri" aria-label="Altezza del logo, in millimetri">
             {ALTEZZE_LOGO_MM.map((v) => (
               <option key={v} value={v}>
-                alto {v} mm
+                {v}
               </option>
             ))}
           </select>
         ) : (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
+          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`} aria-label={`Corpo di ${NOMIBLOCCO[blocco.tipo]}, in punti`}>
             {SCALETTA_CORPO.map((v) => (
               <option key={v} value={v}>
-                {v} pt
+                {v}
               </option>
             ))}
           </select>

@@ -11,7 +11,6 @@ import {
   useProdotto,
   useProseguiStampa,
   useRistampaStampa,
-  useRistampaUltima,
   useStampante,
   useStorico,
 } from "../api/hooks";
@@ -20,7 +19,7 @@ import { useScalaAnteprima } from "../api/resa";
 import type { Prodotto } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni } from "../hooks/useTestata";
-import { IconaCerca, IconaCercaDiNuovo, IconaDestra, IconaMatita, IconaMeno, IconaPiu, IconaSinistra, IconaStampa } from "../componenti/Icone";
+import { IconaCerca, IconaDestra, IconaMatita, IconaMeno, IconaPiu, IconaSinistra, IconaStampa } from "../componenti/Icone";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
 import StatoStampante from "../componenti/StatoStampante";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
@@ -129,7 +128,7 @@ function PannelloProdotto({
     <div className="flex flex-col gap-3 min-h-0 flex-1">
       <div className="flex items-center gap-2 min-w-0">
         {mostraIndietro && (
-          <button type="button" className="indietro soloTel" onClick={onIndietro} aria-label="Torna ai prodotti">
+          <button type="button" className="indietro soloTel" onClick={onIndietro} aria-label="Torna alle etichette">
             <IconaSinistra larghezza={22} spessoreTratto={2} />
           </button>
         )}
@@ -177,8 +176,8 @@ function PannelloProdotto({
           type="button"
           className="btn w-[52px] p-0 justify-center flex-shrink-0"
           onClick={onModifica}
-          title="Modifica il prodotto"
-          aria-label="Modifica il prodotto"
+          title="Modifica l'etichetta"
+          aria-label="Modifica l'etichetta"
         >
           <IconaMatita larghezza={20} spessoreTratto={2} />
         </button>
@@ -234,10 +233,8 @@ export default function Stampa() {
   const { data: prodotto } = useProdotto(prodottoId ?? undefined);
   const { data: lottoInfo } = useLotto();
   const { data: storicoTutto } = useStorico({ periodo: "tutto" });
-  const ultimaStampa = storicoTutto?.[0];
 
   const creaStampa = useCreaStampa();
-  const ristampaUltima = useRistampaUltima();
   const annullaStampa = useAnnullaStampa();
   const proseguiStampa = useProseguiStampa();
   const ristampaStampa = useRistampaStampa();
@@ -351,25 +348,11 @@ export default function Stampa() {
     );
   }, [prodotto, schemaAttuale, lotto, lottoProposto, copie, quantita, scadenza, creaStampa, avvisa]);
 
-  const cliccaRistampaUltima = useCallback(() => {
-    if (!ultimaStampa) return;
-    ristampaUltima.mutate(undefined, {
-      onSuccess: (dati) => {
-        setProdottoId(ultimaStampa.prodottoId);
-        setDettaglio(true);
-        setRiepilogo({
-          lavoroId: dati.lavoroId,
-          prodottoId: ultimaStampa.prodottoId,
-          prodottoNome: ultimaStampa.prodottoNome,
-          quantita: ultimaStampa.quantita,
-          scadenza: ultimaStampa.scadenza,
-          lotto: ultimaStampa.lotto,
-          copieTotali: ultimaStampa.copie,
-        });
-      },
-      onError: () => avvisa("Non sono riuscito ad avviare la ristampa."),
-    });
-  }, [ultimaStampa, ristampaUltima, avvisa]);
+  // "Nuova etichetta" (deciso da Gianluca, al posto di "Ristampa ultima"):
+  // va diretto alla creazione di un prodotto nuovo in Etichette, la stessa
+  // strada del bottone "Nuova etichetta" li' (nuovoProdotto()), letta dal
+  // parametro ?nuovo=1.
+  const vaiANuovaEtichetta = useCallback(() => navigate("/etichette?nuovo=1"), [navigate]);
 
   const fermaSerie = useCallback(() => {
     if (!riepilogo) return;
@@ -446,22 +429,12 @@ export default function Stampa() {
         <div className="flex gap-3">
           <div className="cerca flex-1">
             <IconaCerca larghezza={20} spessoreTratto={2} />
-            <input value={cerca} onChange={cambiaCerca} placeholder="Cerca prodotto…" aria-label="Cerca prodotto" />
+            <input value={cerca} onChange={cambiaCerca} placeholder="Cerca etichetta…" aria-label="Cerca etichetta" />
           </div>
-          {ultimaStampa && !riepilogo && (
-            <button
-              type="button"
-              className="btn soloPC flex-col items-start justify-center gap-0.5 h-[52px] px-4"
-              onClick={cliccaRistampaUltima}
-              disabled={ristampaUltima.isPending}
-            >
-              <span className="flex items-center gap-2 text-[15px]">
-                <IconaCercaDiNuovo larghezza={18} spessoreTratto={2} />
-                Ristampa ultima
-              </span>
-              <span className="text-[12px] font-normal text-[var(--tenue)] pl-[26px]">
-                {ultimaStampa.prodottoNome} · {formattaOra(ultimaStampa.stampatoIl)}
-              </span>
+          {!riepilogo && (
+            <button type="button" className="btn soloPC h-[52px] px-4" onClick={vaiANuovaEtichetta}>
+              <IconaPiu larghezza={18} spessoreTratto={2.2} />
+              <span>Nuova etichetta</span>
             </button>
           )}
         </div>
@@ -473,25 +446,17 @@ export default function Stampa() {
             Tutti
           </button>
         </div>
-        {ultimaStampa && !riepilogo && (
-          <button type="button" className="ristampaTel soloTel" onClick={cliccaRistampaUltima} disabled={ristampaUltima.isPending}>
-            <IconaCercaDiNuovo larghezza={22} spessoreTratto={2} />
-            <span className="testo">
-              <b>Ristampa l&apos;ultima</b>
-              <span>
-                {ultimaStampa.prodottoNome} · {plurale(ultimaStampa.copie, "copia", "copie")} · {formattaOra(ultimaStampa.stampatoIl)}
-              </span>
-            </span>
-            <span className="flex text-[var(--verdebordo)]">
-              <IconaDestra larghezza={20} spessoreTratto={2} />
-            </span>
+        {!riepilogo && (
+          <button type="button" className="ristampaTel soloTel justify-center" onClick={vaiANuovaEtichetta}>
+            <IconaPiu larghezza={20} spessoreTratto={2.2} />
+            <span className="font-bold text-[15px]">Nuova etichetta</span>
           </button>
         )}
         <div className={"griglia scorre flex-1 min-h-0" + (stampaBloccante ? " opacity-45 pointer-events-none" : "")}>
           {lista.map((p) => (
             <RigaProdotto key={p.id} prodotto={p} selezionato={p.id === prodottoId} onScegli={scegliProdotto} />
           ))}
-          {lista.length === 0 && <div className="text-[var(--tenue)] p-2">Nessun prodotto con questo nome.</div>}
+          {lista.length === 0 && <div className="text-[var(--tenue)] p-2">Nessuna etichetta con questo nome.</div>}
         </div>
       </div>
 
@@ -553,7 +518,7 @@ export default function Stampa() {
             onStampa={avviaStampa}
           />
         ) : (
-          <div className="text-[var(--tenue)] p-2">Scegli un prodotto dall&apos;elenco.</div>
+          <div className="text-[var(--tenue)] p-2">Scegli un&apos;etichetta dall&apos;elenco.</div>
         )}
       </div>
     </div>

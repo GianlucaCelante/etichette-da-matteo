@@ -174,11 +174,11 @@ export const SCALETTA_CORPO = [7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 
 
 // Nomi da mostrare per ogni tipo di blocco (docs/api.md).
 export const NOMIBLOCCO: Record<TipoBlocco, string> = {
-  titolo: "Titolo prodotto",
+  titolo: "Titolo",
   ingredienti: "Ingredienti",
   puoContenere: "Può contenere",
   modoUso: "Modo d'uso",
-  scadenza: "Scadenza e conservazione",
+  scadenza: "Scadenza",
   lotto: "Lotto",
   quantita: "Quantità",
   valori: "Valori nutrizionali",

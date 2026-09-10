@@ -1251,17 +1251,18 @@ const server = http.createServer(async (req, res) => {
       return rispondiJson(res, 200, elenco);
     }
     // Senza corpo: il prodotto nuovo del prototipo, pronto da riscrivere
-    // subito (nome "Prodotto nuovo", 3 giorni, "In frigo", "500 g", etichetta
-    // minima). Con corpo: quello che manda il chiamante (revisione di questo
-    // giro: non c'e' piu' una galleria di etichette da cui pescarne una).
+    // subito (nome "Etichetta nuova", commit f612a64 del servizio, 3 giorni,
+    // "In frigo", "500 g", etichetta minima). Con corpo: quello che manda il
+    // chiamante (revisione di questo giro: non c'e' piu' una galleria di
+    // etichette da cui pescarne una).
     if (percorso === "/api/prodotti" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req).catch(() => ({}));
       const ora = dataLocaleIso();
-      const nome = corpo.nome || "Prodotto nuovo";
+      const nome = corpo.nome || "Etichetta nuova";
       const nuovo = {
         id: prossimoProdottoId++,
         nome,
-        nomeStampa: corpo.nomeStampa || (corpo.nome ? String(corpo.nome).toUpperCase() : "PRODOTTO NUOVO"),
+        nomeStampa: corpo.nomeStampa || (corpo.nome ? String(corpo.nome).toUpperCase() : "ETICHETTA NUOVA"),
         etichetta: corpo.etichetta && Array.isArray(corpo.etichetta.blocchi) ? corpo.etichetta : etichettaNuova(),
         ingredienti: corpo.ingredienti || "",
         allergeni: Array.isArray(corpo.allergeni) ? corpo.allergeni : [],

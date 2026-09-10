@@ -215,7 +215,7 @@ export function PannelloFatta({
       )}
       <div className="scheda px-4 py-3">
         <div className="kv">
-          <span>Prodotto</span>
+          <span>Etichetta</span>
           <b>{prodottoNome}</b>
         </div>
         <div className="kv">

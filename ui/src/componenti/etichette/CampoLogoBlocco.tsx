@@ -13,7 +13,7 @@ const LOGO_MASSIMO_BYTE = 2_000_000;
 // componenti dell'etichetta. Stesso caricamento/rimozione della sezione
 // Logo di Impostazioni.tsx (che resta com'e', non la tocca), ma qui dentro
 // il gruppo del blocco: cosi' segue lo stesso andirivieni di acceso/spento
-// degli altri blocchi. Il logo resta unico per tutti i prodotti.
+// degli altri blocchi. Il logo resta unico per tutte le etichette.
 export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void }) {
   const { data: esiste } = useLogoEsiste();
   const carica = useCaricaLogo();
@@ -98,7 +98,7 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
             </span>
           )}
         </div>
-        <div className="text-[12px] text-[var(--spento)]">Il logo è unico per tutti i prodotti.</div>
+        <div className="text-[12px] text-[var(--spento)]">Il logo è unico per tutte le etichette.</div>
       </div>
       <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={scegliFile} aria-label="Carica il logo" />
     </div>

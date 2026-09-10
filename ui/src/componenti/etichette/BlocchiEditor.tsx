@@ -72,12 +72,12 @@ export function BottoneTavolozza({
   );
 }
 
-// Il pannello dei blocchi disponibili ("Dati del prodotto" / "Blocchi
+// Il pannello dei blocchi disponibili ("Dati dell'etichetta" / "Blocchi
 // liberi"): identico per il vassoio PC e per quello del telefono.
 export function PannelloTavolozza({ blocchi, onAggiungi }: { blocchi: BloccoBozza[]; onAggiungi: (tipo: TipoBlocco) => void }) {
   return (
     <div className="flex flex-col gap-1.5 mt-1.5">
-      <div className="etichettina mt-1">Dati del prodotto</div>
+      <div className="etichettina mt-1">Dati dell&apos;etichetta</div>
       {BLOCCHI_DATI.map((tipo) => (
         <BottoneTavolozza key={tipo} tipo={tipo} usato={blocchi.some((b) => b.tipo === tipo)} onAggiungi={onAggiungi} />
       ))}
