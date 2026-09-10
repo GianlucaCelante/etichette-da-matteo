@@ -130,6 +130,7 @@ Geometria (decisa il 9 settembre 2026 pomeriggio, dopo le stampe di prova a conf
 - `GET /api/dispositivi/io` → `{"id":"…","nome":"Telefono della cucina","tipo":"pc|telefono","nuovo":false}`; `nuovo: true` finché il dispositivo non ha un nome: l'interfaccia lo chiede una volta sola.
 - `PUT /api/dispositivi/io` con `{"nome":"…"}`.
 - `GET /api/dispositivi` → elenco con `collegatoIl` e `ultimoAccesso`; `DELETE /api/dispositivi/{id}` → «Scollega»: il token non vale più, alla prossima richiesta quel browser torna `nuovo`.
+- `DELETE /api/dispositivi/senza-nome` → `{"rimossi": 5}`: toglie i dispositivi senza nome, tranne il PC e quello che chiede. I dispositivi senza nome fermi da piu' di 24 ore si tolgono comunque da soli (all'avvio del servizio e poi una volta all'ora): ogni browser che apre l'app senza cookie ne fa nascere uno, e l'elenco si riempirebbe di righe anonime (deciso il 10 settembre 2026).
 - Il nome del dispositivo finisce nello storico (`dispositivoNome`).
 
 ### Logo (aggiunto l'8 settembre, sera)

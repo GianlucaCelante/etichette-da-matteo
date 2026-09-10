@@ -52,6 +52,18 @@ public class DispositiviController {
         return dispositivi.findAll().stream().map(this::aDtoElenco).toList();
     }
 
+    /**
+     * Toglie in un colpo solo i dispositivi senza nome (quelli nati da un browser che ha aperto
+     * l'app una volta sola): il PC e i dispositivi con un nome restano, e resta anche quello da cui
+     * arriva la richiesta. Vedi la nota in {@code DispositiviService}.
+     */
+    @DeleteMapping("/senza-nome")
+    public Map<String, Object> rimuoviSenzaNome(HttpServletRequest request) {
+        Dispositivo io = DispositiviService.corrente(request);
+        int rimossi = servizio.rimuoviTuttiSenzaNome(io != null ? io.getId() : null);
+        return Map.of("rimossi", rimossi);
+    }
+
     @DeleteMapping("/{id}")
     public Map<String, Object> scollega(@PathVariable String id) {
         if (!dispositivi.existsById(id)) {

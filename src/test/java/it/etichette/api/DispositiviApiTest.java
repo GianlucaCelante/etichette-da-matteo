@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +41,20 @@ class DispositiviApiTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private it.etichette.dati.DispositivoRepository dispositivi;
+
+    @Autowired
+    private it.etichette.dispositivi.DispositiviService servizio;
+
+    /** Una richiesta che arriva dalla rete (non loopback): e' un telefono, non il PC. */
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor daRete() {
+        return richiesta -> {
+            richiesta.setRemoteAddr("192.168.1.50");
+            return richiesta;
+        };
+    }
+
     @Test
     void laPrimaRichiestaDalPcAssegnaIlCookieEDiceTipoPc() throws Exception {
         MvcResult risultato = mockMvc.perform(get("/api/dispositivi/io"))
@@ -53,6 +68,53 @@ class DispositiviApiTest {
         assertThat(cookie).isNotNull();
         assertThat(cookie.isHttpOnly()).isTrue();
         assertThat(cookie.getMaxAge()).isGreaterThan(360 * 24 * 3600);
+    }
+
+    /**
+     * Ogni browser che apre l'app senza cookie fa nascere un dispositivo senza nome: dopo qualche
+     * prova l'elenco si riempie di righe anonime (segnalato da Gianluca il 2026-09-10). Il bottone
+     * «Togli quelli senza nome» le toglie tutte, lasciando il PC e i dispositivi con un nome.
+     */
+    @Test
+    void togliereISenzaNomeLasciaIlPcEQuelliConUnNome() throws Exception {
+        mockMvc.perform(get("/api/dispositivi/io")).andExpect(status().isOk()); // il PC
+        Cookie cookieTelefono = mockMvc.perform(get("/api/dispositivi/io").with(daRete()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tipo").value("telefono"))
+                .andExpect(jsonPath("$.nuovo").value(true))
+                .andReturn().getResponse().getCookie("dispositivo");
+        mockMvc.perform(put("/api/dispositivi/io").with(daRete()).cookie(cookieTelefono)
+                        .contentType("application/json").content("{\"nome\":\"Telefono della cucina\"}"))
+                .andExpect(status().isOk());
+        // due browser diversi, nessuno dei due con un nome
+        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
+        assertThat(dispositivi.findAll()).hasSize(4);
+
+        mockMvc.perform(delete("/api/dispositivi/senza-nome"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rimossi").value(2));
+
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getNome)
+                .containsExactlyInAnyOrder("PC", "Telefono della cucina");
+    }
+
+    /** I senza nome fermi da piu' di 24 ore se ne vanno da soli; quelli con un nome restano per sempre. */
+    @Test
+    void laPuliziaToglieSoloISenzaNomeVecchi() {
+        java.time.LocalDateTime tantoTempoFa = java.time.LocalDateTime.now().minusDays(3);
+        it.etichette.dati.Dispositivo anonimoVecchio = new it.etichette.dati.Dispositivo("anonimo-vecchio", "", "telefono");
+        anonimoVecchio.setUltimoAccesso(tantoTempoFa);
+        it.etichette.dati.Dispositivo anonimoDiAdesso = new it.etichette.dati.Dispositivo("anonimo-adesso", "", "telefono");
+        anonimoDiAdesso.setUltimoAccesso(java.time.LocalDateTime.now());
+        it.etichette.dati.Dispositivo conNomeVecchio = new it.etichette.dati.Dispositivo("con-nome", "Telefono della zia", "telefono");
+        conNomeVecchio.setUltimoAccesso(tantoTempoFa);
+        dispositivi.saveAll(java.util.List.of(anonimoVecchio, anonimoDiAdesso, conNomeVecchio));
+
+        assertThat(servizio.rimuoviSenzaNomeScaduti()).isEqualTo(1);
+
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getId)
+                .containsExactlyInAnyOrder("anonimo-adesso", "con-nome");
     }
 
     @Test
