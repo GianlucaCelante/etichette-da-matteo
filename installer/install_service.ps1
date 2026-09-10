@@ -176,10 +176,19 @@ function Set-EtichetteFirewallRule {
     }
 }
 
-function Get-EdgePath {
+# Il browser con cui aprire l'app in modalita' finestra ("--app=", niente barra
+# degli indirizzi): prima Edge, che c'e' su ogni Windows normale, poi Chrome, che
+# accetta la stessa opzione. Se non c'e' nessuno dei due (successo il 10 settembre
+# 2026 su un PC di prova: l'MSI risultava installato ma non compariva nessuna
+# icona, perche' lo script saltava in silenzio la creazione delle scorciatoie) si
+# ripiega su un collegamento internet, che apre l'indirizzo nel browser di serie:
+# meglio una finestra normale che nessuna icona.
+function Get-BrowserPath {
     $candidates = @(
         (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
-        (Join-Path ${env:ProgramFiles} "Microsoft\Edge\Application\msedge.exe")
+        (Join-Path ${env:ProgramFiles} "Microsoft\Edge\Application\msedge.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe"),
+        (Join-Path ${env:ProgramFiles} "Google\Chrome\Application\chrome.exe")
     )
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -187,6 +196,27 @@ function Get-EdgePath {
         }
     }
     return $null
+}
+
+# Ripiego senza Edge ne' Chrome: un collegamento internet (.url), che Windows apre
+# col browser di serie. Niente modalita' finestra, ma l'icona c'e'.
+function New-EtichetteUrlShortcut {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ShortcutPath
+    )
+
+    $parent = Split-Path -Parent $ShortcutPath
+    if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    try {
+        $contenuto = "[InternetShortcut]`r`nURL=$AppUrl`r`n"
+        Set-Content -Path $ShortcutPath -Value $contenuto -Encoding ASCII -Force
+        Write-Host "  - $ShortcutPath (collegamento internet: Edge/Chrome non trovati)"
+    } catch {
+        Write-Warning "Impossibile creare il collegamento '$ShortcutPath': $($_.Exception.Message)"
+    }
 }
 
 function New-EtichetteShortcut {
@@ -220,10 +250,9 @@ function New-EtichetteShortcut {
 function Set-EtichetteShortcuts {
     Write-Host "[3/4] Creo le scorciatoie (desktop, avvio automatico, menu Start)..." -ForegroundColor Green
 
-    $edgePath = Get-EdgePath
-    if (-not $edgePath) {
-        Write-Warning "Microsoft Edge non trovato in Program Files; le scorciatoie non sono state create. Installa/verifica Edge e rilancia questo script."
-        return
+    $browserPath = Get-BrowserPath
+    if (-not $browserPath) {
+        Write-Warning "Ne' Edge ne' Chrome trovati in Program Files: le scorciatoie apriranno l'indirizzo col browser di serie, in una finestra normale."
     }
 
     $commonDesktop  = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
@@ -253,7 +282,11 @@ function Set-EtichetteShortcuts {
     }
 
     foreach ($target in $targets) {
-        New-EtichetteShortcut -ShortcutPath $target -EdgePath $edgePath
+        if ($browserPath) {
+            New-EtichetteShortcut -ShortcutPath $target -EdgePath $browserPath
+        } else {
+            New-EtichetteUrlShortcut -ShortcutPath ([IO.Path]::ChangeExtension($target, ".url"))
+        }
     }
 }
 
@@ -387,11 +420,12 @@ Write-Host "Log           : $LogDir"
 Write-Host "Indirizzo     : $AppUrl"
 
 if (-not $Silent) {
-    $edgePath = Get-EdgePath
-    if ($edgePath) {
+    $browserPath = Get-BrowserPath
+    if ($browserPath) {
         Write-Host "Apro la pagina..."
-        Start-Process -FilePath $edgePath -ArgumentList "--app=$AppUrl"
+        Start-Process -FilePath $browserPath -ArgumentList "--app=$AppUrl"
     } else {
-        Write-Warning "Microsoft Edge non trovato; apri manualmente $AppUrl."
+        Write-Host "Apro la pagina col browser di serie..."
+        Start-Process $AppUrl
     }
 }
