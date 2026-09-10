@@ -758,6 +758,28 @@ let prossimoDispositivoNumero = 3;
     collegatoIl: dataLocaleIso(ieri),
     ultimoAccesso: dataLocaleIso(ora),
   });
+  // Un paio di dispositivi senza nome, come quelli che nasce un browser
+  // senza cookie: servono a vedere "Senza nome" e "Togli quelli senza
+  // nome" nell'interfaccia (deciso il 10/9, foto di Gianluca con 5 righe
+  // anonime).
+  const senzaNomeUno = new Date(Date.now() - 2 * 3_600_000);
+  dispositiviPerToken.set("demo-senza-nome-1", {
+    id: "demo-senza-nome-1",
+    nome: "",
+    tipo: "telefono",
+    nuovo: true,
+    collegatoIl: dataLocaleIso(senzaNomeUno),
+    ultimoAccesso: dataLocaleIso(senzaNomeUno),
+  });
+  const senzaNomeDue = new Date(Date.now() - 40 * 60_000);
+  dispositiviPerToken.set("demo-senza-nome-2", {
+    id: "demo-senza-nome-2",
+    nome: "",
+    tipo: "telefono",
+    nuovo: true,
+    collegatoIl: dataLocaleIso(senzaNomeDue),
+    ultimoAccesso: dataLocaleIso(senzaNomeDue),
+  });
 })();
 
 function eLoopback(req) {
@@ -1431,6 +1453,17 @@ const server = http.createServer(async (req, res) => {
         .filter((d) => d.tipo !== "pc")
         .map((d) => ({ id: d.id, nome: d.nome, tipo: d.tipo, collegatoIl: d.collegatoIl, ultimoAccesso: d.ultimoAccesso }));
       return rispondiJson(res, 200, elenco);
+    }
+    if (percorso === "/api/dispositivi/senza-nome" && req.method === "DELETE") {
+      const chi = identificaDispositivo(req, res);
+      let rimossi = 0;
+      for (const [token, d] of [...dispositiviPerToken.entries()]) {
+        if (!d.nome.trim() && d.id !== chi.id) {
+          dispositiviPerToken.delete(token);
+          rimossi++;
+        }
+      }
+      return rispondiJson(res, 200, { rimossi });
     }
     const unDispositivo = percorso.match(/^\/api\/dispositivi\/([^/]+)$/);
     if (unDispositivo && req.method === "DELETE") {

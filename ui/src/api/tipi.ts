@@ -334,6 +334,11 @@ export interface Dispositivo {
   ultimoAccesso: string;
 }
 
+// Risposta di DELETE /api/dispositivi/senza-nome (docs/api.md, "Dispositivi").
+export interface DispositiviSenzaNomeRisposta {
+  rimossi: number;
+}
+
 /* ============================ errori ============================ */
 
 // Corpo di errore del servizio: sempre {"errore":"…"}.

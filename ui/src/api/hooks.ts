@@ -263,6 +263,14 @@ export function useEliminaDispositivo() {
   });
 }
 
+export function useEliminaDispositiviSenzaNome() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.eliminaDispositiviSenzaNome(),
+    onSuccess: () => void client.invalidateQueries({ queryKey: chiaviQuery.dispositivi }),
+  });
+}
+
 /* ============================ anteprime PNG ============================ */
 
 // L'anteprima di un prodotto gia' salvato: e' un GET, quindi basta un src che

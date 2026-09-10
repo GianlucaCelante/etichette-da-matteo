@@ -2,6 +2,7 @@ import type {
   CorpoErrore,
   Dispositivo,
   DispositivoIo,
+  DispositiviSenzaNomeRisposta,
   Impostazioni,
   LogoRisposta,
   Lotto,
@@ -125,6 +126,9 @@ export const api = {
     richiedi<DispositivoIo>("/dispositivi/io", { method: "PUT", body: JSON.stringify({ nome }) }),
   dispositivi: () => richiedi<Dispositivo[]>("/dispositivi"),
   eliminaDispositivo: (id: string) => richiedi<void>(`/dispositivi/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Toglie i dispositivi senza nome (tranne il PC e quello che chiede): li
+  // fa nascere ogni browser che apre l'app senza cookie (docs/api.md).
+  eliminaDispositiviSenzaNome: () => richiedi<DispositiviSenzaNomeRisposta>("/dispositivi/senza-nome", { method: "DELETE" }),
 };
 
 // L'immagine del QR non passa dal client JSON: e' un src diretto per un <img>.

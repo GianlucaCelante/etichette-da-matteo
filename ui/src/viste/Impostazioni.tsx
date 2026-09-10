@@ -4,6 +4,7 @@ import {
   useCaricaLogo,
   useDispositivi,
   useEliminaDispositivo,
+  useEliminaDispositiviSenzaNome,
   useEliminaLogo,
   useImpostazioni,
   useLavoroStampa,
@@ -14,7 +15,7 @@ import {
   useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
-import type { SchemaLotto, SchemaLottoInfo, Stampante } from "../api/tipi";
+import type { Dispositivo, SchemaLotto, SchemaLottoInfo, Stampante } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
 import {
@@ -504,13 +505,16 @@ function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string;
   const collegatoDal = Number.isNaN(dataCollegamento.getTime())
     ? collegatoIl
     : new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" }).format(dataCollegamento);
+  // Un browser che apre l'app senza cookie fa nascere un dispositivo senza
+  // nome (docs/api.md, "Dispositivi"): niente titolo vuoto che sembra rotto.
+  const senzaNome = !nome.trim();
 
   const scollega = useCallback(() => {
     eliminaDispositivo.mutate(id, {
-      onSuccess: () => avvisa(`${nome} scollegato.`),
+      onSuccess: () => avvisa(`${senzaNome ? "Il dispositivo" : nome} scollegato.`),
       onError: () => avvisa("Non sono riuscito a scollegarlo: riprova."),
     });
-  }, [eliminaDispositivo, id, nome, avvisa]);
+  }, [eliminaDispositivo, id, nome, senzaNome, avvisa]);
 
   return (
     <div className="riga telefonoRiga">
@@ -518,9 +522,10 @@ function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string;
         <IconaTelefono larghezza={20} spessoreTratto={1.8} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="t">{nome}</div>
+        <div className={senzaNome ? "t text-[var(--spento)] font-normal" : "t"}>{senzaNome ? "Senza nome" : nome}</div>
         <div className="s">
           Collegato dal {collegatoDal} · ultimo accesso {relativo}
+          {senzaNome && " · non ha ancora un nome"}
         </div>
       </div>
       <ConfermaInline etichetta="Scollega" domanda="Scollegare?" onConferma={scollega} disabilitato={eliminaDispositivo.isPending} />
@@ -528,13 +533,45 @@ function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string;
   );
 }
 
+// Prima i dispositivi con un nome (il PC in cima, se compare), poi quelli
+// senza nome; dentro ogni gruppo dal piu' recente accesso al piu' vecchio
+// (deciso da Gianluca il 10/9, in risposta a un elenco pieno di righe
+// anonime create dai browser senza cookie).
+function ordinaDispositivi(a: Dispositivo, b: Dispositivo): number {
+  const aSenza = !a.nome.trim();
+  const bSenza = !b.nome.trim();
+  if (aSenza !== bSenza) return aSenza ? 1 : -1;
+  if (!aSenza && a.tipo !== b.tipo && (a.tipo === "pc" || b.tipo === "pc")) return a.tipo === "pc" ? -1 : 1;
+  return a.ultimoAccesso > b.ultimoAccesso ? -1 : a.ultimoAccesso < b.ultimoAccesso ? 1 : 0;
+}
+
 function SezioneDispositivi() {
   const { data: dispositivi } = useDispositivi();
+  const eliminaSenzaNome = useEliminaDispositiviSenzaNome();
+  const avvisa = useAvviso();
+  const ceNeSenzaNome = (dispositivi ?? []).some((d) => !d.nome.trim());
+
+  const togliSenzaNome = useCallback(() => {
+    eliminaSenzaNome.mutate(undefined, {
+      onSuccess: ({ rimossi }) =>
+        avvisa(rimossi > 0 ? `Tolt${rimossi === 1 ? "o 1 dispositivo" : `i ${rimossi} dispositivi`} senza nome.` : "Nessun dispositivo da togliere."),
+      onError: () => avvisa("Non sono riuscito a toglierli: riprova."),
+    });
+  }, [eliminaSenzaNome, avvisa]);
 
   return (
     <Sezione
       titolo="Dispositivi collegati"
-      destra={dispositivi && <span className="text-[13px] text-[var(--tenue)]">{dispositivi.length}</span>}
+      destra={
+        <div className="flex items-center gap-2.5">
+          {ceNeSenzaNome && (
+            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={togliSenzaNome} disabled={eliminaSenzaNome.isPending}>
+              Togli quelli senza nome
+            </button>
+          )}
+          {dispositivi && <span className="text-[13px] text-[var(--tenue)]">{dispositivi.length}</span>}
+        </div>
+      }
     >
       {dispositivi && dispositivi.length === 0 && (
         <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">
@@ -544,7 +581,7 @@ function SezioneDispositivi() {
           <span>Nessun telefono collegato. Inquadra il QR qui a fianco per collegarne uno.</span>
         </div>
       )}
-      {(dispositivi ?? []).map((d) => (
+      {[...(dispositivi ?? [])].sort(ordinaDispositivi).map((d) => (
         <RigaDispositivo key={d.id} id={d.id} nome={d.nome} tipo={d.tipo} collegatoIl={d.collegatoIl} ultimoAccesso={d.ultimoAccesso} />
       ))}
     </Sezione>
