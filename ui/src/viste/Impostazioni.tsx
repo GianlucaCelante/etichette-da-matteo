@@ -310,18 +310,17 @@ function SezioneStampa() {
   );
 }
 
+// Il nome "etichette.local" e' sparito (su Android non funzionava e il QR
+// bastava da solo, deciso da Gianluca il 10/9): resta solo il QR con
+// l'indirizzo IP sotto, unica cosa della sezione.
 function SezioneTelefoni() {
   const { data: rete } = useRete();
   const principale = rete?.principale ?? rete?.indirizzi[0];
 
   return (
     <Sezione titolo="Telefoni e tablet">
-      <Riga
-        titolo="Indirizzo sulla rete"
-        sotto="Se il telefono non lo trova, inquadra il QR qui sotto"
-        valore={<span className="mono">{rete?.nome ?? "…"}</span>}
-      />
-      <div className="flex flex-col items-center gap-3 pt-4 pb-2">
+      <div className="flex flex-col items-center gap-3 py-2">
+        <div className="text-[15px] font-bold">Inquadra il QR col telefono</div>
         <img
           src={percorsoQrRete}
           alt="Codice QR con l'indirizzo dell'app: inquadralo dal telefono per aprirla"

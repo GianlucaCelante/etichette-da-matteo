@@ -39,7 +39,6 @@ export type Impostazioni = Record<string, string>;
 
 export interface Rete {
   indirizzi: string[];
-  nome: string;
   // L'indirizzo da proporre come principale sotto il QR: in arrivo dal
   // servizio, per ora facoltativo. Se assente si usa indirizzi[0].
   principale?: string;
