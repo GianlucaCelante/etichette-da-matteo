@@ -2,6 +2,7 @@ package it.etichette.api;
 
 import it.etichette.dati.StoricoStampa;
 import it.etichette.dati.StoricoStampaRepository;
+import it.etichette.dispositivi.DispositiviService;
 import it.etichette.stampe.RispostaStampa;
 import it.etichette.stampe.StampeService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,11 +26,14 @@ public class StoricoController {
     private final StoricoStampaRepository storico;
     private final StampeService stampe;
     private final Json json;
+    private final DispositiviService dispositivi;
 
-    public StoricoController(StoricoStampaRepository storico, StampeService stampe, Json json) {
+    public StoricoController(StoricoStampaRepository storico, StampeService stampe, Json json,
+                              DispositiviService dispositivi) {
         this.storico = storico;
         this.stampe = stampe;
         this.json = json;
+        this.dispositivi = dispositivi;
     }
 
     @GetMapping
@@ -51,7 +55,7 @@ public class StoricoController {
     public Map<String, Object> ristampa(HttpServletRequest request, @PathVariable Long id,
                                          @RequestBody(required = false) Map<String, Object> corpo) {
         Integer copie = corpo != null ? json.converti(corpo, RichiestaCopie.class).copie() : null;
-        RispostaStampa risposta = stampe.ristampa(id, copie, StampeController.nomeDispositivo(request));
+        RispostaStampa risposta = stampe.ristampa(id, copie, dispositivi.nomePerStampa(request));
         return Map.of("lavoroId", risposta.lavoroId());
     }
 

@@ -1,0 +1,25 @@
+databaseChangeLog:
+  # Elenco dei dispositivi (2026-09-10, dopo la segnalazione di Gianluca: otto righe di cui cinque
+  # anonime). Da qui una riga nasce solo per un dispositivo VERO - uno a cui e' stato dato un nome,
+  # o che ha stampato - e non piu' a ogni visita di un browser senza cookie; in piu' si tiene da
+  # parte che cosa e' quel dispositivo (sistema e browser, letti dallo "user agent"), cosi' una
+  # riga senza nome resta comunque riconoscibile: "Android - Chrome".
+
+  - changeSet:
+      id: 30-dispositivi-colonna-sistema
+      author: etichette
+      comment: "Nuova colonna dispositivi.sistema (es. \"Android - Chrome\"): SQL diretto come per le altre addColumn."
+      changes:
+        - sql:
+            sql: "ALTER TABLE dispositivi ADD COLUMN sistema TEXT;"
+
+  - changeSet:
+      id: 31-via-i-dispositivi-senza-nome
+      author: etichette
+      comment: >
+        Pulizia una tantum dei dispositivi anonimi gia' accumulati sui database installati: sono
+        visite di browser, non dispositivi (il PC e quelli con un nome non si toccano). Da qui in
+        avanti non se ne creano piu' di nuovi finche' non ricevono un nome o non stampano.
+      changes:
+        - sql:
+            sql: "DELETE FROM dispositivi WHERE (nome IS NULL OR trim(nome) = '') AND id <> 'pc-locale';"

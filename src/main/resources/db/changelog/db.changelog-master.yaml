@@ -8,3 +8,6 @@ databaseChangeLog:
   - include:
       file: v3-etichetta-nel-prodotto.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v4-dispositivi-sistema.yaml
+      relativeToChangelogFile: true

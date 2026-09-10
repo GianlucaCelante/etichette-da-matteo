@@ -9,6 +9,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -71,25 +73,59 @@ class DispositiviApiTest {
     }
 
     /**
-     * Ogni browser che apre l'app senza cookie fa nascere un dispositivo senza nome: dopo qualche
-     * prova l'elenco si riempie di righe anonime (segnalato da Gianluca il 2026-09-10). Il bottone
-     * «Togli quelli senza nome» le toglie tutte, lasciando il PC e i dispositivi con un nome.
+     * Il nodo della segnalazione di Gianluca (2026-09-10): un browser che apre l'app e basta e' una
+     * VISITA, non un dispositivo, e non deve comparire nell'elenco - prima ne nasceva una riga
+     * anonima ogni volta. Il cookie pero' si prende lo stesso, cosi' l'identita' resta la stessa
+     * quando poi il dispositivo diventa vero.
      */
     @Test
-    void togliereISenzaNomeLasciaIlPcEQuelliConUnNome() throws Exception {
+    void unaVisitaPrendeIlCookieMaNonEntraNellElenco() throws Exception {
         mockMvc.perform(get("/api/dispositivi/io")).andExpect(status().isOk()); // il PC
-        Cookie cookieTelefono = mockMvc.perform(get("/api/dispositivi/io").with(daRete()))
+        MvcResult visita = mockMvc.perform(get("/api/dispositivi/io").with(daRete()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tipo").value("telefono"))
                 .andExpect(jsonPath("$.nuovo").value(true))
-                .andReturn().getResponse().getCookie("dispositivo");
-        mockMvc.perform(put("/api/dispositivi/io").with(daRete()).cookie(cookieTelefono)
+                .andReturn();
+        Cookie cookie = visita.getResponse().getCookie("dispositivo");
+        assertThat(cookie).isNotNull();
+        // altri due browser che passano di li': nessuna riga in piu'
+        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
+
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getNome)
+                .containsExactly("PC");
+
+        // dargli un nome lo fa diventare un dispositivo vero, con lo STESSO id del cookie
+        mockMvc.perform(put("/api/dispositivi/io").with(daRete()).cookie(cookie)
                         .contentType("application/json").content("{\"nome\":\"Telefono della cucina\"}"))
                 .andExpect(status().isOk());
-        // due browser diversi, nessuno dei due con un nome
-        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
-        mockMvc.perform(get("/api/dispositivi/io").with(daRete())).andExpect(status().isOk());
-        assertThat(dispositivi.findAll()).hasSize(4);
+        assertThat(dispositivi.findById(cookie.getValue())).isPresent();
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getNome)
+                .containsExactlyInAnyOrder("PC", "Telefono della cucina");
+    }
+
+    /** Chi stampa entra nell'elenco anche senza nome, e nello storico va "Sconosciuto", non una casella vuota. */
+    @Test
+    void chiStampaEntraNellElencoEnelloStoricoVaSconosciuto() throws Exception {
+        MockHttpServletRequest richiesta = new MockHttpServletRequest();
+        richiesta.setRemoteAddr("192.168.1.50");
+        richiesta.addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/128 Mobile Safari/537.36");
+        servizio.risolviEAggiorna(richiesta, new MockHttpServletResponse());
+
+        String nome = servizio.nomePerStampa(richiesta);
+
+        assertThat(nome).isEqualTo("Sconosciuto");
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getSistema)
+                .contains("Android - Chrome");
+    }
+
+    /** Il bottone «Togli quelli senza nome» toglie le righe anonime rimaste (dispositivi che hanno stampato, o vecchi database). */
+    @Test
+    void togliereISenzaNomeLasciaIlPcEQuelliConUnNome() throws Exception {
+        mockMvc.perform(get("/api/dispositivi/io")).andExpect(status().isOk()); // il PC
+        dispositivi.save(new it.etichette.dati.Dispositivo("anonimo-1", "", "telefono"));
+        dispositivi.save(new it.etichette.dati.Dispositivo("anonimo-2", "", "telefono"));
+        dispositivi.save(new it.etichette.dati.Dispositivo("con-nome", "Telefono della cucina", "telefono"));
 
         mockMvc.perform(delete("/api/dispositivi/senza-nome"))
                 .andExpect(status().isOk())

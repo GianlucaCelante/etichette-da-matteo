@@ -126,10 +126,10 @@ Geometria (decisa il 9 settembre 2026 pomeriggio, dopo le stampe di prova a conf
 - L'esportazione la fa l'interfaccia dai dati JSON (copia come tabella), come nel prototipo.
 
 ### Dispositivi
-- Il servizio assegna a ogni browser un cookie `dispositivo` (token casuale, durata un anno, `SameSite=Lax`) alla prima richiesta a `/api/dispositivi/io`. Le richieste dall'indirizzo di loopback sono il PC: tipo `pc`, nome «PC», senza bisogno di dare un nome.
+- Il servizio assegna a ogni browser un cookie `dispositivo` (token casuale, durata un anno, `SameSite=Lax`) alla prima richiesta a `/api/dispositivi/io`. **Un browser che apre l'app e basta è una visita, non un dispositivo** (deciso il 10 settembre 2026): il cookie si scrive subito, ma la riga nell'elenco nasce solo quando il dispositivo riceve un nome o stampa. Dal browser il dispositivo fisico non è identificabile, quindi «dispositivo» qui significa «browser con il nostro cookie»: di ognuno si tiene anche `sistema` (es. «Android - Chrome»), letto dallo user agent, per riconoscere una riga senza nome. Chi stampa senza nome finisce nello storico come «Sconosciuto». Le richieste dall'indirizzo di loopback sono il PC: tipo `pc`, nome «PC», senza bisogno di dare un nome.
 - `GET /api/dispositivi/io` → `{"id":"…","nome":"Telefono della cucina","tipo":"pc|telefono","nuovo":false}`; `nuovo: true` finché il dispositivo non ha un nome: l'interfaccia lo chiede una volta sola.
 - `PUT /api/dispositivi/io` con `{"nome":"…"}`.
-- `GET /api/dispositivi` → elenco con `collegatoIl` e `ultimoAccesso`; `DELETE /api/dispositivi/{id}` → «Scollega»: il token non vale più, alla prossima richiesta quel browser torna `nuovo`.
+- `GET /api/dispositivi` → elenco con `sistema`, `collegatoIl` e `ultimoAccesso`; `DELETE /api/dispositivi/{id}` → «Scollega»: il token non vale più, alla prossima richiesta quel browser torna `nuovo`.
 - `DELETE /api/dispositivi/senza-nome` → `{"rimossi": 5}`: toglie i dispositivi senza nome, tranne il PC e quello che chiede. I dispositivi senza nome fermi da piu' di 24 ore si tolgono comunque da soli (all'avvio del servizio e poi una volta all'ora): ogni browser che apre l'app senza cookie ne fa nascere uno, e l'elenco si riempirebbe di righe anonime (deciso il 10 settembre 2026).
 - Il nome del dispositivo finisce nello storico (`dispositivoNome`).
 

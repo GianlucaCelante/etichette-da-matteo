@@ -43,7 +43,9 @@ public class DispositiviController {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "nome: obbligatorio");
         }
         d.setNome(nome);
-        dispositivi.save(d);
+        // Dare un nome e' il momento in cui una visita diventa un dispositivo vero: da qui in poi
+        // sta nell'elenco (vedi la nota in DispositiviService).
+        servizio.registra(d);
         return aDtoIo(d);
     }
 
@@ -87,6 +89,7 @@ public class DispositiviController {
         out.put("id", d.getId());
         out.put("nome", d.getNome());
         out.put("tipo", d.getTipo());
+        out.put("sistema", d.getSistema());
         out.put("collegatoIl", d.getCollegatoIl());
         out.put("ultimoAccesso", d.getUltimoAccesso());
         return out;

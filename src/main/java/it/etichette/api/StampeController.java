@@ -26,12 +26,15 @@ public class StampeController {
     private final StampeService stampe;
     private final Json json;
     private final MonitorStampante monitor;
+    private final DispositiviService dispositivi;
 
-    public StampeController(CodaDiStampa coda, StampeService stampe, Json json, MonitorStampante monitor) {
+    public StampeController(CodaDiStampa coda, StampeService stampe, Json json, MonitorStampante monitor,
+                             DispositiviService dispositivi) {
         this.coda = coda;
         this.stampe = stampe;
         this.json = json;
         this.monitor = monitor;
+        this.dispositivi = dispositivi;
     }
 
     private record RichiestaStampa(Long prodottoId, Integer copie, String quantita, String scadenza, String lotto) {
@@ -46,7 +49,7 @@ public class StampeController {
     @PostMapping
     public Map<String, Object> stampa(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
         RichiestaStampa r = json.converti(corpo, RichiestaStampa.class);
-        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), nomeDispositivo(request));
+        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), dispositivi.nomePerStampa(request));
         return corpoRisposta(risposta);
     }
 
@@ -54,14 +57,14 @@ public class StampeController {
     @PostMapping("/prova-prodotto")
     public Map<String, Object> provaProdotto(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
         RichiestaProvaProdotto r = json.converti(corpo, RichiestaProvaProdotto.class);
-        RispostaStampa risposta = stampe.provaProdotto(r.prodotto(), nomeDispositivo(request));
+        RispostaStampa risposta = stampe.provaProdotto(r.prodotto(), dispositivi.nomePerStampa(request));
         return corpoRisposta(risposta);
     }
 
     @PostMapping("/ultima")
     public Map<String, Object> ultima(HttpServletRequest request, @RequestBody(required = false) Map<String, Object> corpo) {
         Integer copie = corpo != null ? json.converti(corpo, RichiestaCopie.class).copie() : null;
-        RispostaStampa risposta = stampe.ristampaUltima(copie, nomeDispositivo(request));
+        RispostaStampa risposta = stampe.ristampaUltima(copie, dispositivi.nomePerStampa(request));
         return Map.of("lavoroId", risposta.lavoroId());
     }
 
@@ -104,8 +107,4 @@ public class StampeController {
         return out;
     }
 
-    static String nomeDispositivo(HttpServletRequest request) {
-        Dispositivo d = DispositiviService.corrente(request);
-        return d != null ? d.getNome() : "Sconosciuto";
-    }
 }
