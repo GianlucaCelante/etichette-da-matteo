@@ -49,7 +49,7 @@ public class ProdottiController {
         return conversioni.aDto(trova(id));
     }
 
-    /** Senza corpo o con campi mancanti: "Prodotto nuovo" con i valori di partenza del prototipo (docs/api.md). */
+    /** Senza corpo o con campi mancanti: "Etichetta nuova" con i valori di partenza del prototipo (docs/api.md). */
     @PostMapping
     @Transactional
     public ProdottoDto crea(@RequestBody(required = false) Map<String, Object> corpo) {

@@ -63,8 +63,8 @@ public class ProdottiConversioni {
      * uno). SOLO per la creazione: {@code PUT} resta rigoroso (nome obbligatorio, niente default).
      */
     public ProdottoDto conValoriDiPartenza(ProdottoDto dto) {
-        String nome = nonVuoto(dto.nome()) ? dto.nome() : "Prodotto nuovo";
-        String nomeStampa = nonVuoto(dto.nomeStampa()) ? dto.nomeStampa() : "PRODOTTO NUOVO";
+        String nome = nonVuoto(dto.nome()) ? dto.nome() : "Etichetta nuova";
+        String nomeStampa = nonVuoto(dto.nomeStampa()) ? dto.nomeStampa() : "ETICHETTA NUOVA";
         Integer giorniScadenza = dto.giorniScadenza() != null ? dto.giorniScadenza() : 3;
         String conservazione = nonVuoto(dto.conservazione()) ? dto.conservazione() : "In frigo";
         String quantita = nonVuoto(dto.quantita()) ? dto.quantita() : "500 g";

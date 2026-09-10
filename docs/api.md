@@ -90,7 +90,7 @@ Il servizio restituisce sempre `zona` (default `{"larghezzaDestra":"1/3"}`) e `b
 - `quantita` è testo libero («2148 g», «6 pezzi»): alla stampa si può cambiare senza toccare il prodotto.
 - `giorniScadenza`: la scadenza proposta alla stampa è oggi più questi giorni; anche quella si può cambiare al momento.
 - `usi` e `ultimoUso` li aggiorna il servizio a ogni stampa: servono per «più usati».
-- Un prodotto nuovo (`POST /api/prodotti` senza corpo) nasce come nel prototipo: nome «Prodotto nuovo», nome sull'etichetta «PRODOTTO NUOVO», 3 giorni, «In frigo», «500 g», etichetta minima: dicitura «Scade il», formato `GG/MM/AAAA`, produttore dell'ultimo prodotto salvato, zona `1/2`, blocchi titolo 14, scadenza 8, lotto 7.
+- Un prodotto nuovo (`POST /api/prodotti` senza corpo) nasce come nel prototipo: nome «Etichetta nuova», nome stampato «ETICHETTA NUOVA», 3 giorni, «In frigo», «500 g», etichetta minima: dicitura «Scade il», formato `GG/MM/AAAA`, produttore dell'ultimo prodotto salvato, zona `1/2`, blocchi titolo 14, scadenza 8, lotto 7.
 
 ## Endpoint
 

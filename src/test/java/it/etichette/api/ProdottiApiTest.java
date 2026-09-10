@@ -83,15 +83,15 @@ class ProdottiApiTest {
 
     /**
      * Mandato del 2026-09-08 (dal prototipo {@code nuovoProdotto}/{@code etichettaNuova}): senza
-     * corpo (o con campi mancanti) crea "Prodotto nuovo" coi valori di partenza, etichetta minima
+     * corpo (o con campi mancanti) crea "Etichetta nuova" coi valori di partenza, etichetta minima
      * compresa (titolo/scadenza/lotto, zona 1/2).
      */
     @Test
     void postSenzaCorpoCreaProdottoNuovoConEtichettaMinima() throws Exception {
         mockMvc.perform(post("/api/prodotti"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nome").value("Prodotto nuovo"))
-                .andExpect(jsonPath("$.nomeStampa").value("PRODOTTO NUOVO"))
+                .andExpect(jsonPath("$.nome").value("Etichetta nuova"))
+                .andExpect(jsonPath("$.nomeStampa").value("ETICHETTA NUOVA"))
                 .andExpect(jsonPath("$.giorniScadenza").value(3))
                 .andExpect(jsonPath("$.conservazione").value("In frigo"))
                 .andExpect(jsonPath("$.quantita").value("500 g"))
@@ -112,7 +112,7 @@ class ProdottiApiTest {
         mockMvc.perform(post("/api/prodotti").contentType("application/json").content(corpo))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nome").value("Impasto veloce"))
-                .andExpect(jsonPath("$.nomeStampa").value("PRODOTTO NUOVO"))
+                .andExpect(jsonPath("$.nomeStampa").value("ETICHETTA NUOVA"))
                 .andExpect(jsonPath("$.quantita").value("500 g"));
     }
 
