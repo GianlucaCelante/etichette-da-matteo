@@ -14,9 +14,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Trova gli indirizzi IPv4 della LAN a cui e' raggiungibile questo PC: usati sia per l'annuncio
- * mDNS ({@link AnnuncioMdns}) sia per {@code GET /api/rete} (il primo della lista e' quello nel
- * QR e nel campo "principale"). Un PC di sviluppo (e non solo) ha spesso adattatori virtuali che
+ * Trova gli indirizzi IPv4 della LAN a cui e' raggiungibile questo PC: servono a {@code GET
+ * /api/rete} e al QR (il primo della lista e' quello nel QR e nel campo "principale"). Un PC di sviluppo (e non solo) ha spesso adattatori virtuali che
  * non portano mai a un telefono in LAN: WSL, Hyper-V, VirtualBox, VMware, il loopback software,
  * VPN (Tailscale, WireGuard, OpenVPN, ZeroTier), e indirizzi link-local 169.254.0.0/16
  * auto-assegnati quando manca il DHCP — tutti esclusi qui.

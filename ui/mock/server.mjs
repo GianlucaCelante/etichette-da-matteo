@@ -1257,7 +1257,7 @@ const server = http.createServer(async (req, res) => {
     /* ---- rete ---- */
     if (percorso === "/api/rete" && req.method === "GET") {
       const indirizzi = indirizziLocali().map((ip) => `${ip}:${PORTA}`);
-      return rispondiJson(res, 200, { indirizzi, principale: indirizzi[0], nome: `etichette.local:${PORTA}` });
+      return rispondiJson(res, 200, { indirizzi, principale: indirizzi[0] });
     }
     if (percorso === "/api/rete/qr.png" && req.method === "GET") return rispondiPng(res, QR_PNG);
     if (percorso === "/api/versione" && req.method === "GET") return rispondiJson(res, 200, versione);

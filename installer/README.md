@@ -21,8 +21,7 @@ Sul PC di Matteo gira anche il gestionale delle casse. L'installer tocca
 - la propria cartella in `C:\Program Files\Etichette\`;
 - la propria cartella dati in `C:\ProgramData\Etichette\`;
 - il proprio servizio Windows (`Etichette`);
-- **due** regole del firewall (TCP 8765 per l'interfaccia web e UDP 5353
-  per le risposte mDNS di `etichette.local`, entrambe profili Dominio,
+- **una** regola del firewall (TCP 8765 per l'interfaccia web, profili Dominio,
   Privato e Pubblico - il confine di fiducia e' la rete locale, non la
   classificazione che Windows da' alla rete, mai la porta 80);
 - le proprie scorciatoie (desktop pubblico, avvio automatico e menu Start di
@@ -233,7 +232,7 @@ quella si prova sul PC di sviluppo con gli spike in `tools/spike-jna/` e
 3. Installa: doppio clic sull'MSI.
 4. Verifica:
    - `Get-Service Etichette` -> `Running`;
-   - `Get-NetFirewallRule -DisplayName Etichette` e `-DisplayName "Etichette mDNS"`
+   - `Get-NetFirewallRule -DisplayName Etichette`
      -> presenti, profili Domain/Private/Public;
    - scorciatoia "Etichette" sul desktop pubblico e in
      `shell:common startup`;

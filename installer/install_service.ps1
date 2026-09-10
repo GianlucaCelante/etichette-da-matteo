@@ -143,7 +143,7 @@ function Set-OrCreateFirewallRule {
 }
 
 function Set-EtichetteFirewallRule {
-    Write-Host "[2/4] Configuro il firewall di Windows (TCP $FirewallPort, UDP $MdnsPort)..." -ForegroundColor Green
+    Write-Host "[2/4] Configuro il firewall di Windows (TCP $FirewallPort)..." -ForegroundColor Green
 
     $newRuleCmd = Get-Command New-NetFirewallRule -ErrorAction SilentlyContinue
     if ($null -eq $newRuleCmd) {
@@ -161,12 +161,19 @@ function Set-EtichetteFirewallRule {
     Set-OrCreateFirewallRule -DisplayName $FirewallRuleName -Protocol TCP -LocalPort $FirewallPort `
         -Description "Banco etichette: interfaccia web su TCP $FirewallPort per telefoni e tablet in rete locale."
 
-    # Seconda regola, UDP 5353: le domande mDNS dei telefoni per
-    # "etichette.local" (il responder mDNS del servizio) su rete Pubblica non arrivavano al processo
-    # Java senza una regola dedicata, anche con la porta 8765 gia' aperta
-    # (verificato sul PC di sviluppo: il QR funzionava, .local no).
-    Set-OrCreateFirewallRule -DisplayName $FirewallRuleNameMdns -Protocol UDP -LocalPort $MdnsPort `
-        -Description "Risposte mDNS (etichette.local) del servizio Etichette."
+    # La regola UDP 5353 delle versioni fino alla 0.1.20 non serve piu': il nome
+    # "etichette.local" e' stato tolto del tutto (non funzionava su Android, e il
+    # QR con l'indirizzo IP e' l'unica strada). Si toglie anche dagli aggiornamenti
+    # sopra un'installazione vecchia, per non lasciare in giro una porta aperta.
+    $vecchiaMdns = Get-NetFirewallRule -DisplayName $FirewallRuleNameMdns -ErrorAction SilentlyContinue
+    if ($null -ne $vecchiaMdns) {
+        try {
+            $vecchiaMdns | Remove-NetFirewallRule -ErrorAction Stop
+            Write-Host "  - tolta la vecchia regola '$FirewallRuleNameMdns' (UDP $MdnsPort): il nome .local non c'e' piu'." -ForegroundColor DarkGray
+        } catch {
+            Write-Warning "Impossibile togliere la vecchia regola '$FirewallRuleNameMdns': $($_.Exception.Message)"
+        }
+    }
 }
 
 function Get-EdgePath {

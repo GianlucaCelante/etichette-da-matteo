@@ -13,7 +13,7 @@ Un unico programma installato sul PC collegato alla stampante via USB. Fa tre co
 Conseguenze già concordate:
 
 - si può stampare **direttamente dal PC**, i telefoni sono un'aggiunta e non un passaggio obbligato;
-- indirizzo comodo (nome tipo `etichette.local` più prenotazione dell'indirizzo sul router) e QR code mostrato nelle impostazioni;
+- QR code mostrato nelle impostazioni, con l'indirizzo IP e la porta (il nome `etichette.local` è stato tolto il 10 settembre 2026: su Android non funziona e non serve una seconda strada);
 - **nessun PIN e nessuna misura di sicurezza**: il servizio risponde solo sulla rete locale. Se un domani il Wi-Fi fosse condiviso con i clienti, il PIN si aggiunge senza rifare nulla;
 - niente utenti e permessi.
 
