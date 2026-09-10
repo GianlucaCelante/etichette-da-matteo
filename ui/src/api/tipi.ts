@@ -330,6 +330,8 @@ export interface Dispositivo {
   id: string;
   nome: string;
   tipo: TipoDispositivo;
+  // Letto dallo user agent, es. "Android - Chrome"; puo' mancare.
+  sistema?: string | null;
   collegatoIl: string;
   ultimoAccesso: string;
 }

@@ -497,7 +497,20 @@ function SezioneLotto() {
   );
 }
 
-function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string; nome: string; tipo: "pc" | "telefono"; collegatoIl: string; ultimoAccesso: string }) {
+function RigaDispositivo({
+  id,
+  nome,
+  sistema,
+  collegatoIl,
+  ultimoAccesso,
+}: {
+  id: string;
+  nome: string;
+  tipo: "pc" | "telefono";
+  sistema?: string | null;
+  collegatoIl: string;
+  ultimoAccesso: string;
+}) {
   const eliminaDispositivo = useEliminaDispositivo();
   const avvisa = useAvviso();
   const { relativo } = useOraRelativa(ultimoAccesso);
@@ -505,9 +518,13 @@ function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string;
   const collegatoDal = Number.isNaN(dataCollegamento.getTime())
     ? collegatoIl
     : new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" }).format(dataCollegamento);
-  // Un browser che apre l'app senza cookie fa nascere un dispositivo senza
-  // nome (docs/api.md, "Dispositivi"): niente titolo vuoto che sembra rotto.
+  // Con la riga che nasce solo al nome o alla stampa (docs/api.md,
+  // "Dispositivi", 10/9), restano senza nome solo quelli che hanno
+  // stampato senza battezzarsi: niente titolo vuoto che sembra rotto.
   const senzaNome = !nome.trim();
+  // Il servizio separa i due pezzi con un trattino ("Android - Chrome"):
+  // qui si usa il puntino, come nel resto della riga.
+  const sistemaTesto = sistema ? sistema.replace(" - ", " · ") : null;
 
   const scollega = useCallback(() => {
     eliminaDispositivo.mutate(id, {
@@ -524,8 +541,16 @@ function RigaDispositivo({ id, nome, collegatoIl, ultimoAccesso }: { id: string;
       <div className="min-w-0 flex-1">
         <div className={senzaNome ? "t text-[var(--spento)] font-normal" : "t"}>{senzaNome ? "Senza nome" : nome}</div>
         <div className="s">
-          Collegato dal {collegatoDal} · ultimo accesso {relativo}
-          {senzaNome && " · non ha ancora un nome"}
+          {sistemaTesto ? (
+            <>
+              {sistemaTesto} · collegato dal {collegatoDal} · ultimo accesso {relativo}
+            </>
+          ) : (
+            <>
+              Collegato dal {collegatoDal} · ultimo accesso {relativo}
+            </>
+          )}
+          {senzaNome && " · ha stampato senza un nome"}
         </div>
       </div>
       <ConfermaInline etichetta="Scollega" domanda="Scollegare?" onConferma={scollega} disabilitato={eliminaDispositivo.isPending} />
@@ -582,7 +607,7 @@ function SezioneDispositivi() {
         </div>
       )}
       {[...(dispositivi ?? [])].sort(ordinaDispositivi).map((d) => (
-        <RigaDispositivo key={d.id} id={d.id} nome={d.nome} tipo={d.tipo} collegatoIl={d.collegatoIl} ultimoAccesso={d.ultimoAccesso} />
+        <RigaDispositivo key={d.id} id={d.id} nome={d.nome} tipo={d.tipo} sistema={d.sistema} collegatoIl={d.collegatoIl} ultimoAccesso={d.ultimoAccesso} />
       ))}
     </Sezione>
   );

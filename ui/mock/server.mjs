@@ -755,19 +755,22 @@ let prossimoDispositivoNumero = 3;
     nome: "Telefono della cucina",
     tipo: "telefono",
     nuovo: false,
+    sistema: "Android - Chrome",
     collegatoIl: dataLocaleIso(ieri),
     ultimoAccesso: dataLocaleIso(ora),
   });
-  // Un paio di dispositivi senza nome, come quelli che nasce un browser
-  // senza cookie: servono a vedere "Senza nome" e "Togli quelli senza
-  // nome" nell'interfaccia (deciso il 10/9, foto di Gianluca con 5 righe
-  // anonime).
+  // Con la riga che nasce solo al nome o alla stampa (docs/api.md,
+  // "Dispositivi", 10/9), restano senza nome solo quelli che hanno
+  // stampato senza battezzarsi: un paio qui per vedere "Senza nome" e
+  // "Togli quelli senza nome" nell'interfaccia. "sistema" (letto dallo
+  // user agent) puo' mancare: uno con, uno senza, per vedere entrambi.
   const senzaNomeUno = new Date(Date.now() - 2 * 3_600_000);
   dispositiviPerToken.set("demo-senza-nome-1", {
     id: "demo-senza-nome-1",
     nome: "",
     tipo: "telefono",
     nuovo: true,
+    sistema: "iPhone - Safari",
     collegatoIl: dataLocaleIso(senzaNomeUno),
     ultimoAccesso: dataLocaleIso(senzaNomeUno),
   });
@@ -777,6 +780,7 @@ let prossimoDispositivoNumero = 3;
     nome: "",
     tipo: "telefono",
     nuovo: true,
+    sistema: null,
     collegatoIl: dataLocaleIso(senzaNomeDue),
     ultimoAccesso: dataLocaleIso(senzaNomeDue),
   });
@@ -1451,7 +1455,7 @@ const server = http.createServer(async (req, res) => {
     if (percorso === "/api/dispositivi" && req.method === "GET") {
       const elenco = [...dispositiviPerToken.values()]
         .filter((d) => d.tipo !== "pc")
-        .map((d) => ({ id: d.id, nome: d.nome, tipo: d.tipo, collegatoIl: d.collegatoIl, ultimoAccesso: d.ultimoAccesso }));
+        .map((d) => ({ id: d.id, nome: d.nome, tipo: d.tipo, sistema: d.sistema ?? null, collegatoIl: d.collegatoIl, ultimoAccesso: d.ultimoAccesso }));
       return rispondiJson(res, 200, elenco);
     }
     if (percorso === "/api/dispositivi/senza-nome" && req.method === "DELETE") {
