@@ -42,7 +42,7 @@
     <description>Banco etichette: stampa etichette alimentari su Brother QL-1100c</description>
 
     <executable>%BASE%\..\runtime\bin\java.exe</executable>
-    <arguments>-Djava.awt.headless=true -Xmx256m -jar "%BASE%\etichette.jar"</arguments>
+    <arguments>-Djava.awt.headless=true -Detichette.sorveglia-padre=true -Xmx256m -jar "%BASE%\etichette.jar"</arguments>
 
     <!--
         ETICHETTE_DATA_DIR: cartella dati (database SQLite, log, backup).
