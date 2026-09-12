@@ -16,3 +16,4 @@ ui/node/
 *.db-shm
 .playwright-mcp/
 .vite/
+installer/.winsw-cache/

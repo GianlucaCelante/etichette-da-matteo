@@ -70,7 +70,11 @@ $ProjectRoot  = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $TargetDir    = Join-Path $ProjectRoot "target"
 $RuntimeDir   = Join-Path $TargetDir "runtime"
 $InstallerDir = Join-Path $TargetDir "installer"
-$WinswCacheDir  = Join-Path $TargetDir "winsw-cache"
+# Fuori da target\: "mvn clean" svuota target a ogni build e costringeva a
+# riscaricare winsw da GitHub ogni volta (il 12 settembre 2026 GitHub non ha
+# risposto e la build e' saltata). Cartella ignorata da git; il file viene
+# comunque verificato con lo SHA-256 qui sotto a ogni build.
+$WinswCacheDir  = Join-Path $PSScriptRoot ".winsw-cache"
 $WixResourceDir = Join-Path $TargetDir "wix-resources"
 $StageDir       = Join-Path $TargetDir "stage"
 $IconFile       = Join-Path $ScriptDir "etichette.ico"
