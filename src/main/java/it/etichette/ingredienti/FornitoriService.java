@@ -51,7 +51,7 @@ public class FornitoriService {
     public List<FornitoreDettaglioDto> elenco() {
         List<Fornitore> base = fornitori.findAllByOrderByNomeChiaveAsc();
         List<Long> ids = base.stream().map(Fornitore::getId).toList();
-        Map<Long, Long> ingredientiPerFornitore = ingredienti.findByFornitoreIdIn(ids).stream()
+        Map<Long, Long> ingredientiPerFornitore = ingredienti.findByFornitoreIdInAndArchiviatoIlIsNull(ids).stream()
                 .collect(Collectors.groupingBy(Ingrediente::getFornitoreId, Collectors.counting()));
         Map<Long, Long> arriviPerFornitore = arrivi.findByFornitoreIdIn(ids).stream()
                 .collect(Collectors.groupingBy(Arrivo::getFornitoreId, Collectors.counting()));
@@ -126,23 +126,27 @@ public class FornitoriService {
         List<Arrivo> suoiArrivi = arrivi.findByFornitoreId(id);
         suoiArrivi.forEach(a -> a.setFornitoreNome(nome));
         arrivi.saveAll(suoiArrivi);
-        int numeroIngredienti = (int) ingredienti.countByFornitoreId(id);
+        int numeroIngredienti = (int) ingredienti.countByFornitoreIdAndArchiviatoIlIsNull(id);
         return new FornitoreDettaglioDto(f.getId(), f.getNome(), numeroIngredienti, suoiArrivi.size());
     }
 
     /**
      * {@code DELETE /api/fornitori/{id}} (docs/api.md, "Gestire i fornitori"): {@code 409} se
-     * qualche ingrediente lo ha come fornitore abituale, con quanti sono e i primi nomi. Le
+     * qualche ingrediente (non archiviato) lo ha come fornitore abituale, con quanti sono e i primi nomi. Le
      * consegne passate NON lo impediscono: ognuna conserva il nome scritto al momento dell'arrivo
      * (vedi {@link Arrivo}), quindi la storia e la catena dei lotti restano leggibili anche dopo.
      */
     @Transactional
     public void elimina(Long id) {
         Fornitore f = trovaObbligatorio(id);
-        List<Ingrediente> usati = ingredienti.findByFornitoreId(id);
+        List<Ingrediente> usati = ingredienti.findByFornitoreIdAndArchiviatoIlIsNull(id);
         if (!usati.isEmpty()) {
             throw new ErroreApi(HttpStatus.CONFLICT, messaggioInUso(usati));
         }
+        // Gli ingredienti archiviati non lo impediscono: perdono solo il fornitore abituale.
+        List<Ingrediente> archiviati = ingredienti.findByFornitoreIdAndArchiviatoIlIsNotNull(id);
+        archiviati.forEach(i -> i.setFornitoreId(null));
+        ingredienti.saveAll(archiviati);
         fornitori.delete(f);
     }
 

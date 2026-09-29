@@ -555,7 +555,19 @@ export function useEliminaIngrediente() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.eliminaIngrediente(id),
-    onSuccess: () => invalidaIngredienti(client),
+    // Cambia molto piu' dell'elenco (docs/api.md): via i suoi lotti e le
+    // consegne rimaste vuote, i tracciati delle etichette, i fornitori (i
+    // conteggi), lo storico e gli schemi del lotto che lo citano. La scheda
+    // dell'ingrediente tolto si butta, non si rilegge (darebbe 404).
+    onSuccess: (_esito, id) => {
+      client.removeQueries({ queryKey: chiaviQuery.ingrediente(id) });
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+      void client.invalidateQueries({ queryKey: ["prodotti"] });
+      void client.invalidateQueries({ queryKey: ["lotto"] });
+      void client.invalidateQueries({ queryKey: ["arrivi"] });
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
   });
 }
 

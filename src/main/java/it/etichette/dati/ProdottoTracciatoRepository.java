@@ -21,8 +21,8 @@ public interface ProdottoTracciatoRepository extends JpaRepository<ProdottoTracc
      */
     void deleteByProdottoTracciatoId(Long prodottoTracciatoId);
 
-    /** {@code DELETE /api/ingredienti/{id}}: 409 se l'ingrediente e' tracciato da qualche prodotto. */
-    boolean existsByIngredienteId(Long ingredienteId);
+    /** {@code DELETE /api/ingredienti/{id}}: le etichette smettono di tracciare l'ingrediente eliminato o archiviato. */
+    void deleteByIngredienteId(Long ingredienteId);
 
     /**
      * Chi traccia, come semilavorato, uno di questi prodotti - l'inverso di

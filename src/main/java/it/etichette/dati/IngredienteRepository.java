@@ -10,14 +10,26 @@ public interface IngredienteRepository extends JpaRepository<Ingrediente, Long> 
 
     Optional<Ingrediente> findByNomeChiave(String nomeChiave);
 
-    List<Ingrediente> findAllByOrderByNomeChiaveAsc();
+    /** Solo gli ingredienti attivi: gli archiviati (docs/api.md) non si elencano ne' si scelgono. */
+    List<Ingrediente> findAllByArchiviatoIlIsNullOrderByNomeChiaveAsc();
 
-    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): quanti ingredienti lo hanno come fornitore abituale. */
-    long countByFornitoreId(Long fornitoreId);
+    /** Un ingrediente attivo: per un archiviato e' vuoto, come se non esistesse. */
+    Optional<Ingrediente> findByIdAndArchiviatoIlIsNull(Long id);
 
-    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): i primi nomi da mettere nel messaggio 409. */
-    List<Ingrediente> findByFornitoreId(Long fornitoreId);
+    boolean existsByIdAndArchiviatoIlIsNull(Long id);
 
-    /** {@code GET /api/fornitori}: gli ingredienti di TUTTI i fornitori della pagina in una volta, non un giro per fornitore. */
-    List<Ingrediente> findByFornitoreIdIn(Collection<Long> fornitoreIds);
+    /** Gli attivi fra questi id: chi cerca per nome (catena, storico) usa invece {@code findAllById}, che li vede tutti. */
+    List<Ingrediente> findAllByIdInAndArchiviatoIlIsNull(Collection<Long> ids);
+
+    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): quanti ingredienti ATTIVI lo hanno come fornitore abituale. */
+    long countByFornitoreIdAndArchiviatoIlIsNull(Long fornitoreId);
+
+    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): i primi nomi da mettere nel messaggio 409 (solo gli attivi). */
+    List<Ingrediente> findByFornitoreIdAndArchiviatoIlIsNull(Long fornitoreId);
+
+    /** {@code DELETE /api/fornitori/{id}}: gli archiviati che lo citano, a cui va tolto il fornitore prima di eliminarlo. */
+    List<Ingrediente> findByFornitoreIdAndArchiviatoIlIsNotNull(Long fornitoreId);
+
+    /** {@code GET /api/fornitori}: gli ingredienti attivi di TUTTI i fornitori della pagina in una volta, non un giro per fornitore. */
+    List<Ingrediente> findByFornitoreIdInAndArchiviatoIlIsNull(Collection<Long> fornitoreIds);
 }

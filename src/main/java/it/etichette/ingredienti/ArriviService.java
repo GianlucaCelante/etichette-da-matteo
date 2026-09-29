@@ -63,7 +63,7 @@ public class ArriviService {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "righe: almeno una e' obbligatoria");
         }
         for (RigaArrivoInput riga : righe) {
-            if (riga.ingredienteId() == null || !ingredienti.existsById(riga.ingredienteId())) {
+            if (riga.ingredienteId() == null || !ingredienti.existsByIdAndArchiviatoIlIsNull(riga.ingredienteId())) {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "righe: ingrediente non esistente: " + riga.ingredienteId());
             }
         }

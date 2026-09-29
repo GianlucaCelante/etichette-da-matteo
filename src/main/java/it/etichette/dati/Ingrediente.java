@@ -40,6 +40,10 @@ public class Ingrediente {
     @Column(name = "modificato_il", nullable = false)
     private LocalDateTime modificatoIl;
 
+    /** {@code null} = attivo; valorizzato = archiviato (eliminato ma citato dallo storico: docs/api.md). */
+    @Column(name = "archiviato_il")
+    private LocalDateTime archiviatoIl;
+
     protected Ingrediente() {
         // per JPA
     }
@@ -91,5 +95,17 @@ public class Ingrediente {
 
     public void setModificatoIl(LocalDateTime modificatoIl) {
         this.modificatoIl = modificatoIl;
+    }
+
+    public LocalDateTime getArchiviatoIl() {
+        return archiviatoIl;
+    }
+
+    public void setArchiviatoIl(LocalDateTime archiviatoIl) {
+        this.archiviatoIl = archiviatoIl;
+    }
+
+    public boolean isArchiviato() {
+        return archiviatoIl != null;
     }
 }

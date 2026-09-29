@@ -1,6 +1,8 @@
 package it.etichette.dati;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -15,6 +17,11 @@ public interface LottoIngredienteRepository extends JpaRepository<LottoIngredien
     List<LottoIngrediente> findByIngredienteIdAndStato(Long ingredienteId, String stato);
 
     List<LottoIngrediente> findByStato(String stato);
+
+    /** Come {@link #findByStato} ma senza i lotti degli ingredienti archiviati (chiusura automatica dei lotti scaduti). */
+    @Query("SELECT l FROM LottoIngrediente l WHERE l.stato = :stato AND l.ingredienteId NOT IN "
+            + "(SELECT i.id FROM Ingrediente i WHERE i.archiviatoIl IS NOT NULL)")
+    List<LottoIngrediente> findByStatoDegliAttivi(@Param("stato") String stato);
 
     List<LottoIngrediente> findByArrivoId(Long arrivoId);
 

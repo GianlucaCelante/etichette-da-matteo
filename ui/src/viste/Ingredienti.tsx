@@ -12,10 +12,10 @@ import {
   useRiapriLottoIngrediente,
 } from "../api/hooks";
 import { ErroreRichiesta } from "../api/client";
-import type { EtichettaCollegata, FiltroIngredienti, Fornitore, Ingrediente, IngredienteSimile, LottoIngrediente } from "../api/tipi";
+import type { EtichettaCollegata, FiltroIngredienti, Fornitore, Ingrediente, IngredienteConLotti, IngredienteSimile, LottoIngrediente } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni } from "../hooks/useTestata";
-import { IconaCamion, IconaCerca, IconaDestra, IconaFornitore, IconaPiu, IconaSinistra } from "../componenti/Icone";
+import { IconaCamion, IconaCerca, IconaCestino, IconaDestra, IconaFornitore, IconaPiu, IconaSinistra } from "../componenti/Icone";
 import CampoNomeConSimili from "../componenti/ingredienti/CampoNomeConSimili";
 import FinestraFornitori from "../componenti/ingredienti/FinestraFornitori";
 import RigaLotto from "../componenti/ingredienti/RigaLotto";
@@ -145,6 +145,32 @@ function PastigliaEtichetta({
   );
 }
 
+function contaEtichette(n: number): string {
+  return n === 1 ? "1 etichetta" : `${n} etichette`;
+}
+
+// La domanda dell'eliminazione (docs/api.md, DELETE /api/ingredienti/{id}):
+// cambia secondo cio' che l'eliminazione porta via. Mai stampato: se ne vanno
+// anche i lotti e viene tolto dalle etichette. Nello storico delle stampe:
+// sparisce dalle scelte ma resta per il richiamo. Le etichette contate sono
+// solo le dirette: e' li' che lo si traccia, le altre lo contengono e basta.
+function domandaElimina(ingrediente: IngredienteConLotti, dirette: number): { titolo: string; dettaglio: string } {
+  const titolo = `Eliminare «${ingrediente.nome}»?`;
+  const lotti = ingrediente.lotti.length;
+  if (ingrediente.stampe > 0) {
+    const quante = ingrediente.stampe === 1 ? "della stampa" : `delle ${ingrediente.stampe} stampe`;
+    const etichette = dirette > 0 ? ` e da ${contaEtichette(dirette)}` : "";
+    return { titolo, dettaglio: `Sparisce dagli ingredienti${etichette}; resta nello storico ${quante} per il richiamo.` };
+  }
+  const viaLotti = lotti === 0 ? "" : lotti === 1 ? "il suo lotto" : `i suoi ${lotti} lotti`;
+  const viaEtichette = dirette > 0 ? `viene tolto da ${contaEtichette(dirette)}` : "";
+  const seNeVa = lotti === 1 ? "Se ne va anche" : "Se ne vanno anche";
+  if (viaLotti && viaEtichette) return { titolo, dettaglio: `${seNeVa} ${viaLotti} e ${viaEtichette}.` };
+  if (viaLotti) return { titolo, dettaglio: `${seNeVa} ${viaLotti}.` };
+  if (viaEtichette) return { titolo, dettaglio: `Viene tolto da ${contaEtichette(dirette)}.` };
+  return { titolo, dettaglio: "" };
+}
+
 function GettoneFiltro({ chiave, testo, attivo, onScegli }: { chiave: FiltroIngredienti; testo: string; attivo: boolean; onScegli: (chiave: FiltroIngredienti) => void }) {
   const clic = useCallback(() => onScegli(chiave), [onScegli, chiave]);
   return (
@@ -216,6 +242,8 @@ export default function Ingredienti() {
   const [fornitoreAltro, setFornitoreAltro] = useState(false);
   const [fornitoreNomeAltro, setFornitoreNomeAltro] = useState("");
   const [lottoApertoId, setLottoApertoId] = useState<number | null>(null);
+  // La conferma "Elimina" e' in linea, sotto il nome (niente confirm() nativo).
+  const [eliminaChiesto, setEliminaChiesto] = useState(false);
 
   // "Nuovo ingrediente": una scheda che vive solo qui finche' il nome non e'
   // confermato - niente POST prima di allora (nuovoIngrediente del
@@ -250,6 +278,7 @@ export default function Ingredienti() {
     setFornitoreAltro(false);
     setFornitoreNomeAltro("");
     setLottoApertoId(null);
+    setEliminaChiesto(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- si ripropone solo quando cambia l'ingrediente scelto
   }, [ingrediente?.id]);
 
@@ -282,7 +311,7 @@ export default function Ingredienti() {
           setNomeBozza(ingrediente.nome);
           avvisa(
             errore instanceof ErroreRichiesta && errore.stato === 409
-              ? `C'è già ${nuovo}: rimesso il nome di prima.`
+              ? `${errore.message} Rimesso il nome di prima.`
               : "Non sono riuscito a salvare il nome: rimesso quello di prima.",
           );
         },
@@ -293,9 +322,10 @@ export default function Ingredienti() {
   // Un nome scelto dalla tendina dei simili: si usa quello invece di crearne
   // un doppione. Si cancella l'ingrediente su cui si stava scrivendo SOLO se
   // e' "ancora vuoto" come nel prototipo (ingredienteAncoraVuoto, riga 549):
-  // nessun lotto, nessun fornitore - altrimenti si rimette solo il nome di
-  // prima (qui non vediamo se e' collegato a un prodotto: se il servizio la
-  // pensa diversamente la DELETE fallisce e non tocchiamo comunque nulla).
+  // nessun lotto, nessun fornitore, in nessuna etichetta (ne' diretta ne'
+  // indiretta) e mai stampato - altrimenti si rimette solo il nome di prima.
+  // Il controllo e' tutto qui: la DELETE del servizio non rifiuta piu' nulla
+  // (toglierebbe l'ingrediente dalle etichette o lo archivierebbe).
   const scegliSimile = useCallback(
     (simile: IngredienteSimile) => {
       if (!ingrediente) return;
@@ -304,7 +334,7 @@ export default function Ingredienti() {
         setSelezionatoId(simile.id);
         setDettaglio(true);
       };
-      const ancoraVuoto = ingrediente.lotti.length === 0 && !ingrediente.fornitore;
+      const ancoraVuoto = ingrediente.lotti.length === 0 && !ingrediente.fornitore && ingrediente.etichette.length === 0 && ingrediente.stampe === 0;
       if (!ancoraVuoto) {
         setNomeBozza(ingrediente.nome);
         naviga();
@@ -320,6 +350,28 @@ export default function Ingredienti() {
     },
     [ingrediente, eliminaIngrediente, avvisa],
   );
+
+  const chiediElimina = useCallback(() => setEliminaChiesto(true), []);
+  const annullaElimina = useCallback(() => setEliminaChiesto(false), []);
+  // Dopo l'eliminazione (o l'archiviazione, per l'utente e' lo stesso gesto)
+  // la selezione sparisce: si torna all'elenco e l'effetto sul numero di
+  // ingredienti sceglie il primo rimasto, come al primo accesso.
+  const confermaElimina = useCallback(() => {
+    if (!ingrediente) return;
+    const nome = ingrediente.nome;
+    eliminaIngrediente.mutate(ingrediente.id, {
+      onSuccess: (risposta) => {
+        setEliminaChiesto(false);
+        setSelezionatoId(null);
+        setDettaglio(false);
+        avvisa(risposta.esito === "archiviato" ? `${nome} eliminato: resta nello storico delle stampe.` : `${nome} eliminato.`);
+      },
+      onError: (errore) => {
+        setEliminaChiesto(false);
+        avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a eliminare l'ingrediente.");
+      },
+    });
+  }, [ingrediente, eliminaIngrediente, avvisa]);
 
   const scegliFornitore = useCallback(
     (id: number | null) => {
@@ -493,6 +545,7 @@ export default function Ingredienti() {
   // qui si separano solo per mettere in mezzo la riga "Attraverso le tue produzioni".
   const etichetteDirette = ingrediente?.etichette.filter((e) => e.tramite.length === 0) ?? [];
   const etichetteIndirette = ingrediente?.etichette.filter((e) => e.tramite.length > 0) ?? [];
+  const domanda = ingrediente ? domandaElimina(ingrediente, etichetteDirette.length) : null;
 
   const listaVuota = (lista ?? []).length === 0;
   const testoVuoto =
@@ -592,8 +645,37 @@ export default function Ingredienti() {
                   <IconaSinistra larghezza={22} spessoreTratto={2} />
                 </button>
               )}
-              <div className="h text-[19px] font-semibold min-w-0 truncate">{ingrediente.nome}</div>
+              <div className="h text-[19px] font-semibold min-w-0 truncate flex-1">{ingrediente.nome}</div>
+              <button
+                type="button"
+                className="btn conTesto elimina iconaTel"
+                onClick={chiediElimina}
+                disabled={eliminaChiesto || eliminaIngrediente.isPending}
+                title="Elimina ingrediente"
+                aria-label="Elimina ingrediente"
+              >
+                <IconaCestino larghezza={17} spessoreTratto={2} />
+                <span>Elimina</span>
+              </button>
             </div>
+
+            {eliminaChiesto && domanda && (
+              <div className="confermaElimina flex flex-col gap-3 rounded-xl border border-[var(--rosso)] p-3" role="alertdialog" aria-label={domanda.titolo}>
+                <div className="text-[14px] leading-relaxed">
+                  <b>{domanda.titolo}</b>
+                  {domanda.dettaglio && ` ${domanda.dettaglio}`}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn" onClick={annullaElimina}>
+                    Annulla
+                  </button>
+                  <button type="button" className="btn elimina forte" onClick={confermaElimina} disabled={eliminaIngrediente.isPending}>
+                    <IconaCestino larghezza={18} spessoreTratto={2} />
+                    <span>Sì, elimina</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Come nella bozza sopra: uno sotto l'altro a tutta larghezza,
                 non ".dueCampi" a due colonne (difetto trovato il 23

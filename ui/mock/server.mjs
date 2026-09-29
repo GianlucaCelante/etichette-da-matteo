@@ -819,8 +819,17 @@ function etichetteDiIngrediente(ingredienteId) {
 
   return [...dirette, ...indirette];
 }
+// Quante stampe citano l'ingrediente o un suo lotto (docs/api.md): nel mock si
+// somma "usi" dei suoi lotti. 0 = mai stampato, e allora DELETE lo elimina
+// davvero; altrimenti lo archivia (resta solo nello storico).
+function stampeDiIngrediente(ingredienteId) {
+  return lottiDiIngrediente(ingredienteId).reduce((somma, l) => somma + l.usi, 0);
+}
+// Ingredienti archiviati: fuori da elenchi e scelte, ma il nome resta
+// occupato (POST lo ripristina, PUT su questo nome da' 409).
+const ingredientiArchiviati = [];
 function ingredienteConLottiDto(i) {
-  return { ...ingredienteDto(i), lotti: ordinaLottiScheda(i.id).map(lottoIngredienteDto), etichette: etichetteDiIngrediente(i.id) };
+  return { ...ingredienteDto(i), stampe: stampeDiIngrediente(i.id), lotti: ordinaLottiScheda(i.id).map(lottoIngredienteDto), etichette: etichetteDiIngrediente(i.id) };
 }
 function trovaIngredienteDoppio(nome, escludiId) {
   const chiave = chiaveNome(nome);
@@ -2651,6 +2660,14 @@ const server = http.createServer(async (req, res) => {
       if (!nome) return erroreJson(res, 400, "Serve il nome dell'ingrediente");
       const doppio = trovaIngredienteDoppio(nome, null);
       if (doppio) return erroreJson(res, 409, messaggioNomeDoppio(doppio));
+      const archiviato = ingredientiArchiviati.find((i) => chiaveNome(i.nome) === chiaveNome(nome));
+      if (archiviato) {
+        ingredientiArchiviati.splice(ingredientiArchiviati.indexOf(archiviato), 1);
+        archiviato.nome = nome;
+        archiviato.fornitoreId = risolviFornitoreId(corpo);
+        ingredienti.push(archiviato);
+        return rispondiJson(res, 201, ingredienteDto(archiviato));
+      }
       const nuovo = { id: prossimoIngredienteId++, nome, fornitoreId: risolviFornitoreId(corpo) };
       ingredienti.push(nuovo);
       return rispondiJson(res, 201, ingredienteDto(nuovo));
@@ -2693,18 +2710,38 @@ const server = http.createServer(async (req, res) => {
         if (!nome) return erroreJson(res, 400, "Serve il nome dell'ingrediente");
         const doppio = trovaIngredienteDoppio(nome, id);
         if (doppio) return erroreJson(res, 409, messaggioNomeDoppio(doppio));
+        if (ingredientiArchiviati.some((a) => chiaveNome(a.nome) === chiaveNome(nome))) {
+          return erroreJson(res, 409, `«${nome}» è fra gli ingredienti eliminati: per riaverlo crealo di nuovo.`);
+        }
         ing.nome = nome;
         ing.fornitoreId = risolviFornitoreId(corpo);
         return rispondiJson(res, 200, ingredienteDto(ing));
       }
       if (req.method === "DELETE") {
         if (!ing) return erroreJson(res, 404, "Ingrediente non trovato");
-        if (lottiDiIngrediente(id).length > 0) return erroreJson(res, 409, "Non posso eliminarlo: ha dei lotti registrati.");
-        const collegato = prodotti.some((p) => tracciatiProdotto(p).some((t) => t.tipo === "ingrediente" && t.id === id));
-        if (collegato) return erroreJson(res, 409, "Non posso eliminarlo: è collegato a un prodotto.");
+        // docs/api.md: mai stampato -> eliminato (via anche lotti e foto,
+        // tolto dalle etichette che lo tracciano, consegne vuote sparite);
+        // altrimenti archiviato (via da elenchi e scelte, lotti aperti
+        // chiusi, il resto resta per storico e richiamo).
+        const stampato = stampeDiIngrediente(id) > 0;
+        for (const p of prodotti) {
+          if (Array.isArray(p.tracciati)) p.tracciati = p.tracciati.filter((t) => !(t.tipo === "ingrediente" && t.id === id));
+        }
+        if (stampato) {
+          for (const l of lottiDiIngrediente(id)) {
+            if (l.stato === "aperto") Object.assign(l, { stato: "chiuso", chiusoIl: giorniFa(0), chiusoDa: "mano" });
+          }
+          ingredienti.splice(ingredienti.indexOf(ing), 1);
+          ingredientiArchiviati.push(ing);
+          return rispondiJson(res, 200, { esito: "archiviato" });
+        }
+        const idLotti = lottiDiIngrediente(id).map((l) => l.id);
+        const idArrivi = new Set(lottiDiIngrediente(id).map((l) => l.arrivoId));
+        for (let k = lotti.length - 1; k >= 0; k--) if (idLotti.includes(lotti[k].id)) lotti.splice(k, 1);
+        for (let k = foto.length - 1; k >= 0; k--) if (foto[k].genitore === "lotto" && idLotti.includes(foto[k].genitoreId)) foto.splice(k, 1);
+        for (let k = arrivi.length - 1; k >= 0; k--) if (idArrivi.has(arrivi[k].id) && !lotti.some((l) => l.arrivoId === arrivi[k].id)) arrivi.splice(k, 1);
         ingredienti.splice(ingredienti.indexOf(ing), 1);
-        res.writeHead(204).end();
-        return;
+        return rispondiJson(res, 200, { esito: "eliminato" });
       }
     }
     if (percorso === "/api/fornitori" && req.method === "GET") {

@@ -10,6 +10,7 @@ import type {
   DispositivoIo,
   DispositiviSenzaNomeRisposta,
   EsitoBackup,
+  EsitoEliminaIngrediente,
   FiltroIngredienti,
   Foto,
   FornitoreConUso,
@@ -206,8 +207,9 @@ export const api = {
     richiedi<Ingrediente>("/ingredienti", { method: "POST", body: JSON.stringify(dati) }),
   aggiornaIngrediente: (id: number, dati: IngredienteRichiesta) =>
     richiedi<Ingrediente>(`/ingredienti/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
-  // 409 se ha lotti o e' collegato a un prodotto: non e' piu' eliminabile.
-  eliminaIngrediente: (id: number) => richiedi<void>(`/ingredienti/${id}`, { method: "DELETE" }),
+  // Sempre possibile: "eliminato" se mai stampato (via lotti, foto, tracciati),
+  // "archiviato" se e' nello storico (sparisce dalle scelte, resta per il richiamo).
+  eliminaIngrediente: (id: number) => richiedi<EsitoEliminaIngrediente>(`/ingredienti/${id}`, { method: "DELETE" }),
   // Sempre con i conteggi d'uso (docs/api.md, "Gestire i fornitori");
   // FornitoreConUso, non Fornitore - e' un'altra forma (vedi tipi.ts).
   fornitori: () => richiedi<FornitoreConUso[]>("/fornitori"),

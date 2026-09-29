@@ -73,8 +73,7 @@ public class IngredientiController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> elimina(@PathVariable Long id) {
-        ingredienti.elimina(id);
-        return ResponseEntity.noContent().build();
+    public Map<String, String> elimina(@PathVariable Long id) {
+        return Map.of("esito", ingredienti.elimina(id));
     }
 }

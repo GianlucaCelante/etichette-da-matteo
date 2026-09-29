@@ -2,6 +2,16 @@ package it.etichette.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.Foto;
+import it.etichette.dati.FotoRepository;
+import it.etichette.dati.IngredienteRepository;
+import it.etichette.dati.LottoIngrediente;
+import it.etichette.dati.LottoIngredienteRepository;
+import it.etichette.dati.StoricoLotto;
+import it.etichette.dati.StoricoLottoRepository;
+import it.etichette.dati.StoricoStampa;
+import it.etichette.dati.StoricoStampaRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -17,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * {@code /api/ingredienti} (docs/api.md, "Ingredienti, fornitori e lotti"): CRUD, unicita' del
- * nome, elenco con ricerca/filtro, dettaglio con i lotti, ricerca dei simili, cancellazione.
+ * nome, elenco con ricerca/filtro, dettaglio con i lotti, ricerca dei simili, cancellazione (vera o per archiviazione).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -47,6 +58,24 @@ class IngredientiApiTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private StoricoStampaRepository storico;
+
+    @Autowired
+    private StoricoLottoRepository storicoLotti;
+
+    @Autowired
+    private FotoRepository fotoRepository;
+
+    @Autowired
+    private LottoIngredienteRepository lottiIngrediente;
+
+    @Autowired
+    private ArrivoRepository arrivi;
+
+    @Autowired
+    private IngredienteRepository ingredientiRepository;
 
     private JsonNode postAtteso(String url, String corpo, org.springframework.test.web.servlet.ResultMatcher esito) throws Exception {
         String risposta = mockMvc.perform(post(url).contentType("application/json").content(corpo))
@@ -189,33 +218,189 @@ class IngredientiApiTest {
     }
 
     @Test
-    void cancellazioneSenzaLottiRispondeNoContent() throws Exception {
+    void cancellazioneDiUnIngredienteMaiUsatoLoEliminaDavvero() throws Exception {
         long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
-
-        mockMvc.perform(delete("/api/ingredienti/" + id)).andExpect(status().isNoContent());
-        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(status().isNotFound());
-    }
-
-    @Test
-    void cancellazioneConLottiRispondeConflitto() throws Exception {
-        long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
-        registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + id + ",\"lotto\":\"L1\"}]}");
 
         mockMvc.perform(delete("/api/ingredienti/" + id))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errore").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.esito").value("eliminato"));
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/ingredienti/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/ingredienti/9999")).andExpect(status().isNotFound());
     }
 
     @Test
-    void cancellazioneDiUnIngredienteTracciatoDaUnProdottoRispondeConflitto() throws Exception {
+    void cancellazioneConLottiFotoEArriviEliminaTuttoQuelloCheGliAppartiene() throws Exception {
+        long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
+        long altro = creaIngrediente("{\"nome\":\"Uova\"}");
+        // arrivo con il solo lotto di Farina 0: resta vuoto e sparisce; arrivo con anche le uova: resta.
+        JsonNode soloFarina = registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + id + ",\"lotto\":\"L1\"}]}");
+        JsonNode conUova = registraArrivo("{\"data\":\"2026-09-02\",\"righe\":[{\"ingredienteId\":" + id
+                + ",\"lotto\":\"L2\"},{\"ingredienteId\":" + altro + ",\"lotto\":\"U1\"}]}");
+        long arrivoVuoto = soloFarina.get("id").asLong();
+        long arrivoCondiviso = conUova.get("id").asLong();
+        long lotto1 = soloFarina.get("lotti").get(0).get("id").asLong();
+        long lotto2 = conUova.get("lotti").get(0).get("id").asLong();
+
+        Foto conFile = fotoRepository.save(new Foto(Foto.LOTTO, lotto1, "a.jpg"));
+        Files.createDirectories(cartellaDati.resolve("foto"));
+        Path file = cartellaDati.resolve("foto").resolve(conFile.getId() + ".jpg");
+        Files.writeString(file, "x");
+        Foto senzaFile = fotoRepository.save(new Foto(Foto.LOTTO, lotto2, "b.jpg")); // file sparito dal disco
+        Foto fotoArrivoVuoto = fotoRepository.save(new Foto(Foto.ARRIVO, arrivoVuoto, "d.jpg"));
+        Foto fotoArrivoCondiviso = fotoRepository.save(new Foto(Foto.ARRIVO, arrivoCondiviso, "e.jpg"));
+
+        mockMvc.perform(delete("/api/ingredienti/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.esito").value("eliminato"));
+
+        // il file si toglie solo dopo il commit, che qui (test transazionale) non c'e': vedi IngredientiFileFotoTest
+        assertThat(Files.exists(file)).isTrue();
+        assertThat(lottiIngrediente.findByIngredienteId(id)).isEmpty();
+        assertThat(fotoRepository.findById(conFile.getId())).isEmpty();
+        assertThat(fotoRepository.findById(senzaFile.getId())).isEmpty();
+        assertThat(arrivi.findById(arrivoVuoto)).isEmpty();
+        assertThat(fotoRepository.findById(fotoArrivoVuoto.getId())).isEmpty();
+        assertThat(arrivi.findById(arrivoCondiviso)).isPresent();
+        assertThat(fotoRepository.findById(fotoArrivoCondiviso.getId())).isPresent();
+        mockMvc.perform(get("/api/arrivi/" + arrivoCondiviso))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lotti.length()").value(1));
+        mockMvc.perform(get("/api/ingredienti/" + altro))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lottiAperti.length()").value(1));
+    }
+
+    @Test
+    void cancellazioneDiUnIngredienteTracciatoDaUnProdottoToglieIlTracciato() throws Exception {
         long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
         mockMvc.perform(put("/api/prodotti/1").contentType("application/json")
                         .content("{\"nome\":\"Base pizza low carb\",\"tracciati\":[{\"tipo\":\"ingrediente\",\"id\":" + id + "}]}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/ingredienti/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.esito").value("eliminato"));
+
+        mockMvc.perform(get("/api/prodotti/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tracciati.length()").value(0));
+    }
+
+    @Test
+    void ilCampoStampeContaLeStampeDistinteChiCitanoLIngredienteOUnSuoLotto() throws Exception {
+        long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
+        long lotto = registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + id + ",\"lotto\":\"L1\"}]}")
+                .get("lotti").get(0).get("id").asLong();
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(jsonPath("$.stampe").value(0));
+
+        long stampa1 = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa1, id, null, null, null));
+        storicoLotti.save(new StoricoLotto(stampa1, id, null, lotto, null)); // stessa stampa: conta una volta
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(jsonPath("$.stampe").value(1));
+
+        long stampa2 = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa2, null, null, lotto, null)); // solo per il lotto
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(jsonPath("$.stampe").value(2));
+    }
+
+    @Test
+    void unIngredienteNelloStoricoSiArchiviaEScompareDaOgniScelta() throws Exception {
+        long id = creaIngrediente("{\"nome\":\"Farina 0\",\"fornitoreNome\":\"Molino Rossi\"}");
+        long lotto = registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + id + ",\"lotto\":\"L1\"}]}")
+                .get("lotti").get(0).get("id").asLong();
+        Foto fotoLotto = fotoRepository.save(new Foto(Foto.LOTTO, lotto, "a.jpg"));
+        collegaIngrediente(1, "Base pizza low carb", id);
+        long stampa = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa, id, null, lotto, null));
+
+        mockMvc.perform(delete("/api/ingredienti/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.esito").value("archiviato"));
+
+        // sparisce da elenco, simili, proposte, dettaglio; una seconda DELETE e' 404
+        mockMvc.perform(get("/api/ingredienti")).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/api/ingredienti/simili").param("nome", "Farina 0")).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(post("/api/ingredienti/proposte").contentType("application/json").content("{\"testo\":\"Farina 0\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + id + ")]").doesNotExist());
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/ingredienti/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/ingredienti/" + id).contentType("application/json").content("{\"nome\":\"Altro\"}"))
+                .andExpect(status().isNotFound());
+        // il tracciato e' sparito, non si puo' ritracciare ne' consegnare
+        mockMvc.perform(get("/api/prodotti/1")).andExpect(jsonPath("$.tracciati.length()").value(0));
+        mockMvc.perform(put("/api/prodotti/1").contentType("application/json")
+                        .content("{\"nome\":\"Base pizza low carb\",\"tracciati\":[{\"tipo\":\"ingrediente\",\"id\":" + id + "}]}"))
+                .andExpect(status().isBadRequest());
+        postAtteso("/api/arrivi", "{\"righe\":[{\"ingredienteId\":" + id + ",\"lotto\":\"L9\"}]}", status().isBadRequest());
+
+        // lotto chiuso da mano, ma lotto, foto e storia restano
+        assertThat(fotoRepository.findById(fotoLotto.getId())).isPresent();
+        LottoIngrediente l = lottiIngrediente.findById(lotto).orElseThrow();
+        assertThat(l.getStato()).isEqualTo(LottoIngrediente.CHIUSO);
+        assertThat(l.getChiusoDa()).isEqualTo("mano");
+        assertThat(l.getChiusoIl()).isEqualTo(LocalDate.now().toString());
+        mockMvc.perform(get("/api/lotti-ingrediente/" + lotto + "/usi"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+        mockMvc.perform(get("/api/storico/" + stampa + "/catena"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.anelli[0].collegato.nome").value("Farina 0"))
+                .andExpect(jsonPath("$.anelli[0].lotti.length()").value(1));
+    }
+
+    @Test
+    void ilFornitoreUsatoSoloDaIngredientiArchiviatiSiPuoEliminare() throws Exception {
+        JsonNode ing = postAtteso("/api/ingredienti", "{\"nome\":\"Farina 0\",\"fornitoreNome\":\"Molino Rossi\"}", status().isCreated());
+        long id = ing.get("id").asLong();
+        long fornitoreId = ing.get("fornitore").get("id").asLong();
+        long stampa = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa, id, null, null, null));
+        mockMvc.perform(delete("/api/ingredienti/" + id)).andExpect(jsonPath("$.esito").value("archiviato"));
+
+        mockMvc.perform(get("/api/fornitori"))
+                .andExpect(jsonPath("$[0].ingredienti").value(0));
+        mockMvc.perform(delete("/api/fornitori/" + fornitoreId)).andExpect(status().isNoContent());
+        assertThat(ingredientiRepository.findById(id).orElseThrow().getFornitoreId()).isNull();
+    }
+
+    @Test
+    void crearePiuVoltePerLoStessoNomeRipristinaLArchiviatoConLoStessoId() throws Exception {
+        long id = creaIngrediente("{\"nome\":\"Farina 0\"}");
+        long stampa = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa, id, null, null, null));
+        mockMvc.perform(delete("/api/ingredienti/" + id)).andExpect(jsonPath("$.esito").value("archiviato"));
+
+        mockMvc.perform(post("/api/ingredienti").contentType("application/json")
+                        .content("{\"nome\":\"FARINA  0\",\"fornitoreNome\":\"Molino Bianchi\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.nome").value("FARINA  0"))
+                .andExpect(jsonPath("$.fornitore.nome").value("Molino Bianchi"));
+
+        mockMvc.perform(get("/api/ingredienti")).andExpect(jsonPath("$.length()").value(1));
+        mockMvc.perform(get("/api/ingredienti/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.stampe").value(1));
+        assertThat(ingredientiRepository.findById(id).orElseThrow().getArchiviatoIl()).isNull();
+    }
+
+    @Test
+    void rinominareVersoIlNomeDiUnArchiviatoRispondeConflitto() throws Exception {
+        long archiviato = creaIngrediente("{\"nome\":\"Farina 0\"}");
+        long altro = creaIngrediente("{\"nome\":\"Uova\"}");
+        long stampa = nuovaStampaStorico();
+        storicoLotti.save(new StoricoLotto(stampa, archiviato, null, null, null));
+        mockMvc.perform(delete("/api/ingredienti/" + archiviato)).andExpect(jsonPath("$.esito").value("archiviato"));
+
+        mockMvc.perform(put("/api/ingredienti/" + altro).contentType("application/json").content("{\"nome\":\"farina 0\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errore").exists());
+                .andExpect(jsonPath("$.errore").value("«farina 0» è fra gli ingredienti eliminati: per riaverlo crealo di nuovo."));
+    }
+
+    private long nuovaStampaStorico() {
+        StoricoStampa riga = new StoricoStampa("Base pizza low carb", 1, "completata");
+        riga.setProdottoId(1L);
+        return storico.save(riga).getId();
     }
 
     /**

@@ -1,0 +1,17 @@
+databaseChangeLog:
+
+  # Un ingrediente che compare nello storico delle stampe non si cancella davvero: si archivia
+  # (archiviato_il valorizzato), cosi' lo storico, la catena dei lotti e il foglio di richiamo
+  # restano completi. NULL = attivo. Stesso formato data/ora di creato_il e modificato_il.
+
+  - changeSet:
+      id: 110-ingredienti-archiviato-il
+      author: etichette
+      comment: >
+        Colonna archiviato_il su ingredienti. Con SQL diretto e NON con addColumn: ingredienti e'
+        citata da chiavi esterne di altre tabelle (storico_lotti, lotti_ingrediente, ...) e
+        l'addColumn di Liquibase su SQLite ricostruisce la tabella e riscrive quelle chiavi - vedi
+        v10-storico-lotti-chiavi-esterne.yaml e SchemaChiaviEsterneTest.
+      changes:
+        - sql:
+            sql: ALTER TABLE ingredienti ADD COLUMN archiviato_il TEXT

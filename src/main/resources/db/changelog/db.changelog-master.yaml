@@ -35,3 +35,6 @@ databaseChangeLog:
   - include:
       file: v12-cancella-prove-storico.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v13-ingredienti-archiviati.yaml
+      relativeToChangelogFile: true

@@ -551,6 +551,15 @@ export interface EtichettaCollegata {
 export interface IngredienteConLotti extends Ingrediente {
   lotti: LottoIngrediente[];
   etichette: EtichettaCollegata[];
+  // quante stampe dello storico citano l'ingrediente o un suo lotto: 0 = mai
+  // stampato, e allora DELETE lo elimina davvero; altrimenti lo archivia.
+  stampe: number;
+}
+
+// DELETE /api/ingredienti/{id}: per l'utente e' comunque "eliminato"
+// (l'archiviato non ha un elenco ne' un "ripristina").
+export interface EsitoEliminaIngrediente {
+  esito: "eliminato" | "archiviato";
 }
 
 export type FiltroIngredienti = "tutti" | "attenzione";

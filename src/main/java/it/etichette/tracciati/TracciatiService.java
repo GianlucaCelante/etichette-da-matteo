@@ -87,7 +87,7 @@ public class TracciatiService {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "tracciati: id obbligatorio");
             }
             if (TracciatoDto.INGREDIENTE.equals(t.tipo())) {
-                if (!ingredienti.existsById(t.id())) {
+                if (!ingredienti.existsByIdAndArchiviatoIlIsNull(t.id())) {
                     throw new ErroreApi(HttpStatus.BAD_REQUEST, "tracciati: ingrediente non trovato: " + t.id());
                 }
                 risultato.add(new ProdottoTracciato(prodottoId, posizione++, t.id(), null));

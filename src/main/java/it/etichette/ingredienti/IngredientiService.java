@@ -5,12 +5,15 @@ import it.etichette.api.IngredienteDettaglioDto;
 import it.etichette.api.IngredienteDto;
 import it.etichette.api.IngredienteSimileDto;
 import it.etichette.api.PropostaIngredienteDto;
+import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.Foto;
 import it.etichette.dati.Fornitore;
 import it.etichette.dati.Ingrediente;
 import it.etichette.dati.IngredienteRepository;
 import it.etichette.dati.LottoIngrediente;
 import it.etichette.dati.LottoIngredienteRepository;
 import it.etichette.dati.ProdottoTracciatoRepository;
+import it.etichette.dati.StoricoLottoRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,14 +22,17 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Ingredienti dell'anagrafica (docs/api.md): elenco/dettaglio (con la chiusura automatica dei
- * lotti scaduti), ricerca dei simili, CRUD, cancellazione con il vincolo dei lotti.
+ * lotti scaduti), ricerca dei simili, CRUD, cancellazione (vera o per archiviazione: vedi
+ * {@link #elimina}).
  */
 @Component
 public class IngredientiService {
@@ -36,10 +42,21 @@ public class IngredientiService {
     private final ProdottoTracciatoRepository prodottiTracciati;
     private final FornitoriService fornitori;
     private final IngredientiConversioni conversioni;
+    private final StoricoLottoRepository storicoLotti;
+    private final ArrivoRepository arrivi;
+    private final FotoService foto;
+
+    /** Esito di {@code DELETE /api/ingredienti/{id}} (docs/api.md). */
+    public static final String ELIMINATO = "eliminato";
+    public static final String ARCHIVIATO = "archiviato";
 
     public IngredientiService(IngredienteRepository ingredienti, LottoIngredienteRepository lottiIngrediente,
                                ProdottoTracciatoRepository prodottiTracciati, FornitoriService fornitori,
-                               IngredientiConversioni conversioni) {
+                               IngredientiConversioni conversioni, StoricoLottoRepository storicoLotti,
+                               ArrivoRepository arrivi, FotoService foto) {
+        this.storicoLotti = storicoLotti;
+        this.arrivi = arrivi;
+        this.foto = foto;
         this.ingredienti = ingredienti;
         this.lottiIngrediente = lottiIngrediente;
         this.prodottiTracciati = prodottiTracciati;
@@ -52,7 +69,7 @@ public class IngredientiService {
 
     public List<IngredienteDto> elenco(String q, String filtro) {
         chiudiScadutiAutomaticamente();
-        List<Ingrediente> base = ingredienti.findAllByOrderByNomeChiaveAsc();
+        List<Ingrediente> base = ingredienti.findAllByArchiviatoIlIsNullOrderByNomeChiaveAsc();
         if (q != null && !q.isBlank()) {
             String chiave = NomiSimili.chiave(q);
             base = base.stream().filter(i -> i.getNomeChiave().contains(chiave)).toList();
@@ -77,7 +94,7 @@ public class IngredientiService {
     }
 
     public List<IngredienteSimileDto> simili(String nome, Long escludi) {
-        List<Ingrediente> candidati = ingredienti.findAll().stream()
+        List<Ingrediente> candidati = ingredienti.findAllByArchiviatoIlIsNullOrderByNomeChiaveAsc().stream()
                 .filter(i -> escludi == null || !i.getId().equals(escludi))
                 .toList();
         List<Ingrediente> trovati = NomiSimili.simili(nome, candidati, Ingrediente::getNome);
@@ -103,7 +120,7 @@ public class IngredientiService {
      * chiave normalizzata di {@link NomiSimili#chiave} gia' usata per gli ingredienti esistenti).
      */
     public List<PropostaIngredienteDto> proposteDalTesto(String testo) {
-        List<Ingrediente> candidati = ingredienti.findAllByOrderByNomeChiaveAsc();
+        List<Ingrediente> candidati = ingredienti.findAllByArchiviatoIlIsNullOrderByNomeChiaveAsc();
         List<PropostaIngredienteDto> proposte = new ArrayList<>();
         Set<Long> giaProposti = new HashSet<>();
         Set<String> nomiNuoviGiaProposti = new HashSet<>();
@@ -133,7 +150,19 @@ public class IngredientiService {
     public IngredienteDto crea(String nome, Long fornitoreId, String fornitoreNome) {
         validaNome(nome);
         String chiave = NomiSimili.chiave(nome);
-        verificaNonDuplicato(chiave, null);
+        Optional<Ingrediente> archiviato = ingredienti.findByNomeChiave(chiave).filter(Ingrediente::isArchiviato);
+        if (archiviato.isPresent()) {
+            // Stesso nome di un ingrediente eliminato ma citato dallo storico: lo si ripristina
+            // (stesso id, cosi' la catena dei suoi lotti resta attaccata), non se ne crea un altro.
+            Ingrediente e = archiviato.get();
+            Fornitore fornitore = fornitori.trovaORisolvi(fornitoreId, fornitoreNome);
+            e.setNome(nome);
+            e.setFornitoreId(fornitore != null ? fornitore.getId() : null);
+            e.setArchiviatoIl(null);
+            e.setModificatoIl(LocalDateTime.now());
+            return conversioni.aDto(ingredienti.save(e));
+        }
+        verificaNonDuplicato(nome, chiave, null);
         Fornitore fornitore = fornitori.trovaORisolvi(fornitoreId, fornitoreNome);
         Ingrediente e = new Ingrediente(nome, chiave, fornitore != null ? fornitore.getId() : null);
         return conversioni.aDto(ingredienti.save(e));
@@ -144,7 +173,7 @@ public class IngredientiService {
         Ingrediente e = trova(id);
         validaNome(nome);
         String chiave = NomiSimili.chiave(nome);
-        verificaNonDuplicato(chiave, id);
+        verificaNonDuplicato(nome, chiave, id);
         Fornitore fornitore = fornitori.trovaORisolvi(fornitoreId, fornitoreNome);
         e.setNome(nome);
         e.setNomeChiave(chiave);
@@ -153,16 +182,48 @@ public class IngredientiService {
         return conversioni.aDto(ingredienti.save(e));
     }
 
+    /**
+     * {@code DELETE /api/ingredienti/{id}} (docs/api.md): si puo' eliminare sempre. Se nessuna
+     * stampa dello storico lo cita ({@code storico_lotti}, per l'ingrediente o per un suo lotto)
+     * sparisce davvero, con i tracciati, i lotti, le loro foto e gli arrivi rimasti vuoti; se lo
+     * cita si ARCHIVIA: sparisce da elenchi e scelte, i lotti aperti si chiudono, ma lotti, foto e
+     * arrivi restano perche' lo storico e il foglio di richiamo li mostrano ancora. Tutto in una
+     * transazione. Torna {@link #ELIMINATO} o {@link #ARCHIVIATO}.
+     */
     @Transactional
-    public void elimina(Long id) {
+    public String elimina(Long id) {
         Ingrediente e = trova(id);
-        if (lottiIngrediente.existsByIngredienteId(id)) {
-            throw new ErroreApi(HttpStatus.CONFLICT, "l'ingrediente ha dei lotti: non si puo' eliminare");
+        prodottiTracciati.deleteByIngredienteId(id);
+        List<LottoIngrediente> lotti = lottiIngrediente.findByIngredienteId(id);
+        if (storicoLotti.contaStampeCheCitanoIngrediente(id) > 0) {
+            String oggi = LocalDate.now().toString();
+            for (LottoIngrediente l : lotti) {
+                if (LottoIngrediente.APERTO.equals(l.getStato())) {
+                    l.chiudi(oggi, "mano");
+                }
+            }
+            lottiIngrediente.saveAll(lotti);
+            e.setArchiviatoIl(LocalDateTime.now());
+            ingredienti.save(e);
+            return ARCHIVIATO;
         }
-        if (prodottiTracciati.existsByIngredienteId(id)) {
-            throw new ErroreApi(HttpStatus.CONFLICT, "l'ingrediente e' collegato a un prodotto: non si puo' eliminare");
+        Set<Long> arriviDeiLotti = new LinkedHashSet<>();
+        for (LottoIngrediente l : lotti) {
+            foto.eliminaTutte(Foto.LOTTO, l.getId());
+            if (l.getArrivoId() != null) {
+                arriviDeiLotti.add(l.getArrivoId());
+            }
+        }
+        lottiIngrediente.deleteAll(lotti);
+        lottiIngrediente.flush();
+        for (Long arrivoId : arriviDeiLotti) {
+            if (lottiIngrediente.findByArrivoId(arrivoId).isEmpty()) {
+                foto.eliminaTutte(Foto.ARRIVO, arrivoId);
+                arrivi.deleteById(arrivoId);
+            }
         }
         ingredienti.delete(e);
+        return ELIMINATO;
     }
 
     /**
@@ -174,7 +235,7 @@ public class IngredientiService {
     @Transactional
     public void chiudiScadutiAutomaticamente() {
         LocalDate oggi = LocalDate.now();
-        Map<Long, List<LottoIngrediente>> apertiPerIngrediente = lottiIngrediente.findByStato(LottoIngrediente.APERTO).stream()
+        Map<Long, List<LottoIngrediente>> apertiPerIngrediente = lottiIngrediente.findByStatoDegliAttivi(LottoIngrediente.APERTO).stream()
                 .collect(Collectors.groupingBy(LottoIngrediente::getIngredienteId));
         List<LottoIngrediente> daChiudere = new ArrayList<>();
         for (List<LottoIngrediente> lotti : apertiPerIngrediente.values()) {
@@ -199,10 +260,14 @@ public class IngredientiService {
 
     // ---------------------------------------------------------------------------------------
 
-    private void verificaNonDuplicato(String chiave, Long idDaEscludere) {
+    private void verificaNonDuplicato(String nome, String chiave, Long idDaEscludere) {
         ingredienti.findByNomeChiave(chiave).ifPresent(esistente -> {
             if (idDaEscludere != null && esistente.getId().equals(idDaEscludere)) {
                 return;
+            }
+            if (esistente.isArchiviato()) {
+                throw new ErroreApi(HttpStatus.CONFLICT,
+                        "«" + nome + "» è fra gli ingredienti eliminati: per riaverlo crealo di nuovo.");
             }
             String fornitoreNome = esistente.getFornitoreId() != null
                     ? fornitori.trova(esistente.getFornitoreId()).map(Fornitore::getNome).orElse(null)
@@ -221,7 +286,7 @@ public class IngredientiService {
     }
 
     private Ingrediente trova(Long id) {
-        return ingredienti.findById(id)
+        return ingredienti.findByIdAndArchiviatoIlIsNull(id)
                 .orElseThrow(() -> new ErroreApi(HttpStatus.NOT_FOUND, "ingrediente non trovato: " + id));
     }
 }

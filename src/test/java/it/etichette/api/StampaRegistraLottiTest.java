@@ -226,12 +226,10 @@ class StampaRegistraLottiTest {
     }
 
     /**
-     * B2: il nome mostrato in un anello il cui ingrediente e' stato cancellato DOPO la stampa
-     * (possibile solo se non ha mai avuto un lotto: {@code IngredientiService#elimina} rifiuta
-     * altrimenti con 409) e' un segnaposto esplicito ("Ingrediente eliminato", come il server finto
-     * ui/mock/server.mjs#tracciatoDto), non {@code null}: {@code TracciatoDto.nome} e' documentato
-     * "sempre presente in lettura", e l'anello (qui "non registrato": l'ingrediente non aveva un
-     * lotto aperto al momento della stampa) deve restare visibile comunque.
+     * Un ingrediente citato dallo storico non si cancella davvero: {@code DELETE} lo archivia
+     * ({@code IngredientiService#elimina}) e la catena della stampa ne mostra ancora il nome vero
+     * (il segnaposto "Ingrediente eliminato" resta solo per un id sparito del tutto). L'anello e'
+     * "non registrato": l'ingrediente non aveva un lotto aperto al momento della stampa.
      */
     @Test
     void laCatenaMostraUnSegnapostoSeLingredienteEStatoCancellatoDopo() throws Exception {
@@ -246,15 +244,16 @@ class StampaRegistraLottiTest {
                 .andExpect(status().isOk());
         StoricoStampa riga = aspettaNuovaRigaStorico(primaConteggio);
 
-        // Si scollega (altrimenti IngredientiService#elimina rifiuta: 409, "collegato a un prodotto") e si cancella.
-        tracciaSuProdotto1("[]");
-        mockMvc.perform(delete("/api/ingredienti/" + senzaLotti)).andExpect(status().isNoContent());
+        // Compare nello storico: DELETE lo archivia (non lo cancella), la catena ne conserva il nome.
+        mockMvc.perform(delete("/api/ingredienti/" + senzaLotti))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.esito").value("archiviato"));
 
         mockMvc.perform(get("/api/storico/" + riga.getId() + "/catena"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.anelli.length()").value(1))
                 .andExpect(jsonPath("$.anelli[0].collegato.id").value(senzaLotti))
-                .andExpect(jsonPath("$.anelli[0].collegato.nome").value("Ingrediente eliminato"))
+                .andExpect(jsonPath("$.anelli[0].collegato.nome").value("Ingrediente senza lotti (catena storica)"))
                 .andExpect(jsonPath("$.anelli[0].lotti.length()").value(0));
     }
 

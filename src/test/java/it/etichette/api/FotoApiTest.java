@@ -223,8 +223,8 @@ class FotoApiTest {
 
         mockMvc.perform(get("/api/foto/" + fotoId1 + ".jpg")).andExpect(status().isNotFound());
         mockMvc.perform(get("/api/foto/" + fotoId2 + ".jpg")).andExpect(status().isNotFound());
-        assertThat(Files.exists(cartellaDati.resolve("foto").resolve(fotoId1 + ".jpg"))).isFalse();
-        assertThat(Files.exists(cartellaDati.resolve("foto").resolve(fotoId2 + ".jpg"))).isFalse();
+        // I file si tolgono solo dopo il commit, che in questo test transazionale non c'e':
+        // la cancellazione dei file e' provata in IngredientiFileFotoTest.
     }
 
     @Test

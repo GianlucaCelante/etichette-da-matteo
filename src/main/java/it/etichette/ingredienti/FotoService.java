@@ -4,10 +4,14 @@ import it.etichette.api.ErroreApi;
 import it.etichette.api.FotoDto;
 import it.etichette.dati.Foto;
 import it.etichette.dati.FotoRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
@@ -43,6 +47,8 @@ public class FotoService {
 
     private static final Set<String> TIPI_AMMESSI = Set.of("image/jpeg", "image/png");
     private static final String TIPO_JPEG = "image/jpeg";
+
+    private static final Logger log = LoggerFactory.getLogger(FotoService.class);
 
     private final FotoRepository foto;
     private final Path cartellaFoto;
@@ -114,9 +120,11 @@ public class FotoService {
     }
 
     /**
-     * Cancellando un lotto o un arrivo spariscono anche le sue foto, file compresi (docs/api.md).
-     * Nessun endpoint cancella oggi un lotto o un arrivo (nessuno dei due esiste ancora nel
-     * contratto): pronto per quando ci sara'.
+     * Cancellando un lotto o un arrivo spariscono anche le sue foto, file compresi (docs/api.md):
+     * lo fa {@code DELETE /api/ingredienti/{id}} di un ingrediente mai stampato. Le righe si tolgono
+     * nella transazione, i file solo dopo il commit riuscito (senza transazione, subito). Un file che non si
+     * riesce a cancellare (o che e' gia' sparito dal disco) non fa fallire l'operazione: resta un
+     * avviso nel log, la riga della foto e' comunque tolta.
      */
     @Transactional
     public void eliminaTutte(String tipo, Long riferimentoId) {
@@ -125,7 +133,29 @@ public class FotoService {
             return;
         }
         foto.deleteAll(elenco);
-        elenco.forEach(f -> eliminaFile(f.getId()));
+        List<Long> ids = elenco.stream().map(Foto::getId).toList();
+        // I file si tolgono solo a transazione riuscita: se il commit fallisce le righe tornano e
+        // i file devono esserci ancora (servono al richiamo).
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    eliminaFileTollerando(ids);
+                }
+            });
+        } else {
+            eliminaFileTollerando(ids);
+        }
+    }
+
+    private void eliminaFileTollerando(List<Long> ids) {
+        for (Long id : ids) {
+            try {
+                eliminaFile(id);
+            } catch (IllegalStateException e) {
+                log.warn("foto {}: {}", id, e.getMessage());
+            }
+        }
     }
 
     /** Le foto di UN riferimento (un lotto o un arrivo), nell'ordine di caricamento. */

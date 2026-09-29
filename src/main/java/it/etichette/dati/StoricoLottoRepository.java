@@ -36,6 +36,14 @@ public interface StoricoLottoRepository extends JpaRepository<StoricoLotto, Long
     long contaStoricheCheRegistranoLotto(@Param("lottoId") Long lottoId);
 
     /**
+     * {@code GET /api/ingredienti/{id}} ({@code stampe}) e {@code DELETE}: quante stampe DIVERSE
+     * citano l'ingrediente, per {@code ingrediente_id} o per uno dei suoi lotti. 0 = mai stampato.
+     */
+    @Query("SELECT COUNT(DISTINCT sl.storicoId) FROM StoricoLotto sl WHERE sl.ingredienteId = :ingredienteId "
+            + "OR sl.lottoId IN (SELECT l.id FROM LottoIngrediente l WHERE l.ingredienteId = :ingredienteId)")
+    long contaStampeCheCitanoIngrediente(@Param("ingredienteId") Long ingredienteId);
+
+    /**
      * {@code GET /api/storico?q=}: le righe che hanno registrato uno dei lotti trovati per codice
      * (docs/api.md, difetto del 23/09/2026 - la ricerca deve trovare anche il codice del lotto
      * dell'ingrediente, non solo prodotto/lotto stampato). {@code lottoIds} viene dalla tabella dei
