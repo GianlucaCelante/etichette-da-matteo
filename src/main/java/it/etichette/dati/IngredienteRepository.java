@@ -24,11 +24,8 @@ public interface IngredienteRepository extends JpaRepository<Ingrediente, Long> 
     /** {@code DELETE /api/fornitori/{id}} (docs/api.md): quanti ingredienti ATTIVI lo hanno come fornitore abituale. */
     long countByFornitoreIdAndArchiviatoIlIsNull(Long fornitoreId);
 
-    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): i primi nomi da mettere nel messaggio 409 (solo gli attivi). */
-    List<Ingrediente> findByFornitoreIdAndArchiviatoIlIsNull(Long fornitoreId);
-
-    /** {@code DELETE /api/fornitori/{id}}: gli archiviati che lo citano, a cui va tolto il fornitore prima di eliminarlo. */
-    List<Ingrediente> findByFornitoreIdAndArchiviatoIlIsNotNull(Long fornitoreId);
+    /** {@code DELETE /api/fornitori/{id}}: tutti gli ingredienti che lo citano, attivi e archiviati: perdono il fornitore abituale. */
+    List<Ingrediente> findByFornitoreId(Long fornitoreId);
 
     /** {@code GET /api/fornitori}: gli ingredienti attivi di TUTTI i fornitori della pagina in una volta, non un giro per fornitore. */
     List<Ingrediente> findByFornitoreIdInAndArchiviatoIlIsNull(Collection<Long> fornitoreIds);

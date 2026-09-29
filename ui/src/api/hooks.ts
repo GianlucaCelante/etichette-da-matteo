@@ -603,9 +603,13 @@ export function useEliminaFornitore() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.eliminaFornitore(id),
+    // Si elimina sempre (docs/api.md): gli ingredienti che lo avevano come
+    // fornitore abituale restano senza (elenco e schede), le consegne
+    // tengono il nome ma perdono il riferimento.
     onSuccess: () => {
       invalidaFornitori(client);
       invalidaIngredienti(client);
+      void client.invalidateQueries({ queryKey: ["arrivi"] });
     },
   });
 }

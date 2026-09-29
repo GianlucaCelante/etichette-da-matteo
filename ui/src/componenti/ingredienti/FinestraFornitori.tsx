@@ -33,8 +33,8 @@ interface ProprietaRigaFornitore {
 // telefoni in Impostazioni: testo semplice + due bottoni-icona a destra,
 // niente riquadro bordato sempre in modifica). Tre aspetti secondo "modo":
 // normale, in rinomina (corregge un refuso ovunque, ingredienti e consegne
-// comprese), in conferma di eliminazione (solo se nessun ingrediente lo ha
-// come fornitore abituale).
+// comprese), in conferma di eliminazione (sempre possibile: la conferma dice
+// quanti ingredienti restano senza fornitore abituale).
 function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiudiRiga }: ProprietaRigaFornitore) {
   const avvisa = useAvviso();
   const rinominaMut = useRinominaFornitore();
@@ -99,12 +99,19 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
       onSuccess: onChiudiRiga,
       onError: (errore) => {
         onChiudiRiga();
-        // Il messaggio del 409 e' scritto apposta per essere letto cosi'
-        // com'e' (quanti ingredienti lo usano e i primi nomi): niente riscrittura.
+        // Il servizio risponde con un messaggio gia' leggibile: niente riscrittura.
         avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a eliminarlo.");
       },
     });
   }, [eliminaMut, fornitore.id, onChiudiRiga, avvisa]);
+
+  // Cosa succede se si conferma (docs/api.md): gli ingredienti restano senza
+  // fornitore abituale. Le consegne tengono il nome, ma dirlo non entra in
+  // una riga a 320 px: la frase sui bottoni finiva sulla riga sotto.
+  const conseguenze =
+    fornitore.ingredienti > 0
+      ? `${plurale(fornitore.ingredienti, "ingrediente", "ingredienti")} ${fornitore.ingredienti === 1 ? "resta" : "restano"} senza fornitore abituale.`
+      : null;
 
   if (modo === "rinomina") {
     return (
@@ -148,7 +155,7 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
           <div className="font-bold text-[16px] truncate" title={fornitore.nome}>
             Eliminare {fornitore.nome}?
           </div>
-          <div className="text-[13px] text-[var(--tenue)] mt-0.5">Le consegne già registrate tengono il nome.</div>
+          {conseguenze && <div className="text-[13px] text-[var(--tenue)] mt-0.5">{conseguenze}</div>}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end max-[860px]:ml-auto">
           <button type="button" className="btn compatto" onClick={onChiudiRiga}>
@@ -162,8 +169,6 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
       </div>
     );
   }
-
-  const eliminaDisabilitato = fornitore.ingredienti > 0;
 
   return (
     <div className="riga fornitore">
@@ -183,12 +188,7 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
           type="button"
           className="bottoneQuadro rosso"
           onClick={apriElimina}
-          disabled={eliminaDisabilitato}
-          title={
-            eliminaDisabilitato
-              ? `Lo usano ${plurale(fornitore.ingredienti, "ingrediente", "ingredienti")}: cambia prima il loro fornitore abituale.`
-              : `Elimina ${fornitore.nome}`
-          }
+          title={`Elimina ${fornitore.nome}`}
           aria-label={`Elimina ${fornitore.nome}`}
         >
           <IconaCestino larghezza={18} spessoreTratto={2} />
@@ -272,9 +272,9 @@ function RigaNuovoFornitore({ onChiudi }: { onChiudi: () => void }) {
 // La finestra "Fornitori" (deciso il 23 settembre 2026, docs/api.md
 // "Gestire i fornitori"): un refuso scritto una volta come fornitore nuovo
 // non moriva piu'; qui si rinomina (corregge ovunque, ingredienti e
-// consegne comprese) o si elimina (solo se nessun ingrediente lo ha come
-// fornitore abituale - le consegne passate non lo impediscono, conservano
-// il nome scritto al momento). Ridisegnata la sera del 23 settembre 2026:
+// consegne comprese) o si elimina (sempre: gli ingredienti restano senza
+// fornitore abituale, le consegne passate conservano il nome scritto al
+// momento). Ridisegnata la sera del 23 settembre 2026:
 // una sola riga alla volta in rinomina o in conferma, tenuto qui col padre
 // invece che dentro ogni riga.
 export default function FinestraFornitori({ onChiudi }: { onChiudi: () => void }) {

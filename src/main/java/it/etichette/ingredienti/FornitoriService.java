@@ -12,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,9 +28,6 @@ import java.util.stream.Collectors;
  */
 @Component
 public class FornitoriService {
-
-    /** {@code DELETE /api/fornitori/{id}}: quanti nomi elenca il messaggio 409 prima di dire "e altri N". */
-    private static final int NOMI_NEL_MESSAGGIO = 3;
 
     private final FornitoreRepository fornitori;
     private final IngredienteRepository ingredienti;
@@ -131,34 +127,22 @@ public class FornitoriService {
     }
 
     /**
-     * {@code DELETE /api/fornitori/{id}} (docs/api.md, "Gestire i fornitori"): {@code 409} se
-     * qualche ingrediente (non archiviato) lo ha come fornitore abituale, con quanti sono e i primi nomi. Le
-     * consegne passate NON lo impediscono: ognuna conserva il nome scritto al momento dell'arrivo
-     * (vedi {@link Arrivo}), quindi la storia e la catena dei lotti restano leggibili anche dopo.
+     * {@code DELETE /api/fornitori/{id}} (docs/api.md, "Gestire i fornitori"): si elimina SEMPRE
+     * (deciso dal cliente). Gli ingredienti che lo hanno come fornitore abituale, attivi e
+     * archiviati, restano senza fornitore. Le consegne perdono il riferimento ma conservano
+     * {@code fornitore_nome}, il nome scritto al momento dell'arrivo (vedi {@link Arrivo}): la
+     * storia, la catena dei lotti e il foglio di richiamo continuano a mostrarlo.
      */
     @Transactional
     public void elimina(Long id) {
         Fornitore f = trovaObbligatorio(id);
-        List<Ingrediente> usati = ingredienti.findByFornitoreIdAndArchiviatoIlIsNull(id);
-        if (!usati.isEmpty()) {
-            throw new ErroreApi(HttpStatus.CONFLICT, messaggioInUso(usati));
-        }
-        // Gli ingredienti archiviati non lo impediscono: perdono solo il fornitore abituale.
-        List<Ingrediente> archiviati = ingredienti.findByFornitoreIdAndArchiviatoIlIsNotNull(id);
-        archiviati.forEach(i -> i.setFornitoreId(null));
-        ingredienti.saveAll(archiviati);
+        List<Ingrediente> suoiIngredienti = ingredienti.findByFornitoreId(id);
+        suoiIngredienti.forEach(i -> i.setFornitoreId(null));
+        ingredienti.saveAll(suoiIngredienti);
+        List<Arrivo> suoiArrivi = arrivi.findByFornitoreId(id);
+        suoiArrivi.forEach(a -> a.setFornitoreId(null));
+        arrivi.saveAll(suoiArrivi);
         fornitori.delete(f);
-    }
-
-    private static String messaggioInUso(List<Ingrediente> usati) {
-        List<String> nomi = usati.stream()
-                .map(Ingrediente::getNome)
-                .sorted(Comparator.naturalOrder())
-                .toList();
-        String primi = String.join(", ", nomi.stream().limit(NOMI_NEL_MESSAGGIO).toList());
-        String elenco = nomi.size() > NOMI_NEL_MESSAGGIO ? primi + " e altri " + (nomi.size() - NOMI_NEL_MESSAGGIO) : primi;
-        String quanti = usati.size() == 1 ? "1 ingrediente lo usa" : usati.size() + " ingredienti lo usano";
-        return quanti + ": " + elenco + ".";
     }
 
     private Fornitore trovaOCrea(String nome) {

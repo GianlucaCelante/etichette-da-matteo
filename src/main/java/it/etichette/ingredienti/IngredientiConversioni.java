@@ -86,9 +86,10 @@ public class IngredientiConversioni {
     }
 
     public ArrivoDto aDto(Arrivo a) {
+        // Senza id (mai indicato, o fornitore poi eliminato) resta il nome scritto alla consegna.
         FornitoreDto fornitore = a.getFornitoreId() != null
                 ? fornitori.findById(a.getFornitoreId()).map(this::aDto).orElse(null)
-                : new FornitoreDto(null, FORNITORE_NON_INDICATO);
+                : new FornitoreDto(null, nomeFornitoreArrivo(a));
         List<LottoIngredienteDto> lotti = lottiIngrediente.findByArrivoId(a.getId()).stream().map(this::aDto).toList();
         List<FotoDto> fotoArrivo = foto.elenco(Foto.ARRIVO, a.getId());
         return new ArrivoDto(a.getId(), fornitore, a.getData(), a.getDocumento(), lotti, fotoArrivo);

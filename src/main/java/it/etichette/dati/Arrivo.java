@@ -63,6 +63,11 @@ public class Arrivo {
         return fornitoreId;
     }
 
+    /** {@code DELETE /api/fornitori/{id}} (docs/api.md): la consegna perde il riferimento ma tiene {@code fornitoreNome}. */
+    public void setFornitoreId(Long fornitoreId) {
+        this.fornitoreId = fornitoreId;
+    }
+
     public String getFornitoreNome() {
         return fornitoreNome;
     }

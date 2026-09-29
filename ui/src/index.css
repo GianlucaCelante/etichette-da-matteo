@@ -860,6 +860,9 @@ textarea.scorre {
      taglia al bordo. */
   .schermo { flex-direction: column; padding: 0 10px 12px; gap: 12px; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .schermo .scorre { overflow: visible; flex: none !important; }
+  /* Dentro una finestra (il velo sta nel DOM di .schermo) la lista scorre davvero: senza,
+     con tanti fornitori il fondo usciva dal riquadro e "Chiudi" copriva l'ultima riga. */
+  .schermo .finestra .scorre { overflow-y: auto; }
   /* Niente barra di scorrimento visibile sul telefono (G1, 25/09/2026): qui
      e' ".schermo" stesso a scorrere (la riga sopra neutralizza ".scorre" dei
      figli), quindi la nasconde lui. Lo stesso ".scorre" (index.css, qui
@@ -1306,7 +1309,7 @@ textarea.scorre {
    campo sempre in modifica con un bottone "Elimina" da 48px. */
 /* padding orizzontale 0: nomi allineati al titolo della finestra e bottoni
    al bordo destro di "Chiudi". */
-.riga.fornitore { min-height: 60px; padding: 10px 0; }
+.riga.fornitore { min-height: 60px; padding: 10px 0; flex-shrink: 0; }
 
 /* I due bottoni-icona quadrati della riga (Rinomina/Elimina). */
 .bottoneQuadro {

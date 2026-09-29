@@ -2,6 +2,7 @@ package it.etichette.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.etichette.dati.IngredienteRepository;
 import it.etichette.dati.StoricoLotto;
 import it.etichette.dati.StoricoLottoRepository;
 import it.etichette.dati.StoricoStampa;
@@ -20,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,8 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * {@code /api/fornitori} (docs/api.md, "Gestire i fornitori", 23 settembre 2026, creazione diretta
  * aggiunta il 25/09/2026): elenco coi conteggi d'uso, creazione, rinomina (che riscrive anche
- * {@code arrivi.fornitore_nome}) ed eliminazione (che i soli ingredienti bloccano, mai le consegne
- * passate).
+ * {@code arrivi.fornitore_nome}) ed eliminazione (sempre possibile: gli ingredienti restano senza fornitore, le consegne
+ * passate tengono il nome).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -53,6 +55,8 @@ class FornitoriApiTest {
     private ObjectMapper objectMapper;
     @Autowired
     private StoricoStampaRepository storico;
+    @Autowired
+    private IngredienteRepository ingredienti;
     @Autowired
     private StoricoLottoRepository storicoLotti;
 
@@ -241,14 +245,36 @@ class FornitoriApiTest {
     }
 
     @Test
-    void eliminazioneDiUnFornitoreUsatoDaIngredientiRispondeConflittoConQuantiESonoINomi() throws Exception {
+    void eliminazioneDiUnFornitoreUsatoDaIngredientiRispondeSenzaContenutoEGliIngredientiRestanoSenzaFornitore() throws Exception {
         JsonNode primo = creaIngredienteNode("{\"nome\":\"Farina 00\",\"fornitoreNome\":\"Molino Rossi\"}");
         long fornitoreId = primo.get("fornitore").get("id").asLong();
-        creaIngredienteNode("{\"nome\":\"Farina manitoba\",\"fornitoreId\":" + fornitoreId + "}");
+        long primoId = primo.get("id").asLong();
+        long secondoId = creaIngredienteNode("{\"nome\":\"Farina manitoba\",\"fornitoreId\":" + fornitoreId + "}").get("id").asLong();
+        long archiviatoId = creaIngredienteNode("{\"nome\":\"Farina integrale\",\"fornitoreId\":" + fornitoreId + "}").get("id").asLong();
+        long arrivoId = registraArrivo("{\"fornitoreId\":" + fornitoreId + ",\"data\":\"2026-09-02\",\"documento\":\"DDT 1\","
+                + "\"righe\":[{\"ingredienteId\":" + primoId + ",\"lotto\":\"L 1\"}]}").get("id").asLong();
+        // L'archiviato: ha una stampa nello storico, quindi il DELETE lo archivia invece di cancellarlo.
+        StoricoStampa riga = storico.save(new StoricoStampa("Base pizza", 1, "completata"));
+        storicoLotti.save(new StoricoLotto(riga.getId(), archiviatoId, null, null, null));
+        mockMvc.perform(delete("/api/ingredienti/" + archiviatoId)).andExpect(jsonPath("$.esito").value("archiviato"));
 
         mockMvc.perform(delete("/api/fornitori/" + fornitoreId))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errore").value("2 ingredienti lo usano: Farina 00, Farina manitoba."));
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/fornitori"))
+                .andExpect(jsonPath("$[?(@.id == " + fornitoreId + ")]").doesNotExist());
+        mockMvc.perform(get("/api/ingredienti/" + primoId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fornitore").doesNotExist());
+        mockMvc.perform(get("/api/ingredienti/" + secondoId))
+                .andExpect(jsonPath("$.fornitore").doesNotExist());
+        // L'archiviato non si legge dall'API: si controlla la colonna.
+        assertThat(ingredienti.findById(archiviatoId).orElseThrow().getFornitoreId()).isNull();
+        // La consegna perde il riferimento ma tiene il nome scritto all'arrivo.
+        mockMvc.perform(get("/api/arrivi/" + arrivoId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fornitore.id").doesNotExist())
+                .andExpect(jsonPath("$.fornitore.nome").value("Molino Rossi"));
     }
 
     @Test

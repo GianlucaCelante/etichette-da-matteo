@@ -224,9 +224,9 @@ export const api = {
   // nome (a meno di maiuscole, accenti e spazi, come gli ingredienti).
   rinominaFornitore: (id: number, nome: string) =>
     richiedi<FornitoreConUso>(`/fornitori/${id}`, { method: "PUT", body: JSON.stringify({ nome }) }),
-  // 204 se nessun ingrediente lo ha come fornitore abituale (le consegne
-  // passate non lo impediscono: conservano il nome scritto al momento);
-  // 409 altrimenti, col messaggio che dice quanti e quali.
+  // 204 sempre (404 se non esiste): gli ingredienti che lo avevano come
+  // fornitore abituale restano senza, le consegne passate conservano il
+  // nome scritto al momento.
   eliminaFornitore: (id: number) => richiedi<void>(`/fornitori/${id}`, { method: "DELETE" }),
 
   /* ---- merce arrivata ---- */

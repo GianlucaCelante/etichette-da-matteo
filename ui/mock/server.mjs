@@ -673,17 +673,6 @@ function trovaFornitoreDoppio(nome, escludiId) {
   const chiave = chiaveNome(nome);
   return fornitori.find((f) => f.id !== escludiId && chiaveNome(f.nome) === chiave);
 }
-// "chi legge deve capire cosa sistemare, non trovarsi un rifiuto muto"
-// (docs/api.md): quanti ingredienti lo usano come fornitore abituale, e i
-// primi nomi - non solo un numero.
-function messaggioFornitoreInUso(fornitoreId) {
-  const usati = ingredienti.filter((i) => i.fornitoreId === fornitoreId);
-  const primi = usati.slice(0, 3).map((i) => i.nome);
-  const altri = usati.length - primi.length;
-  const elenco = primi.join(", ") + (altri > 0 ? ` e altri ${altri}` : "");
-  const quanti = usati.length === 1 ? "1 ingrediente lo usa" : `${usati.length} ingredienti lo usano`;
-  return `Non posso eliminarlo: ${quanti} come fornitore abituale (${elenco}).`;
-}
 /* ============================ foto ============================ */
 // docs/api.md, "Foto dei lotti e dei documenti": l'etichetta del sacco (su
 // un lotto) e le pagine del documento (su un arrivo, valgono per tutti i
@@ -2772,12 +2761,13 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === "DELETE") {
         if (!f) return erroreJson(res, 404, "Fornitore non trovato");
-        if (contaIngredientiFornitore(id) > 0) return erroreJson(res, 409, messaggioFornitoreInUso(id));
-        // Le consegne passate non lo impediscono (docs/api.md): restano in
-        // "arrivi" con l'id ormai orfano, ma il loro fornitoreNome e' gia'
-        // scritto (alla registrazione, o all'ultima rinomina sopra) e non
-        // dipende piu' da questa riga che sta per sparire - storico e
-        // catena restano leggibili col nome vero, non con un segnaposto.
+        // Si elimina sempre (docs/api.md): gli ingredienti che lo avevano come
+        // fornitore abituale restano senza; le consegne perdono l'id ma
+        // tengono fornitoreNome (scritto alla registrazione, o all'ultima
+        // rinomina sopra), cosi' storico e catena leggono ancora il nome
+        // vero, non un segnaposto.
+        for (const i of [...ingredienti, ...ingredientiArchiviati]) if (i.fornitoreId === id) i.fornitoreId = null;
+        for (const a of arrivi) if (a.fornitoreId === id) a.fornitoreId = null;
         fornitori.splice(fornitori.indexOf(f), 1);
         res.writeHead(204).end();
         return;
