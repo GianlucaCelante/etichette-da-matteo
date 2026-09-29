@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #EADECE; color: #58443C; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #5E7B18; } a:hover { color: #4B6313; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .tab { flex: 1; min-width: 0; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: #7A6A5E; white-space: nowrap; }
+    .tab.on { color: #4B6313; }
+    .btn { height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 17px; font-weight: 700; box-sizing: border-box; }
+    .card { background: #ffffff; border: 1px solid #DCCFBB; border-radius: 16px; box-sizing: border-box; }
+    .scorre { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+    .scorre::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px; background: linear-gradient(to bottom, rgba(234,222,206,0), #EADECE 80%); }
+    .chip { height: 40px; padding: 0 16px; border-radius: 20px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 700; color: #6B5A4E; white-space: nowrap; }
+    .chip.on { background: #58443C; color: #ffffff; border-color: #58443C; }
+    .giorno { font-size: 12px; font-weight: 700; color: #7A6A5E; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 2px 0 2px; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; overflow: hidden; background: #EADECE; box-sizing: border-box; padding-top: 54px;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 12px 20px;">
+    <div class="h" style="font-size: 24px; font-weight: 700;">Storico stampe</div>
+    <div style="font-size: 14px; font-weight: 700; color: #4B6313; white-space: nowrap;">Esporta l'elenco</div>
+  </div>
+
+  <div style="padding: 0 20px 10px 20px;">
+    <div style="height: 52px; border: 1px solid #CFC0AA; border-radius: 14px; background: #ffffff; display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box; color: #9C8C7C; font-size: 16px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span>Cerca per prodotto o lotto…</span>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; padding: 0 20px 12px 20px;">
+    <div class="chip on">Oggi</div><div class="chip">7 giorni</div><div class="chip">30 giorni</div><div class="chip">Tutto</div>
+  </div>
+
+  <div class="scorre">
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 20px 40px 20px;">
+      <div class="giorno">Oggi · giovedì 3 settembre</div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Base pizza low carb</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">18:32</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Completa · 2148 g · 10/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260903-004</span> · 2 copie · PC</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Crema di zucca</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">17:05</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Cucina · 500 g · 06/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260903-003</span> · 1 copia · Telefono</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Mozzarella tagliata</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">16:48</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Aperto il · 1000 g · 05/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260903-002</span> · 3 copie · Telefono</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Impasto classico 24h</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">09:12</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Cucina · 250 g · 06/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260903-001</span> · 6 copie · PC</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+      <div class="giorno">Ieri · mercoledì 2 settembre</div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Salsa di pomodoro</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">19:40</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Cucina · 1000 g · 06/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260902-005</span> · 2 copie · Telefono</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+      <div class="card" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Base pizza low carb</span><span style="font-size: 13px; color: #7A6A5E; margin-left: auto;">18:22</span></div>
+          <div style="font-size: 13px; color: #7A6A5E; margin-top: 2px;">Completa · 2148 g · 09/09/2026</div>
+          <div style="font-size: 12px; color: #9C8C7C; margin-top: 2px;"><span style="font-family: Consolas, 'Courier New', monospace;">L 20260902-004</span> · 1 copia · PC</div>
+        </div>
+        <div style="height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #6B5A4E; flex-shrink: 0;">Ristampa</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 8px 20px 12px 20px; font-size: 13px; color: #7A6A5E;"><strong style="color: #58443C;">12 etichette</strong> stampate oggi</div>
+
+  <div style="display: flex; background: #FBF5EC; border-top: 1px solid #DCCFBB; padding-bottom: 18px;">
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Etichette</span></div>
+    <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Storico</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

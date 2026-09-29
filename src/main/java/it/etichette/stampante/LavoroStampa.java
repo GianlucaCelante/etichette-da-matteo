@@ -10,7 +10,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 class LavoroStampa {
 
-    final String id = UUID.randomUUID().toString();
+    /**
+     * Di solito generato qui; {@code StampeService} lo genera invece PRIMA di accodare (docs/api.md,
+     * "Storico": la riga di storico nasce con il lavoroId gia' scritto, prima che il lavoro esista).
+     */
+    final String id;
     final BufferedImage immagine;
     final int rotoloMm;
     final int copieTotali;
@@ -46,6 +50,12 @@ class LavoroStampa {
     }
 
     LavoroStampa(BufferedImage immagine, int rotoloMm, int copieTotali, int margineDot, boolean taglioAutomatico, boolean prova) {
+        this(UUID.randomUUID().toString(), immagine, rotoloMm, copieTotali, margineDot, taglioAutomatico, prova);
+    }
+
+    LavoroStampa(String id, BufferedImage immagine, int rotoloMm, int copieTotali, int margineDot, boolean taglioAutomatico,
+                 boolean prova) {
+        this.id = id;
         this.immagine = immagine;
         this.rotoloMm = rotoloMm;
         this.copieTotali = copieTotali;

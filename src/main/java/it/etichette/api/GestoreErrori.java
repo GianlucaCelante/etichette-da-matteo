@@ -6,10 +6,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.io.IOException;
@@ -51,6 +54,49 @@ public class GestoreErrori {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> gestisciArgomentoNonValido(IllegalArgumentException e) {
         return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(Map.of("errore", e.getMessage()));
+    }
+
+    /**
+     * Un parametro della richiesta che non si converte nel tipo dichiarato ({@code
+     * /api/storico?limite=tanti}, un id non numerico): e' un errore di chi chiama, non del
+     * servizio - senza questo handler finiva nel catch-all e rispondeva 500.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> gestisciTipoNonValido(MethodArgumentTypeMismatchException e) {
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("errore", e.getName() + ": valore non valido: " + e.getValue()));
+    }
+
+    /**
+     * Un metodo HTTP non supportato su una rotta che esiste (es. un'interfaccia vecchia in cache
+     * che manda ancora un metodo tolto, o una richiesta scritta a mano sbagliata): errore di chi
+     * chiama, non del servizio - senza questo handler finiva nel catch-all e rispondeva 500
+     * "errore interno: Request method '...' is not supported" invece di 405 (segnalato il
+     * 25/09/2026, docs/api.md). Messaggio generico apposta: il verbo o la rotta non aggiungono
+     * niente a chi chiama e sono un dettaglio interno come un altro. Log a DEBUG, non ERROR/WARN:
+     * non e' un guasto del servizio.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> gestisciMetodoNonSupportato(HttpRequestMethodNotSupportedException e) {
+        log.debug("metodo non supportato: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("errore", "Metodo non ammesso per questo indirizzo."));
+    }
+
+    /**
+     * Un corpo della richiesta che non si legge come JSON (sintassi rotta, es. chiavi senza
+     * virgolette, o nessun corpo dove ne serve uno): errore di chi chiama, non del servizio - senza
+     * questo handler finiva nel catch-all e rispondeva 500 con dentro il messaggio grezzo di
+     * Jackson (posizione, offset del buffer) invece di 400 (segnalato il 25/09/2026, docs/api.md,
+     * insieme al 405 sopra). Messaggio generico apposta, senza i dettagli di Jackson: non
+     * aiuterebbero chi chiama e sono un dettaglio interno - il log li terrebbe se servissero, ma
+     * qui niente log (WARN o ERROR): come gli altri 400 di questa classe, non e' un guasto del
+     * servizio.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> gestisciCorpoIlleggibile(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("errore", "Richiesta non leggibile: JSON non valido."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

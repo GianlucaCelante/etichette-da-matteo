@@ -11,3 +11,27 @@ databaseChangeLog:
   - include:
       file: v4-dispositivi-sistema.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v5-ingredienti-lotti.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v6-tracciati-catena.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v7-foto.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v8-schema-lotto-per-etichetta.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v9-pulizia-collegamenti-e-lavoro-id.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v10-storico-lotti-chiavi-esterne.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v11-indici-storico.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v12-cancella-prove-storico.yaml
+      relativeToChangelogFile: true

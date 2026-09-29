@@ -1,5 +1,15 @@
 server:
   port: 8765
+  # Risposte compresse (gzip) se il browser le accetta: soprattutto il JSON dello storico, che
+  # i telefoni scaricano in Wi-Fi (docs/api.md, "Storico"), e il JavaScript dell'interfaccia.
+  # text/event-stream NON va in elenco, e non ci deve finire: /api/eventi (SSE) manda un evento
+  # alla volta e il compressore di Tomcat lo tratterrebbe nel suo buffer invece di consegnarlo
+  # subito - stato della stampante e avanzamento delle stampe arriverebbero in ritardo o mai.
+  # Le PNG dell'anteprima non ci sono perche' sono gia' compresse. Sotto i 2 KB non conviene.
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,text/javascript,application/javascript,text/plain,image/svg+xml
+    min-response-size: 2KB
 
 spring:
   application:
@@ -37,11 +47,12 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.yaml
   servlet:
     multipart:
-      # Il limite del contratto e' 2 MB (verificato a codice in ImpostazioniController); questo
-      # e' solo il tetto del contenitore servlet, un po' piu' alto cosi' un file di 2 MB esatti
-      # arriva sempre al nostro controllo e non a un rifiuto generico di Spring.
-      max-file-size: 3MB
-      max-request-size: 3MB
+      # I limiti del contratto sono 2 MB per il logo (ImpostazioniController) e 8 MB per le foto
+      # di lotti e documenti (FotoService, 22 settembre 2026); questo e' solo il tetto del
+      # contenitore servlet, un po' piu' alto cosi' un file di 8 MB esatti arriva sempre al nostro
+      # controllo - che risponde con l'errore giusto - e non a un rifiuto generico di Spring.
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 etichette:
   # Cartella dati: creata all'avvio se manca (vedi EtichetteApplication.main). Sovrascrivibile

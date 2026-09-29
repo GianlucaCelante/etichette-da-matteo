@@ -20,7 +20,7 @@
 
     <groupId>it.etichette</groupId>
     <artifactId>etichette</artifactId>
-    <version>0.1.23</version>
+    <version>0.1.43</version>
     <packaging>jar</packaging>
     <name>Etichette</name>
     <description>Servizio per la stampa di etichette alimentari su Brother QL-1100c</description>
@@ -40,6 +40,11 @@
         <hibernate-community-dialects.version>6.6.53.Final</hibernate-community-dialects.version>
         <jna.version>5.17.0</jna.version>
         <zxing.version>3.5.3</zxing.version>
+        <!-- Esportazione storico (docs/api.md, "Storico"): fastexcel per l'XLSX, piccola e senza
+             la parentela pesante di Apache POI; OpenPDF per il PDF, vedi il commento sulla
+             dipendenza qui sotto. -->
+        <fastexcel.version>0.20.2</fastexcel.version>
+        <openpdf.version>2.0.5</openpdf.version>
 
         <!-- Interfaccia React (ui/): non ancora presente in questo mandato, si compila sempre
              con -Dskip.ui=true. Il profilo "ui" resta pronto per quando ui/ esistera'. -->
@@ -100,6 +105,30 @@
             <groupId>com.google.zxing</groupId>
             <artifactId>javase</artifactId>
             <version>${zxing.version}</version>
+        </dependency>
+
+        <!-- XLSX di GET /api/storico/esporta: scrive in streaming sull'OutputStream della
+             risposta, niente file temporanei ne' l'intera cartella di classi pesanti di Apache
+             POI. Unica dipendenza propria (opczip, Apache 2.0 anch'essa). -->
+        <dependency>
+            <groupId>org.dhatim</groupId>
+            <artifactId>fastexcel</artifactId>
+            <version>${fastexcel.version}</version>
+        </dependency>
+        <!--
+            PDF di GET /api/storico/esporta: OpenPDF (fork libero di iText 2, doppia licenza LGPL
+            2.1 / MPL 2.0 - va bene, e' permissiva quanto Apache per un jar che restiamo liberi di
+            distribuire con l'installer). Scelto invece di Apache PDFBox 3 perche' PdfPTable ripete
+            da sola l'intestazione a ogni pagina e spezza le righe fra le pagine: con PDFBox la
+            stessa tabella (centinaia di pagine con 40.000 righe) andrebbe impaginata a mano riga
+            per riga. Le dipendenze pesanti del pom (icu4j, BouncyCastle, Apache FOP) sono tutte
+            <optional>true</optional> a monte quindi NON arrivano qui (verificato sul pom
+            pubblicato): l'unico jar aggiunto e' openpdf stesso.
+        -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>${openpdf.version}</version>
         </dependency>
 
         <dependency>

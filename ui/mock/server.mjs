@@ -15,6 +15,10 @@ import zlib from "node:zlib";
 const PORTA = Number(process.argv[2] || process.env.PORTA_MOCK || 8765);
 const RITARDO_STAMPA_PROVA_MS = 3000;
 const RITARDO_PER_COPIA_MS = 3000; // "le copie partono una alla volta", 3 s l'una
+// La scadenza proposta alla stampa (deciso dal cliente il 24/09/2026, docs/api.md):
+// sempre oggi + questi giorni, qualunque "giorniScadenza" abbia il prodotto -
+// stessa costante del servizio vero (Contratto.GIORNI_SCADENZA_PROPOSTI).
+const GIORNI_SCADENZA_PROPOSTI = 7;
 
 // Il servizio vero manda un LocalDateTime Java, cioe' ora locale SENZA "Z"
 // ne' offset (es. "2026-09-08T11:50:15.08"): niente toISOString(), che
@@ -33,6 +37,15 @@ function piuGiorni(base, n) {
   d.setDate(d.getDate() + n);
   return d;
 }
+// La prossima copia notturna: le 3, oggi se non sono ancora passate, altrimenti
+// domani (docs/api.md, "Il programma": "La copia notturna parte alle 3").
+function prossimeTreDiNotte() {
+  const ora = new Date();
+  const prossima = new Date(ora);
+  prossima.setHours(3, 0, 0, 0);
+  if (prossima <= ora) prossima.setDate(prossima.getDate() + 1);
+  return dataLocaleIso(prossima);
+}
 
 /* ============================ stato finto: stampante e impostazioni ============================ */
 let stampante = {
@@ -44,18 +57,41 @@ let stampante = {
   ultimoControllo: dataLocaleIso(),
 };
 
-// Chiavi come da docs/api.md ("Impostazioni (chiavi)"): schema_lotto,
-// progressivo_continuo, taglio_ogni_etichetta, margine_mm. La fase 1 usava
-// nomi provvisori (taglia, margine, schemaLotto): qui si allineano al
-// contratto scritto l'8 settembre, la stessa cosa va rifatta lato servizio.
+// Chiavi come da docs/api.md ("Impostazioni (chiavi)"): progressivo_continuo,
+// taglio_ogni_etichetta, margine_mm. "schema_lotto" e' sparito da qui (docs/
+// api.md, "Impostazioni come il prototipo", 22 settembre 2026 sera): e'
+// diventato un campo dell'etichetta di ogni prodotto (vedi etichettaVendita
+// e le altre fabbriche, e prodottoDto). progressivo_continuo resta qui:
+// il contatore e' del locale, condiviso da tutte le etichette.
 let impostazioni = {
   taglio_ogni_etichetta: "true",
   margine_mm: "3",
-  schema_lotto: "data",
   progressivo_continuo: "128",
 };
 
 const versione = { versione: "0.1.0-mock" };
+
+// GET /api/programma (docs/api.md, "Impostazioni come il prototipo"): stato
+// finto delle copie di sicurezza, in memoria (il servizio vero lo tiene
+// nelle impostazioni, cosi' sopravvive ai riavvii). Nessuna cartella finche'
+// non se ne sceglie una (docs: "senza cartella non si copia niente").
+// docs/api.md, "Copie ravvicinate e ultima copia buona" (22 settembre 2026
+// sera): "ultima" e' l'ultimo TENTATIVO (riuscito o fallito), "ultimaRiuscita"
+// e' l'ultima copia andata a buon fine - un tentativo fallito non cancella
+// piu' la memoria di una copia buona. Sempre tutti e due i campi, come manda
+// il servizio vero (la lezione di stamattina sulla serializzazione).
+let backup = { cartella: null, ultima: null, ultimaRiuscita: null, prossima: null };
+let backupInCorso = false;
+// /api/mock/backup-fallisce, sul modello di /api/mock/errore-nastro: fa
+// fallire la prossima copia, per provare lo stato "fallita" senza aspettare
+// che càpiti davvero.
+let prossimoBackupFallisce = false;
+// /api/mock/esito-non-salvato, sullo stesso modello: la prossima stampa che
+// finisce lascia la sua riga di storico "in_stampa" (come se il servizio non
+// fosse riuscito a scriverne l'esito) e la sistema solo dopo
+// RITARDO_RIPROVA_ESITO_MS, come il servizio vero che riprova da solo.
+let prossimoEsitoNonSalvato = false;
+const RITARDO_RIPROVA_ESITO_MS = 30_000;
 
 // Il logo caricato dalle Impostazioni: null finche' nessuno l'ha caricato
 // (il blocco "Logo" non stampa nulla, docs/api.md). {buffer, mime, larghezzaPx, altezzaPx}.
@@ -167,6 +203,19 @@ function creaQrPng(lato = 21, cella = 6) {
 }
 const QR_PNG = creaQrPng();
 
+/* ---- foto finta (per seminare qualche foto di prova): un foglio grigio a righe ---- */
+function creaFotoFintaPng(larghezza = 300, altezza = 400) {
+  const t = nuovaTela(larghezza, altezza);
+  rettangoloPieno(t, 0, 0, larghezza - 1, altezza - 1, 235);
+  rettangoloVuoto(t, 10, 10, larghezza - 11, altezza - 11);
+  for (let riga = 0; riga < 8; riga++) {
+    const y = 40 + riga * 40;
+    rettangoloPieno(t, 30, y, larghezza - 30, y + 6, 90);
+  }
+  return pngDaTela(t);
+}
+const FOTO_FINTA_PNG = creaFotoFintaPng();
+
 /* ============================ rete ============================ */
 function indirizziLocali() {
   const interfacce = os.networkInterfaces();
@@ -209,6 +258,9 @@ function etichettaVendita() {
     formatoData: "GG/MM/AAAA",
     produttore: { ...MICHI_COMPLETO },
     zona: { larghezzaDestra: "1/3" },
+    // Lo schema del lotto e' dell'etichetta ora, non del locale (docs/api.md,
+    // "Impostazioni come il prototipo"): un prodotto nuovo nasce con "data".
+    schemaLotto: "data",
     blocchi: [
       bl("titolo", 18),
       bl("ingredienti", 7),
@@ -230,6 +282,7 @@ function etichettaCucina() {
     formatoData: "GG/MM/AAAA",
     produttore: { ...MICHI_BREVE },
     zona: { larghezzaDestra: "1/2" },
+    schemaLotto: "data",
     blocchi: [bl("titolo", 14), bl("dataProduzione", 8), bl("scadenza", 8), bl("lotto", 7), bl("sigla", 7)],
   };
 }
@@ -239,6 +292,7 @@ function etichettaAperto() {
     formatoData: "GG/MM/AAAA",
     produttore: { ...MICHI_BREVE },
     zona: { larghezzaDestra: "1/2" },
+    schemaLotto: "data",
     blocchi: [bl("testoGrande", 10, "piena", true, "APERTO IL"), bl("scadenza", 20), bl("lotto", 8)],
   };
 }
@@ -250,6 +304,7 @@ function etichettaNuova() {
     formatoData: "GG/MM/AAAA",
     produttore: { ...MICHI_BREVE },
     zona: { larghezzaDestra: "1/2" },
+    schemaLotto: "data",
     blocchi: [bl("titolo", 14), bl("scadenza", 8), bl("lotto", 7)],
   };
 }
@@ -271,12 +326,18 @@ const prodotti = [
       { voce: "Proteine", valore: "15 g" }, { voce: "Sale", valore: "1,5 g" },
     ],
     siglaOperatore: "M.C.", usi: 12,
+    // ingrediente 1 (Farina tipo 0) ha due lotti aperti: prova per la
+    // spunta "sacco aperto per primo" nella striscia di Stampa. Ingrediente
+    // 4 (Mix farine low carb) ne ha uno solo, niente spunte.
+    tracciati: [{ tipo: "ingrediente", id: 1 }, { tipo: "ingrediente", id: 4 }],
   },
   {
     id: 2, nome: "Impasto classico 24h", nomeStampa: "IMPASTO CLASSICO 24H", etichetta: etichettaCucina(),
     ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", allergeni: ["Soia"],
     modoUso: "", giorniScadenza: 3, conservazione: "In frigo", quantita: "250 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 8,
+    // ingrediente 5 (Lievito di birra) scade fra 2 giorni: avviso "attenzione".
+    tracciati: [{ tipo: "ingrediente", id: 5 }, { tipo: "ingrediente", id: 6 }],
   },
   {
     id: 3, nome: "Impasto integrale", nomeStampa: "IMPASTO INTEGRALE", etichetta: etichettaCucina(),
@@ -289,6 +350,10 @@ const prodotti = [
     ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Olio extravergine di oliva, Rosmarino, Sale, Lievito di birra.", allergeni: [],
     modoUso: "", giorniScadenza: 2, conservazione: "Fuori dal frigo", quantita: "400 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 2,
+    // ingrediente 13 (Rosmarino) non ha nessun lotto ("manca"); ingrediente 7
+    // (Olio extravergine) ha un aperto e due chiusi (lista "lotti chiusi");
+    // "prodotto":2 e' una produzione propria (Impasto classico 24h).
+    tracciati: [{ tipo: "ingrediente", id: 13 }, { tipo: "ingrediente", id: 7 }, { tipo: "prodotto", id: 2 }],
   },
   {
     id: 5, nome: "Salsa di pomodoro", nomeStampa: "SALSA DI POMODORO", etichetta: etichettaVendita(),
@@ -309,6 +374,7 @@ const prodotti = [
       { voce: "Carboidrati", valore: "3 g" }, { voce: "Proteine", valore: "5 g" }, { voce: "Sale", valore: "1,9 g" },
     ],
     siglaOperatore: "M.C.", usi: 3,
+    tracciati: [{ tipo: "ingrediente", id: 12 }, { tipo: "ingrediente", id: 7 }, { tipo: "ingrediente", id: 9 }],
   },
   {
     id: 7, nome: "Crema di zucca", nomeStampa: "CREMA DI ZUCCA", etichetta: etichettaCucina(),
@@ -327,6 +393,9 @@ const prodotti = [
     ingredienti: "LATTE vaccino, Sale, Caglio.", allergeni: ["Latte"],
     modoUso: "", giorniScadenza: 2, conservazione: "In frigo", quantita: "1000 g", valoriNutrizionali: [],
     siglaOperatore: "M.C.", usi: 4,
+    // ingrediente 11 (Fior di latte): l'unico lotto aperto e' scaduto ieri,
+    // resta aperto con l'avviso "grave" (docs/api.md, "Scadenza").
+    tracciati: [{ tipo: "ingrediente", id: 11 }],
   },
 ].map((p, indice) => ({
   ...p,
@@ -337,6 +406,516 @@ const prodotti = [
 
 function trovaProdotto(id) {
   return prodotti.find((p) => p.id === id);
+}
+function tracciatiProdotto(p) {
+  return Array.isArray(p.tracciati) ? p.tracciati : [];
+}
+// docs/api.md, "Ingredienti collegati a un prodotto": in lettura il servizio
+// aggiunge "nome" a ogni voce (l'ingrediente o il prodotto potrebbero anche
+// essere stati eliminati nel frattempo: si dice cosi', non si rompe).
+function tracciatoDto(t) {
+  if (t.tipo === "prodotto") {
+    const p = trovaProdotto(t.id);
+    return { tipo: "prodotto", id: t.id, nome: p ? p.nome : "Prodotto eliminato" };
+  }
+  const ing = ingredienti.find((i) => i.id === t.id);
+  return { tipo: "ingrediente", id: t.id, nome: ing ? ing.nome : "Ingrediente eliminato" };
+}
+// Se l'etichetta ha un blocco "scadenza" ma non gia' un blocco
+// "conservazione", e la conservazione del prodotto non e' vuota, ne aggiunge
+// uno subito dopo lo "scadenza" - stessa zona/colonna, stesso stato acceso,
+// corpo e allineamento (24/09/2026, deciso dal cliente: "Conservazione"
+// diventa un blocco a se', non piu' una riga dentro "scadenza" - vedi
+// infoBlocco). Stessa normalizzazione del servizio vero
+// (ProdottiConversioni#conConservazioneSeManca): serve ai nove prodotti di
+// esempio, che non hanno ancora un blocco "conservazione" esplicito.
+function conConservazioneSeManca(blocchi, conservazione) {
+  if (!conservazione || !conservazione.trim() || blocchi.some((b) => b.tipo === "conservazione")) return blocchi;
+  const indiceScadenza = blocchi.findIndex((b) => b.tipo === "scadenza");
+  if (indiceScadenza < 0) return blocchi;
+  const scadenza = blocchi[indiceScadenza];
+  const nuovo = bl("conservazione", scadenza.corpo, scadenza.colonna, scadenza.acceso, undefined, scadenza.allineamento);
+  const risultato = [...blocchi];
+  risultato.splice(indiceScadenza + 1, 0, nuovo);
+  return risultato;
+}
+function prodottoDto(p) {
+  return {
+    ...p,
+    tracciati: tracciatiProdotto(p).map(tracciatoDto),
+    etichetta: {
+      ...p.etichetta,
+      // In lettura il servizio restituisce sempre schemaLotto; in scrittura,
+      // se mancava, vale "data" (docs/api.md, "Impostazioni come il
+      // prototipo") - difesa qui per i prodotti creati o aggiornati con un
+      // corpo che non lo mandava.
+      schemaLotto: p.etichetta?.schemaLotto ?? "data",
+      // "qr" non e' piu' un tipo di blocco (tolto dal 24/09/2026, docs/api.md):
+      // un'etichetta finta che lo avesse ancora (dato vecchio) non lo mostra
+      // piu', stesso comportamento del servizio vero (ProdottiConversioni).
+      blocchi: conConservazioneSeManca((p.etichetta?.blocchi ?? []).filter((b) => b.tipo !== "qr"), p.conservazione),
+    },
+  };
+}
+// Corpo di scrittura di "tracciati" (docs/api.md): {tipo, id}, "nome" si
+// ignora (lo aggiunge il servizio solo in lettura). null = il corpo non ne
+// mandava nessuno (utile per un PUT che non tocca i collegati).
+function sanitizzaTracciati(valore) {
+  if (!Array.isArray(valore)) return null;
+  return valore
+    .filter((t) => t && (t.tipo === "ingrediente" || t.tipo === "prodotto") && Number.isFinite(Number(t.id)))
+    .map((t) => ({ tipo: t.tipo, id: Number(t.id) }));
+}
+
+/* ============================ ingredienti, fornitori, lotti e arrivi ============================ */
+// docs/api.md, "Ingredienti, fornitori e lotti" (22 settembre 2026), dati
+// finti presi dal prototipo "Banco lotti" (artefatti-claude/banco-lotti-
+// 2026-09-14.html), con le date spostate rispetto a "oggi" invece che fisse
+// su settembre 2026, cosi' scadenze e stati restano sensati qualunque sia il
+// giorno vero in cui gira il mock.
+function giorniFa(n) {
+  return dataLocale(new Date(Date.now() - n * 86_400_000));
+}
+function giorniPoi(n) {
+  return dataLocale(new Date(Date.now() + n * 86_400_000));
+}
+function formattaDataBreve(iso) {
+  const [a, m, g] = iso.split("-");
+  return `${g}/${m}/${a}`;
+}
+// chiave per confrontare due nomi: minuscolo, senza accenti, solo lettere/
+// numeri separati da un solo spazio (docs/api.md: "unici a meno di
+// maiuscole, accenti, punteggiatura e spazi doppi").
+function chiaveNome(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+// distanza di edit (Levenshtein), per i nomi scritti con un errore di battitura
+function distanzaEdit(a, b) {
+  const r = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let x = 1; x <= a.length; x++) {
+    let diag = r[0];
+    r[0] = x;
+    for (let y = 1; y <= b.length; y++) {
+      const sopra = r[y];
+      r[y] = a[x - 1] === b[y - 1] ? diag : 1 + Math.min(diag, sopra, r[y - 1]);
+      diag = sopra;
+    }
+  }
+  return r[b.length];
+}
+
+let prossimoFornitoreId = 5;
+const fornitori = [
+  { id: 1, nome: "Molino Dallagiovanna" },
+  { id: 2, nome: "Metro Padova" },
+  { id: 3, nome: "Caseificio Tomasoni" },
+  { id: 4, nome: "Ortofrutta Pavan" },
+];
+
+let prossimoIngredienteId = 15;
+const ingredienti = [
+  { id: 1, nome: "Farina tipo 0", fornitoreId: 1 },
+  { id: 2, nome: "Farina integrale", fornitoreId: 1 },
+  { id: 3, nome: "Semola rimacinata", fornitoreId: 1 },
+  { id: 4, nome: "Mix farine low carb", fornitoreId: 1 },
+  { id: 5, nome: "Lievito di birra", fornitoreId: 2 },
+  { id: 6, nome: "Sale iodato", fornitoreId: 2 },
+  { id: 7, nome: "Olio extravergine", fornitoreId: 2 },
+  { id: 8, nome: "Pomodori pelati", fornitoreId: 2 },
+  { id: 9, nome: "Anacardi", fornitoreId: 2 },
+  { id: 10, nome: "Carne di manzo", fornitoreId: 2 },
+  { id: 11, nome: "Fior di latte", fornitoreId: 3 },
+  { id: 12, nome: "Basilico fresco", fornitoreId: 4 },
+  { id: 13, nome: "Rosmarino", fornitoreId: 4 },
+  { id: 14, nome: "Zucca", fornitoreId: 4 },
+];
+
+let prossimoArrivoId = 8;
+const arrivi = [
+  { id: 1, fornitoreId: 2, documento: "Fattura 118411", data: giorniFa(45) },
+  { id: 2, fornitoreId: 2, documento: "Fattura 118650", data: giorniFa(25) },
+  { id: 3, fornitoreId: 1, documento: "DDT 4302", data: giorniFa(15) },
+  { id: 4, fornitoreId: 1, documento: "DDT 4471", data: giorniFa(5) },
+  { id: 5, fornitoreId: 2, documento: "Fattura 118702", data: giorniFa(3) },
+  { id: 6, fornitoreId: 3, documento: "DDT 2210", data: giorniFa(1) },
+  { id: 7, fornitoreId: 4, documento: "", data: giorniFa(0) },
+];
+// Il nome scritto al momento (docs/api.md, "Gestire i fornitori"): seminato
+// qui dai fornitori finti qui sopra, cosi' un arrivo non dipende SOLO dal
+// riferimento per sapere chi era il fornitore quando e' arrivata la merce.
+for (const a of arrivi) a.fornitoreNome = fornitori.find((f) => f.id === a.fornitoreId)?.nome ?? "Fornitore non indicato";
+
+let prossimoLottoId = 18;
+// stato "aperto"/"chiuso" come nel contratto; chiusoDa: "mano" (chiuso a
+// mano), "scadenza" (chiuso da se' alla scadenza) o "stampa" (mai nel mock:
+// nessuna stampa registra ancora i lotti-ingrediente, e' il lotto di lavoro
+// successivo).
+const lotti = [
+  { id: 1, ingredienteId: 1, codice: "L 24211", scadenza: giorniPoi(160), quantita: "10 sacchi", stato: "chiuso", apertoDal: giorniFa(15), chiusoIl: giorniFa(1), chiusoDa: "mano", arrivoId: 3, usi: 4 },
+  { id: 2, ingredienteId: 1, codice: "L 24263", scadenza: giorniPoi(190), quantita: "10 sacchi", stato: "aperto", apertoDal: giorniFa(5), chiusoIl: null, chiusoDa: null, arrivoId: 4, usi: 6 },
+  { id: 3, ingredienteId: 1, codice: "L 24290", scadenza: giorniPoi(220), quantita: "10 sacchi", stato: "aperto", apertoDal: giorniFa(5), chiusoIl: null, chiusoDa: null, arrivoId: 4, usi: 2 },
+  { id: 4, ingredienteId: 2, codice: "L 24251", scadenza: giorniPoi(130), quantita: "5 sacchi", stato: "aperto", apertoDal: giorniFa(5), chiusoIl: null, chiusoDa: null, arrivoId: 4, usi: 3 },
+  { id: 5, ingredienteId: 3, codice: "L 24270", scadenza: giorniPoi(250), quantita: "2 sacchi", stato: "aperto", apertoDal: giorniFa(5), chiusoIl: null, chiusoDa: null, arrivoId: 4, usi: 0 },
+  { id: 6, ingredienteId: 4, codice: "MX 0826-3", scadenza: giorniPoi(170), quantita: "4 sacchi", stato: "aperto", apertoDal: giorniFa(5), chiusoIl: null, chiusoDa: null, arrivoId: 4, usi: 5 },
+  { id: 7, ingredienteId: 5, codice: "0926-14", scadenza: giorniPoi(2), quantita: "10 panetti", stato: "aperto", apertoDal: giorniFa(3), chiusoIl: null, chiusoDa: null, arrivoId: 5, usi: 8 },
+  { id: 8, ingredienteId: 6, codice: "S-2211", scadenza: giorniPoi(800), quantita: "", stato: "aperto", apertoDal: giorniFa(3), chiusoIl: null, chiusoDa: null, arrivoId: 5, usi: 12 },
+  { id: 9, ingredienteId: 7, codice: "OL 2588", scadenza: giorniPoi(400), quantita: "1 latta", stato: "chiuso", apertoDal: giorniFa(45), chiusoIl: giorniFa(20), chiusoDa: "mano", arrivoId: 1, usi: 5 },
+  { id: 10, ingredienteId: 7, codice: "OL 2597", scadenza: giorniPoi(420), quantita: "1 latta", stato: "chiuso", apertoDal: giorniFa(20), chiusoIl: giorniFa(5), chiusoDa: "mano", arrivoId: 1, usi: 3 },
+  // apertoDal a 35 giorni (i due lotti chiusi sotto durano in media 20
+  // giorni: 35 > 20*1,5) apposta per provare "e' ancora questo il sacco?"
+  { id: 11, ingredienteId: 7, codice: "OL 2605", scadenza: giorniPoi(450), quantita: "1 latta", stato: "aperto", apertoDal: giorniFa(35), chiusoIl: null, chiusoDa: null, arrivoId: 2, usi: 4 },
+  { id: 12, ingredienteId: 8, codice: "PL 25188", scadenza: giorniPoi(600), quantita: "12 latte", stato: "aperto", apertoDal: giorniFa(3), chiusoIl: null, chiusoDa: null, arrivoId: 5, usi: 2 },
+  { id: 13, ingredienteId: 9, codice: "AN 2607", scadenza: giorniPoi(300), quantita: "2 kg", stato: "aperto", apertoDal: giorniFa(3), chiusoIl: null, chiusoDa: null, arrivoId: 5, usi: 1 },
+  // ingrediente 10 (Carne di manzo) e 13 (Rosmarino) restano senza lotti: "manca" nell'elenco
+  { id: 14, ingredienteId: 11, codice: "TL 100926", scadenza: giorniFa(1), quantita: "6 kg", stato: "aperto", apertoDal: giorniFa(1), chiusoIl: null, chiusoDa: null, arrivoId: 6, usi: 0 },
+  { id: 15, ingredienteId: 12, codice: formattaDataBreve(giorniFa(0)), scadenza: giorniPoi(6), quantita: "2 mazzi", stato: "aperto", apertoDal: giorniFa(0), chiusoIl: null, chiusoDa: null, arrivoId: 7, usi: 0 },
+  { id: 16, ingredienteId: 14, codice: formattaDataBreve(giorniFa(0)), scadenza: giorniPoi(6), quantita: "3 pezzi", stato: "aperto", apertoDal: giorniFa(0), chiusoIl: null, chiusoDa: null, arrivoId: 7, usi: 0 },
+];
+
+function giorniAlla(dataIso) {
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+  const d = new Date(dataIso + "T00:00:00");
+  return Math.round((d.getTime() - oggi.getTime()) / 86_400_000);
+}
+function lottoScaduto(l) {
+  return !!l.scadenza && giorniAlla(l.scadenza) < 0;
+}
+function lottiDiIngrediente(ingredienteId) {
+  return lotti.filter((l) => l.ingredienteId === ingredienteId);
+}
+function lottiApertiDiIngrediente(ingredienteId) {
+  return lottiDiIngrediente(ingredienteId)
+    .filter((l) => l.stato === "aperto")
+    .sort((a, b) => (a.apertoDal < b.apertoDal ? -1 : a.apertoDal > b.apertoDal ? 1 : a.id - b.id));
+}
+// alla scadenza un lotto si chiude da solo se l'ingrediente ne ha un altro
+// valido aperto; se era l'unico resta aperto, con l'avviso (docs/api.md).
+function chiudiScadutiAutomaticamente() {
+  for (const ing of ingredienti) {
+    const aperti = lottiApertiDiIngrediente(ing.id);
+    if (aperti.length < 2) continue;
+    if (!aperti.some((l) => !lottoScaduto(l))) continue;
+    for (const l of aperti) {
+      if (lottoScaduto(l)) {
+        l.stato = "chiuso";
+        l.chiusoIl = l.scadenza;
+        l.chiusoDa = "scadenza";
+      }
+    }
+  }
+}
+// "E' ancora questo il sacco?" (docs/api.md, 22 settembre 2026 sera): solo
+// per un lotto aperto, solo se l'ingrediente ha almeno due lotti chiusi
+// "finiti" (chiusoDa diverso da "scadenza", che dice solo che era scaduto).
+// solito = media dei giorni fra apertura e chiusura di quelli; giorni = da
+// quanti giorni e' aperto QUESTO lotto. L'avviso compare quando
+// giorni > solito * 1,5.
+function giorniFra(dataIsoA, dataIsoB) {
+  return Math.round((new Date(dataIsoB + "T00:00:00").getTime() - new Date(dataIsoA + "T00:00:00").getTime()) / 86_400_000);
+}
+function avvisoSaccoDiLotto(l) {
+  if (l.stato !== "aperto") return null;
+  const finiti = lottiDiIngrediente(l.ingredienteId).filter((x) => x.stato === "chiuso" && x.chiusoDa !== "scadenza" && x.apertoDal && x.chiusoIl);
+  if (finiti.length < 2) return null;
+  const solito = Math.round(finiti.reduce((n, x) => n + giorniFra(x.apertoDal, x.chiusoIl), 0) / finiti.length);
+  const giorni = giorniFra(l.apertoDal, dataLocale());
+  return giorni > solito * 1.5 ? { giorni, solito } : null;
+}
+// "manca" (nessun lotto aperto), "scaduto"/"scade" (dal lotto aperto per
+// primo: se piu' di uno ha un problema di scadenza si segnala quello),
+// "piu" (piu' di un lotto aperto, nessun problema di scadenza sul primo),
+// "aperto" (tutto a posto) - stessa priorita' del prototipo (vistaIngredienti).
+function calcolaStatoIngrediente(ingredienteId) {
+  const aperti = lottiApertiDiIngrediente(ingredienteId);
+  if (!aperti.length) return "manca";
+  const rappresentante = aperti[0];
+  if (rappresentante.scadenza) {
+    const n = giorniAlla(rappresentante.scadenza);
+    if (n < 0) return "scaduto";
+    if (n <= 3) return "scade";
+  }
+  if (aperti.length > 1) return "piu";
+  return "aperto";
+}
+function fornitoreDto(fornitoreId) {
+  const f = fornitori.find((x) => x.id === fornitoreId);
+  return f ? { id: f.id, nome: f.nome } : null;
+}
+// Il fornitore di UN ARRIVO (docs/api.md, "Arrivo": {"fornitore":{"id":1,
+// "nome":"…"}}): a differenza di fornitoreDto sopra (che torna null se
+// l'id non esiste piu'), qui il nome e' quello scritto alla registrazione
+// (a.fornitoreNome), sempre presente anche a fornitore cancellato - solo
+// l'id torna null in quel caso, perche' non c'e' piu' niente a cui puntare.
+function arrivoFornitoreDto(a) {
+  return { id: fornitoreDto(a.fornitoreId)?.id ?? null, nome: a.fornitoreNome };
+}
+// docs/api.md, "Gestire i fornitori" (23 settembre 2026): GET /api/fornitori
+// porta SEMPRE i conteggi, non solo {id,nome} - a differenza di fornitoreDto
+// sopra, usato dove serve solo il riferimento compatto (carta di un
+// ingrediente, dettaglio di un arrivo). Due funzioni diverse per due forme
+// diverse, non un campo facoltativo: la stessa lezione dell'AnelloCatena.
+function contaIngredientiFornitore(fornitoreId) {
+  return ingredienti.filter((i) => i.fornitoreId === fornitoreId).length;
+}
+function contaArriviFornitore(fornitoreId) {
+  return arrivi.filter((a) => a.fornitoreId === fornitoreId).length;
+}
+function fornitoreConContiDto(f) {
+  return { id: f.id, nome: f.nome, ingredienti: contaIngredientiFornitore(f.id), arrivi: contaArriviFornitore(f.id) };
+}
+function trovaFornitoreDoppio(nome, escludiId) {
+  const chiave = chiaveNome(nome);
+  return fornitori.find((f) => f.id !== escludiId && chiaveNome(f.nome) === chiave);
+}
+// "chi legge deve capire cosa sistemare, non trovarsi un rifiuto muto"
+// (docs/api.md): quanti ingredienti lo usano come fornitore abituale, e i
+// primi nomi - non solo un numero.
+function messaggioFornitoreInUso(fornitoreId) {
+  const usati = ingredienti.filter((i) => i.fornitoreId === fornitoreId);
+  const primi = usati.slice(0, 3).map((i) => i.nome);
+  const altri = usati.length - primi.length;
+  const elenco = primi.join(", ") + (altri > 0 ? ` e altri ${altri}` : "");
+  const quanti = usati.length === 1 ? "1 ingrediente lo usa" : `${usati.length} ingredienti lo usano`;
+  return `Non posso eliminarlo: ${quanti} come fornitore abituale (${elenco}).`;
+}
+/* ============================ foto ============================ */
+// docs/api.md, "Foto dei lotti e dei documenti": l'etichetta del sacco (su
+// un lotto) e le pagine del documento (su un arrivo, valgono per tutti i
+// lotti di quella consegna). Nel mock si tengono in memoria, byte veri
+// dell'upload cosi' com'e' arrivato (il servizio vero li ridimensiona e
+// salva in JPEG su disco; qui basta poterli riservire davvero).
+let prossimoFotoId = 1;
+const foto = []; // { id, genitore: "lotto"|"arrivo", genitoreId, buffer, mime }
+// Un lotto e l'arrivo da cui viene, gia' con la loro foto: cosi' si vede
+// subito com'e' fatta la catena con le foto, senza doverne caricare una
+// prima (lotto 2 = L 24263, arrivoId 4 = DDT 4471, stesso arrivo).
+(function seminaFoto() {
+  foto.push({ id: prossimoFotoId++, genitore: "lotto", genitoreId: 2, buffer: FOTO_FINTA_PNG, mime: "image/png" });
+  foto.push({ id: prossimoFotoId++, genitore: "arrivo", genitoreId: 4, buffer: FOTO_FINTA_PNG, mime: "image/png" });
+})();
+function fotoDto(f) {
+  return { id: f.id, url: `/api/foto/${f.id}.jpg` };
+}
+function fotoDiLotto(lottoId) {
+  return foto.filter((f) => f.genitore === "lotto" && f.genitoreId === lottoId);
+}
+function fotoDiArrivo(arrivoId) {
+  return foto.filter((f) => f.genitore === "arrivo" && f.genitoreId === arrivoId);
+}
+// POST .../foto (multipart, campo "file", JPEG o PNG fino a 8 MB): stessa
+// forma per il lotto e per l'arrivo, cambia solo chi la possiede.
+async function caricaFoto(req, res, genitore, genitoreId) {
+  const contentType = req.headers["content-type"] || "";
+  if (!contentType.toLowerCase().includes("multipart/form-data")) {
+    return erroreJson(res, 400, "Serve multipart/form-data col campo «file»");
+  }
+  const corpo = await leggiCorpoBuffer(req, 8_300_000);
+  const parti = analizzaMultipart(corpo, contentType);
+  const parteFile = parti.find((p) => p.nome === "file" && p.nomeFile);
+  if (!parteFile || !parteFile.dati.length) return erroreJson(res, 400, "Manca il file");
+  if (parteFile.dati.length > 8_000_000) return erroreJson(res, 400, "Il file supera gli 8 MB");
+  const dimensioni = leggiDimensioniImmagine(parteFile.dati, parteFile.tipo);
+  if (!dimensioni) return erroreJson(res, 400, "Formato non valido: solo PNG o JPEG");
+  const mimeMinuscolo = (parteFile.tipo || "").toLowerCase();
+  const mime = mimeMinuscolo.includes("png") ? "image/png" : mimeMinuscolo.includes("jp") ? "image/jpeg" : parteFile.dati[0] === 0x89 ? "image/png" : "image/jpeg";
+  const nuova = { id: prossimoFotoId++, genitore, genitoreId, buffer: parteFile.dati, mime };
+  foto.push(nuova);
+  return rispondiJson(res, 201, fotoDto(nuova));
+}
+function lottoIngredienteDto(l) {
+  const a = arrivi.find((x) => x.id === l.arrivoId) || null;
+  return {
+    id: l.id,
+    ingredienteId: l.ingredienteId,
+    codice: l.codice,
+    scadenza: l.scadenza,
+    quantita: l.quantita,
+    stato: l.stato,
+    apertoDal: l.apertoDal,
+    chiusoIl: l.chiusoIl,
+    chiusoDa: l.chiusoDa,
+    arrivo: a ? { id: a.id, fornitore: a.fornitoreNome, documento: a.documento, data: a.data } : null,
+    usi: l.usi,
+    avvisoSacco: avvisoSaccoDiLotto(l),
+    foto: fotoDiLotto(l.id).map(fotoDto),
+  };
+}
+function ingredienteDto(i) {
+  const aperti = lottiApertiDiIngrediente(i.id);
+  return {
+    id: i.id,
+    nome: i.nome,
+    fornitore: fornitoreDto(i.fornitoreId),
+    lottiAperti: aperti.map(lottoIngredienteDto),
+    lottiChiusi: lottiDiIngrediente(i.id).filter((l) => l.stato === "chiuso").length,
+    stato: calcolaStatoIngrediente(i.id),
+    // "il suo lotto aperto piu' vecchio, solo quando ne ha uno solo aperto"
+    avvisoSacco: aperti.length === 1 ? avvisoSaccoDiLotto(aperti[0]) : null,
+  };
+}
+// tutti i lotti dell'ingrediente per la scheda: aperti prima (i piu' vecchi
+// per primi, come in elenco), poi i chiusi dal piu' recente.
+function ordinaLottiScheda(ingredienteId) {
+  const tutti = lottiDiIngrediente(ingredienteId);
+  const aperti = tutti.filter((l) => l.stato === "aperto").sort((a, b) => (a.apertoDal < b.apertoDal ? -1 : a.apertoDal > b.apertoDal ? 1 : a.id - b.id));
+  const chiusi = tutti.filter((l) => l.stato === "chiuso").sort((a, b) => (b.chiusoIl || "").localeCompare(a.chiusoIl || "") || b.id - a.id);
+  return [...aperti, ...chiusi];
+}
+// docs/api.md, "Ingredienti e fornitori": i prodotti che contengono l'ingrediente, diretti o
+// indiretti (attraverso uno o piu' semilavorati, tracciati "tipo":"prodotto", a qualunque
+// profondita'). Prima i diretti poi gli indiretti, ciascun gruppo per nome senza badare alle
+// maiuscole; ogni indiretto porta "tramite" = i semilavorati dell'ULTIMO passo sul percorso piu'
+// corto (piu' di uno se piu' percorsi hanno la stessa lunghezza minima). Visita a livelli (BFS)
+// come nel servizio vero, EtichetteCollegateService: l'insieme dei visitati evita i cicli, un
+// limite di profondita' chiude comunque la visita.
+const LIMITE_PROFONDITA_TRAMITE = 20;
+function etichetteDiIngrediente(ingredienteId) {
+  const diretti = prodotti
+    .filter((p) => tracciatiProdotto(p).some((t) => t.tipo === "ingrediente" && t.id === ingredienteId))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+
+  const visitati = new Set(diretti.map((p) => p.id));
+  const tramitePerProdotto = new Map(); // id prodotto indiretto -> Set di id semilavorato (ultimo passo)
+  let livello = new Set(visitati);
+  for (let profondita = 0; profondita < LIMITE_PROFONDITA_TRAMITE && livello.size > 0; profondita++) {
+    const viaPerCandidato = new Map();
+    for (const p of prodotti) {
+      for (const t of tracciatiProdotto(p)) {
+        if (t.tipo === "prodotto" && livello.has(t.id)) {
+          if (!viaPerCandidato.has(p.id)) viaPerCandidato.set(p.id, new Set());
+          viaPerCandidato.get(p.id).add(t.id);
+        }
+      }
+    }
+    const prossimoLivello = new Set();
+    for (const [candidatoId, via] of viaPerCandidato) {
+      if (!visitati.has(candidatoId)) { // gia' visto: niente cicli, niente doppioni
+        visitati.add(candidatoId);
+        tramitePerProdotto.set(candidatoId, via);
+        prossimoLivello.add(candidatoId);
+      }
+    }
+    livello = prossimoLivello;
+  }
+
+  const dirette = diretti.map((p) => ({ id: p.id, nome: p.nome, tramite: [] }));
+  const indirette = [...tramitePerProdotto.entries()]
+    .map(([id, via]) => {
+      const prodotto = trovaProdotto(id);
+      const viaOrdinata = [...via]
+        .map((viaId) => trovaProdotto(viaId))
+        .filter(Boolean)
+        .sort((a, b) => a.nome.localeCompare(b.nome, "it"))
+        .map((p) => ({ id: p.id, nome: p.nome, tramite: [] }));
+      return { id, nome: prodotto ? prodotto.nome : "Prodotto eliminato", tramite: viaOrdinata };
+    })
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+
+  return [...dirette, ...indirette];
+}
+function ingredienteConLottiDto(i) {
+  return { ...ingredienteDto(i), lotti: ordinaLottiScheda(i.id).map(lottoIngredienteDto), etichette: etichetteDiIngrediente(i.id) };
+}
+function trovaIngredienteDoppio(nome, escludiId) {
+  const chiave = chiaveNome(nome);
+  return ingredienti.find((i) => i.id !== escludiId && chiaveNome(i.nome) === chiave);
+}
+function messaggioNomeDoppio(doppio) {
+  const f = fornitoreDto(doppio.fornitoreId);
+  return `C'è già ${doppio.nome}${f ? ", di " + f.nome : ""}.`;
+}
+// fino a cinque ingredienti con un nome somigliante, i piu' vicini prima
+// (docs/api.md: stessa chiave, chiave contenuta nell'altra, una parola di
+// almeno 4 lettere in comune, distanza di edit entro 2 o 3).
+function ingredientiSimili(testo, escludiId) {
+  const chiave = chiaveNome(testo);
+  if (chiave.length < 2) return [];
+  const parole = chiave.split(" ").filter((p) => p.length >= 4);
+  const righe = [];
+  for (const ing of ingredienti) {
+    if (escludiId != null && ing.id === escludiId) continue;
+    const k = chiaveNome(ing.nome);
+    if (!k) continue;
+    let livello;
+    if (k === chiave) livello = 0;
+    else if (k.includes(chiave) || chiave.includes(k)) livello = 1;
+    else if (parole.some((p) => k.split(" ").includes(p))) livello = 2;
+    else {
+      const soglia = Math.max(chiave.length, k.length) > 8 ? 3 : 2;
+      if (distanzaEdit(chiave, k) > soglia) continue;
+      livello = 3;
+    }
+    righe.push({ ing, livello });
+  }
+  righe.sort((x, y) => x.livello - y.livello || x.ing.nome.localeCompare(y.ing.nome, "it"));
+  return righe.slice(0, 5).map(({ ing }) => ({
+    id: ing.id,
+    nome: ing.nome,
+    fornitore: fornitoreDto(ing.fornitoreId)?.nome ?? null,
+    lottiAperti: lottiApertiDiIngrediente(ing.id).length,
+    stessoNome: chiaveNome(ing.nome) === chiave,
+  }));
+}
+// "Proponi dal testo" (docs/api.md): spezza il testo alle virgole e ai punti
+// FUORI dalle parentesi quadre e tonde (dentro ci sono gli ingredienti
+// composti), poi ogni pezzo cerca in anagrafica con le stesse regole di
+// ingredientiSimili ma senza la distanza di edit (basta chiave, contenimento,
+// parola comune: un pezzo che non somiglia a nulla non propone niente).
+function spezzaTestoIngredienti(testo) {
+  const pezzi = [];
+  let attuale = "";
+  let profondita = 0;
+  for (const ch of testo) {
+    if (ch === "[" || ch === "(") profondita++;
+    else if (ch === "]" || ch === ")") profondita = Math.max(0, profondita - 1);
+    if ((ch === "," || ch === ".") && profondita === 0) {
+      pezzi.push(attuale);
+      attuale = "";
+    } else {
+      attuale += ch;
+    }
+  }
+  if (attuale.trim()) pezzi.push(attuale);
+  return pezzi.map((p) => p.trim()).filter(Boolean);
+}
+function trovaIngredientePerPezzo(pezzo) {
+  const chiavePezzo = chiaveNome(pezzo);
+  if (!chiavePezzo) return null;
+  const parolePezzo = chiavePezzo.split(" ").filter((p) => p.length >= 4);
+  let migliore = null;
+  for (const ing of ingredienti) {
+    const chiaveIng = chiaveNome(ing.nome);
+    if (!chiaveIng) continue;
+    if (chiaveIng === chiavePezzo) return ing;
+    if (!migliore && (chiavePezzo.includes(chiaveIng) || chiaveIng.includes(chiavePezzo))) migliore = ing;
+    else if (!migliore && parolePezzo.some((p) => chiaveIng.split(" ").includes(p))) migliore = ing;
+  }
+  return migliore;
+}
+// {fornitoreId} un fornitore gia' in elenco, {fornitoreNome} ne crea uno
+// nuovo (o riusa quello che gia' si chiama cosi'), nessuno dei due = "Nessuno"
+// (docs/api.md: PUT "sostituisce nome e fornitore").
+function risolviFornitoreId(corpo) {
+  if (corpo.fornitoreId != null && corpo.fornitoreId !== "") {
+    const f = fornitori.find((x) => x.id === Number(corpo.fornitoreId));
+    return f ? f.id : null;
+  }
+  if (typeof corpo.fornitoreNome === "string" && corpo.fornitoreNome.trim()) {
+    const nome = corpo.fornitoreNome.trim();
+    let f = fornitori.find((x) => chiaveNome(x.nome) === chiaveNome(nome));
+    if (!f) {
+      f = { id: prossimoFornitoreId++, nome };
+      fornitori.push(f);
+    }
+    return f.id;
+  }
+  return null;
 }
 
 /* ============================ lotto ============================ */
@@ -357,20 +936,24 @@ function progressivoGiornoAttuale() {
   return progressivoGiornoPerData[k];
 }
 
+// "mano" non e' piu' fra gli schemi offerti dal 24/09/2026 (nessun prodotto
+// del cliente lo usava piu'): resta gestito altrove (consumaLottoProposto,
+// la POST /api/stampe) per i prodotti vecchi che lo avessero ancora salvato,
+// ma non compare in questo elenco.
 function schemiLotto() {
   const oggi = new Date();
   return [
     { codice: "data", nome: "Data e progressivo del giorno", esempio: "L AAAAMMGG-NNN", oggi: `L ${chiaveGiorno(oggi)}-${String(progressivoGiornoAttuale()).padStart(3, "0")}` },
     { codice: "giorno", nome: "Giorno dell'anno", esempio: "L GGG/AA", oggi: `L ${String(giornoAnno(oggi)).padStart(3, "0")}/${String(oggi.getFullYear()).slice(2)}` },
     { codice: "continuo", nome: "Progressivo continuo", esempio: "L NNNNNN", oggi: `L ${String(Number(impostazioni.progressivo_continuo) || 0).padStart(6, "0")}` },
-    { codice: "mano", nome: "Lo scrive chi stampa", esempio: "a mano", oggi: null },
   ];
 }
-// Il lotto che uscirebbe adesso per lo schema in uso, e lo consuma (avanza il
+// Il lotto che uscirebbe adesso per lo schema dato, e lo consuma (avanza il
 // contatore): un lavoro di stampa consuma un solo numero, non uno per copia
-// (docs/api.md, "Lotto").
-function consumaLottoProposto() {
-  const schema = impostazioni.schema_lotto;
+// (docs/api.md, "Lotto"). Lo schema e' dell'ETICHETTA ora, non del locale
+// ("Impostazioni come il prototipo"), ma i contatori restano globali/
+// condivisi (progressivoGiornoPerData, impostazioni.progressivo_continuo).
+function consumaLottoProposto(schema) {
   const info = schemiLotto().find((s) => s.codice === schema);
   const valore = info ? info.oggi : null;
   if (schema === "data") progressivoGiornoPerData[chiaveGiorno()] = progressivoGiornoAttuale() + 1;
@@ -402,10 +985,12 @@ function rigaTesto(testo, corpo, larghezzaUtileMm) {
 }
 
 // Che cosa disegna un blocco: righe di testo (con corpo e frazione della
-// larghezza), oppure un filetto, un quadrato (QR) o solo spazio vuoto. Segue
-// le regole di docs/api.md ("Etichetta", tabella dei tipi): i blocchi che non
-// producono nulla (puoContenere senza allergeni, modoUso vuoto, valori senza
-// voci, logo sempre) non contano ne' in altezza ne' nell'elenco degli accesi.
+// larghezza), oppure un filetto, un rettangolo (logo) o solo spazio vuoto.
+// Segue le regole di docs/api.md ("Etichetta", tabella dei tipi): i blocchi
+// che non producono nulla (puoContenere senza allergeni, modoUso vuoto,
+// valori senza voci, logo sempre) non contano ne' in altezza ne' nell'elenco
+// degli accesi. "qr" non e' piu' un tipo di blocco (tolto dal 24/09/2026,
+// docs/api.md): cade nel "default" sotto, come un tipo sconosciuto qualunque.
 function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
   if (!b.acceso) return null;
   const corpo = b.corpo;
@@ -421,7 +1006,12 @@ function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
       if (!prodotto.modoUso) return null;
       return { righe: rigaTesto(prodotto.modoUso, corpo, larghezzaUtileMm) };
     case "scadenza":
-      return { righe: [{ corpo, frazione: 0.55 }, { corpo: corpo * 0.9, frazione: 0.85 }] };
+      return { righe: [{ corpo, frazione: 0.55 }] };
+    // Dal 24/09/2026 non e' piu' una seconda riga dentro "scadenza" (sopra):
+    // e' il suo blocco, con il suo corpo (deciso dal cliente).
+    case "conservazione":
+      if (!prodotto.conservazione) return null;
+      return { righe: [{ corpo, frazione: 0.85 }] };
     case "lotto":
       return { righe: [{ corpo, frazione: 0.42 }] };
     case "quantita":
@@ -453,8 +1043,6 @@ function infoBlocco(b, prodotto, etichetta, larghezzaUtileMm, override) {
       return { righe: [], filetto: true, extraMm: corpo * 0.3528 * 0.4 };
     case "spazio":
       return { righe: [], extraMm: corpo * 0.3528 };
-    case "qr":
-      return { righe: [], quadratoMm: corpo || 12 };
     case "logo": {
       // Qui il corpo non e' un corpo in punti ma l'altezza in mm (5...30,
       // proposta 10): il blocco cresce in proporzione al logo caricato.
@@ -482,14 +1070,9 @@ function altezzaBlocchi(blocchi, prodotto, etichetta, larghezzaUtileMm, opzioni)
     // "allineamento" (funzione nuova, non nel mockup): assente = sinistra;
     // ignorato per "valori"/"riga"/"spazio" (BLOCCHI_SENZA_ALLINEAMENTO in
     // tipi.ts) - qui semplicemente quei tipi non arrivano mai a "barra" con
-    // piu' di un valore, o non producono barra/quadrato/rettangolo affatto.
+    // piu' di un valore, o non producono barra/rettangolo affatto.
     const allineamento = b.allineamento || "sinistra";
     if (b.tipo === "titolo" && info.righe.length > 1) avvisi.push("Il titolo è stato mandato a capo");
-    if (info.quadratoMm) {
-      disegni.push({ tipo: "quadrato", yMm, latoMm: info.quadratoMm, allineamento });
-      yMm += info.quadratoMm + 0.8;
-      continue;
-    }
     if (info.rettangolo) {
       disegni.push({ tipo: "rettangolo", yMm, larghezzaMm: info.rettangolo.larghezzaMm, altezzaMm: info.rettangolo.altezzaMm, allineamento });
       yMm += info.rettangolo.altezzaMm + 0.8;
@@ -651,12 +1234,6 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
     // pieno di prima (compatibilita' per chi non passa ancora questi campi).
     const x0 = Math.round((d.xMm ?? MARGINE_MM) * K);
     const larghezzaDisponibilePx = Math.round((d.larghezzaDisponibileMm ?? geometria.larghezzaMm - MARGINE_MM * 2) * K);
-    if (d.tipo === "quadrato") {
-      const lato = Math.round(d.latoMm * K);
-      const x = x0 + scostamentoAllineamento(larghezzaDisponibilePx, lato, d.allineamento);
-      rettangoloVuoto(tela, x, y0, x + lato, y0 + lato);
-      continue;
-    }
     if (d.tipo === "rettangolo") {
       const larghezzaLogoPx = Math.round(d.larghezzaMm * K);
       const altezzaLogoPx = Math.round(d.altezzaMm * K);
@@ -679,7 +1256,7 @@ function renderEtichettaPng(prodotto, etichetta, opzioni = {}) {
 /* ============================ storico ============================ */
 let prossimoStoricoId = 100;
 const storico = [];
-function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, esito }) {
+function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, esito, registrazioneLotti, lavoroId }) {
   const riga = {
     id: prossimoStoricoId++,
     stampatoIl: dataLocaleIso(),
@@ -691,13 +1268,73 @@ function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositi
     copie,
     dispositivoNome,
     esito,
+    // La catena dei lotti (docs/api.md, "Storico: la catena"): un'istantanea
+    // dei tracciati del prodotto al momento della stampa (non quelli di
+    // adesso, che potrebbero essere cambiati) piu' cosa e' stato registrato.
+    tracciati: registrazioneLotti?.tracciati ?? [],
+    lottiUsati: registrazioneLotti?.lottiUsati ?? {},
+    produzioniUsate: registrazioneLotti?.produzioniUsate ?? {},
+    correttoIl: null,
+    // Lo stesso lavoroId della POST che ha avviato questa stampa e degli
+    // eventi SSE "stampa" (docs/api.md): serve a Stampa.tsx per trovare la
+    // riga GIUSTA a lavoro finito invece della prima dello storico.
+    lavoroId: lavoroId ?? null,
   };
   storico.unshift(riga);
   return riga;
 }
+// La registrazione dei lotti alla stampa (docs/api.md, "Stampa: quali lotti
+// si registrano"): per ogni tracciato "ingrediente" un solo lotto, quello
+// scelto a mano in "lotti" (validato: deve essere aperto e di
+// quell'ingrediente) o di serie il sacco aperto per primo; per ogni
+// tracciato "prodotto" (produzione propria) l'ultima stampa completata non
+// scaduta di quel prodotto - sempre calcolata da sola, "lotti" non la
+// tocca (nessuna spunta per i semilavorati nella striscia di Stampa).
+// Ritorna {tracciati, lottiUsati, produzioniUsate} pronti per lo storico, o
+// {errore} se una scelta a mano non va bene (400).
+function ultimaProduzioneValida(prodottoId, escludiStoricoId) {
+  const oggi = dataLocale();
+  // scadenza puo' essere vuota (un semilavorato senza giorniScadenza): come
+  // nonScaduta() del servizio vero (RisolutoreLottiTracciati.java), null/
+  // vuota conta come "mai scaduta", non come "sempre scaduta".
+  return storico.find((s) => s.prodottoId === prodottoId && s.esito === "completata" && (!s.scadenza || s.scadenza >= oggi) && s.id !== escludiStoricoId) || null;
+}
+function registraLottiStampa(prodotto, sceltaManuale, escludiStoricoId) {
+  const tracciati = tracciatiProdotto(prodotto).map((t) => ({ tipo: t.tipo, id: Number(t.id) }));
+  const lottiUsati = {};
+  const produzioniUsate = {};
+  for (const t of tracciati) {
+    if (t.tipo === "prodotto") {
+      const sorgente = ultimaProduzioneValida(t.id, escludiStoricoId);
+      produzioniUsate[t.id] = sorgente ? sorgente.id : null;
+      continue;
+    }
+    const scelta = sceltaManuale && Object.prototype.hasOwnProperty.call(sceltaManuale, t.id) ? sceltaManuale[t.id] : null;
+    if (Array.isArray(scelta)) {
+      const ids = [];
+      for (const voce of scelta) {
+        const lid = Number(voce);
+        const l = lotti.find((x) => x.id === lid);
+        if (!l || l.ingredienteId !== t.id || l.stato !== "aperto") {
+          const ing = ingredienti.find((i) => i.id === t.id);
+          return { errore: `Il lotto scelto non è aperto o non è di ${ing ? ing.nome : "quell'ingrediente"}.` };
+        }
+        ids.push(lid);
+      }
+      lottiUsati[t.id] = ids;
+    } else {
+      const piuVecchio = lottiApertiDiIngrediente(t.id)[0];
+      lottiUsati[t.id] = piuVecchio ? [piuVecchio.id] : [];
+    }
+  }
+  return { tracciati, lottiUsati, produzioniUsate };
+}
 // Qualche stampa gia' fatta oggi e ieri, cosi' la demo parte con lo storico
 // non vuoto e "Ristampa ultima" funziona subito. Coerente col progressivo
-// del giorno seminato a 4 (tre stampe di oggi con lo schema "data").
+// del giorno seminato a 4 (tre stampe di oggi con lo schema "data"). Le
+// stampe di "Impasto classico 24h" (prodotto 2) e "Focaccia al rosmarino"
+// (prodotto 4, che lo traccia come produzione propria) portano anche la
+// catena gia' compilata, per provare Storico senza dover prima stampare.
 (function seminaStorico() {
   const oggi = new Date();
   const ieri = new Date(Date.now() - 86_400_000);
@@ -708,12 +1345,13 @@ function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositi
     { prodottoId: 2, oraFa: 26 * 3_600_000, copie: 6, da: "PC", giorno: ieri, prog: 4 },
     { prodottoId: 5, oraFa: 30 * 3_600_000, copie: 2, da: "Telefono della cucina", giorno: ieri, prog: 5 },
   ];
+  let idImpastoClassico = null;
   for (const s of semi.reverse()) {
     const p = trovaProdotto(s.prodottoId);
     const quando = new Date(Date.now() - s.oraFa);
     const lotto = `L ${chiaveGiorno(s.giorno)}-${String(s.prog).padStart(3, "0")}`;
     const scadenza = dataLocale(piuGiorni(quando, p.giorniScadenza));
-    storico.unshift({
+    const riga = {
       id: prossimoStoricoId++,
       stampatoIl: dataLocaleIso(quando),
       prodottoId: p.id,
@@ -724,11 +1362,80 @@ function registraStorico(prodotto, { copie, quantita, scadenza, lotto, dispositi
       copie: s.copie,
       dispositivoNome: s.da,
       esito: "completata",
-    });
+      tracciati: tracciatiProdotto(p).map((t) => ({ tipo: t.tipo, id: t.id })),
+      // "Impasto classico 24h" traccia lievito (5) e sale (6): li registra
+      // entrambi, cosi' la sua catena si vede subito senza dover stampare.
+      lottiUsati: p.id === 2 ? { 5: [7], 6: [8] } : {},
+      produzioniUsate: {},
+      correttoIl: null,
+    };
+    storico.unshift(riga);
+    if (p.id === 2) idImpastoClassico = riga.id;
   }
-  storico.sort((a, b) => (a.stampatoIl < b.stampatoIl ? 1 : -1));
+  // La Focaccia di stamattina: rosmarino senza lotto (non registrato),
+  // olio con il suo lotto aperto, e la produzione propria dell'Impasto
+  // classico appena seminato sopra.
+  const focaccia = trovaProdotto(4);
+  const quandoFocaccia = new Date(Date.now() - 2 * 3_600_000);
+  storico.unshift({
+    id: prossimoStoricoId++,
+    stampatoIl: dataLocaleIso(quandoFocaccia),
+    prodottoId: focaccia.id,
+    prodottoNome: focaccia.nome,
+    lotto: `L ${chiaveGiorno(oggi)}-000`,
+    quantita: focaccia.quantita,
+    scadenza: dataLocale(piuGiorni(quandoFocaccia, focaccia.giorniScadenza)),
+    copie: 4,
+    dispositivoNome: "PC",
+    esito: "completata",
+    tracciati: tracciatiProdotto(focaccia).map((t) => ({ tipo: t.tipo, id: t.id })),
+    lottiUsati: { 13: [], 7: [11] },
+    produzioniUsate: { 2: idImpastoClassico },
+    correttoIl: null,
+  });
+  // Il Pesto di un'ora fa e' rimasto "interrotta" (docs/api.md, "Storico"):
+  // il servizio si e' fermato durante la stampa (corrente saltata) e al
+  // riavvio ha chiuso la riga con le copie sicuramente uscite. I lotti
+  // c'erano gia', registrati alla partenza della stampa. Il lotto e' col
+  // giorno dell'anno, per non toccare il progressivo del giorno seminato a 4.
+  const pesto = trovaProdotto(6);
+  const quandoPesto = new Date(Date.now() - 3_600_000);
+  storico.unshift({
+    id: prossimoStoricoId++,
+    stampatoIl: dataLocaleIso(quandoPesto),
+    prodottoId: pesto.id,
+    prodottoNome: pesto.nome,
+    lotto: `L ${String(giornoAnno(oggi)).padStart(3, "0")}/${String(oggi.getFullYear()).slice(2)}`,
+    quantita: pesto.quantita,
+    scadenza: dataLocale(piuGiorni(quandoPesto, pesto.giorniScadenza)),
+    copie: 1,
+    dispositivoNome: "PC",
+    esito: "interrotta",
+    ...registraLottiStampa(pesto, null),
+    correttoIl: null,
+    lavoroId: "stampa-seminata-interrotta",
+  });
+  // Da qui in poi l'ordine si tiene da solo: registraStorico mette in cima
+  // una riga nuova, che ha lo stampatoIl e l'id piu' alti di tutte.
+  storico.sort(confrontaStorico);
 })();
 
+// L'ordine dello storico (docs/api.md, "Storico"): dalla stampa piu'
+// recente, e a parita' di stampatoIl dall'id piu' alto. "primaDi" sfoglia su
+// QUESTO ordine: le righe che vengono strettamente dopo quella indicata.
+function confrontaStorico(a, b) {
+  if (a.stampatoIl !== b.stampatoIl) return a.stampatoIl < b.stampatoIl ? 1 : -1;
+  return b.id - a.id;
+}
+
+// I codici dei lotti ingrediente registrati da questa stampa (docs/api.md,
+// "Storico: la catena"): quelli in r.lottiUsati, gia' col loro "codice"
+// (nel mock e' sempre quello effettivo, mai da ricostruire dall'arrivo come
+// nel servizio vero - vedi codiceEffettivo in IngredientiConversioni.java).
+function codiciLottiIngredienteDiStorico(r) {
+  const ids = Object.values(r.lottiUsati || {}).flat();
+  return ids.map((id) => lotti.find((l) => l.id === id)?.codice).filter(Boolean);
+}
 function filtraStorico(periodo, q) {
   const oraLimite = periodo === "oggi" ? 24 : periodo === "7" ? 24 * 7 : periodo === "30" ? 24 * 30 : null;
   const soglia = oraLimite === null ? null : Date.now() - oraLimite * 3_600_000;
@@ -736,8 +1443,125 @@ function filtraStorico(periodo, q) {
   return storico.filter((r) => {
     if (soglia !== null && new Date(r.stampatoIl.replace(" ", "T")).getTime() < soglia) return false;
     if (!query) return true;
-    return r.prodottoNome.toLowerCase().includes(query) || r.lotto.toLowerCase().includes(query);
+    // "Usato in N stampe" (RigaLotto.tsx) porta qui il codice di un lotto
+    // ingrediente, non dell'etichetta: la ricerca deve trovarlo anche se non
+    // compare in r.lotto (il lotto STAMPATO, un'altra cosa).
+    return (
+      r.prodottoNome.toLowerCase().includes(query) ||
+      r.lotto.toLowerCase().includes(query) ||
+      codiciLottiIngredienteDiStorico(r).some((codice) => codice.toLowerCase().includes(query))
+    );
   });
+}
+// I conteggi per il riassunto della riga (docs/api.md, "Storico: la
+// catena"): "lottiRegistrati" conta i collegati (della catena AL MOMENTO
+// DELLA STAMPA, non quelli di adesso) che hanno almeno un lotto.
+function contaTracciabilita(r) {
+  const tracciati = r.tracciati || [];
+  let registrati = 0;
+  for (const t of tracciati) {
+    if (t.tipo === "prodotto") {
+      if ((r.produzioniUsate || {})[t.id]) registrati++;
+    } else if (((r.lottiUsati || {})[t.id] || []).length > 0) {
+      registrati++;
+    }
+  }
+  return { lottiRegistrati: registrati, lottiNonRegistrati: tracciati.length - registrati };
+}
+function storicoRigaDto(r) {
+  const { lottiRegistrati, lottiNonRegistrati } = contaTracciabilita(r);
+  return {
+    id: r.id, stampatoIl: r.stampatoIl, prodottoId: r.prodottoId, prodottoNome: r.prodottoNome,
+    lotto: r.lotto, quantita: r.quantita, scadenza: r.scadenza, copie: r.copie,
+    dispositivoNome: r.dispositivoNome, esito: r.esito,
+    lottiRegistrati, lottiNonRegistrati, correttoIl: r.correttoIl || null,
+    lavoroId: r.lavoroId ?? null,
+  };
+}
+
+/* ---- GET /api/storico/esporta: solo CSV nel mock (docs/api.md, "Storico") ---- */
+// Lo stesso testo di CodaEsito nell'interfaccia (Storico.tsx, TESTO_ESITO),
+// ma completo: nella tabella esportata ogni riga ha bisogno di una parola
+// nella colonna Esito, anche una "completata" o una "in_stampa" (che li'
+// restano mute perche' bastano le copie).
+const TESTO_ESITO_ESPORTA = {
+  completata: "stampata", annullata: "serie fermata", errore: "errore",
+  prova: "prova", in_stampa: "in stampa", interrotta: "interrotta",
+};
+// Solo l'ora ("HH:MM"): stessa idea di formattaOra dell'interfaccia, qui
+// senza Intl per restare coerenti con dataLocaleIso (nessun fuso a parte).
+function oraBreve(dataOraLocale) {
+  const d = new Date((dataOraLocale || "").replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return "";
+  return `${due(d.getHours())}:${due(d.getMinutes())}`;
+}
+// Una cella CSV: fra virgolette (raddoppiando quelle interne) solo se serve
+// - contiene il separatore, virgolette o un ritorno a capo.
+function cellaCsv(valore) {
+  const testo = String(valore ?? "");
+  return /[;"\r\n]/.test(testo) ? `"${testo.replace(/"/g, '""')}"` : testo;
+}
+function righeCsvStorico(righe) {
+  const intestazione = ["Data", "Ora", "Etichetta", "Copie", "Lotto", "Quantità", "Scadenza", "Da", "Esito"];
+  const corpo = righe.map((r) => [
+    formattaDataBreve(r.stampatoIl.slice(0, 10)),
+    oraBreve(r.stampatoIl),
+    r.prodottoNome,
+    r.copie,
+    r.lotto,
+    r.quantita,
+    r.scadenza ? formattaDataBreve(r.scadenza) : "",
+    r.dispositivoNome,
+    TESTO_ESITO_ESPORTA[r.esito] ?? r.esito,
+  ]);
+  return [intestazione, ...corpo].map((riga) => riga.map(cellaCsv).join(";"));
+}
+// GET /api/storico/{id}/catena (docs/api.md): il dettaglio, nell'ordine dei
+// tracciati AL MOMENTO DELLA STAMPA (non quelli di adesso del prodotto).
+function catenaStoricoDto(r) {
+  const anelli = (r.tracciati || []).map((t) => {
+    // Il servizio vero manda SEMPRE sia "lotti" che "stampa" su ogni anello
+    // (un record Java si serializza tutto, mai un campo del tutto assente):
+    // qui "stampa" resta null su un anello ingrediente e "lotti" resta [] su
+    // uno prodotto, cosi' il finto si comporta come il vero e un client che
+    // guarda "quale campo c'e'" invece del tipo si accorge subito che sbaglia
+    // (bug trovato stampando davvero, 22 settembre 2026 sera).
+    if (t.tipo === "prodotto") {
+      const storicoIdUsato = (r.produzioniUsate || {})[t.id] ?? null;
+      const sorgente = storicoIdUsato ? storico.find((s) => s.id === storicoIdUsato) : null;
+      return {
+        collegato: tracciatoDto(t),
+        lotti: [],
+        stampa: sorgente ? { storicoId: sorgente.id, lotto: sorgente.lotto, stampatoIl: sorgente.stampatoIl, scadenza: formattaDataBreve(sorgente.scadenza) } : null,
+      };
+    }
+    const idsUsati = (r.lottiUsati || {})[t.id] || [];
+    return {
+      collegato: tracciatoDto(t),
+      lotti: idsUsati
+        .map((lid) => {
+          const l = lotti.find((x) => x.id === lid);
+          if (!l) return null;
+          const a = arrivi.find((x) => x.id === l.arrivoId) || null;
+          return {
+            id: l.id, codice: l.codice, scadenza: l.scadenza,
+            fornitore: a ? a.fornitoreNome : null,
+            documento: a ? a.documento : null,
+            arrivatoIl: a ? a.data : null,
+            // l'etichetta del sacco (foto del lotto) e le pagine del
+            // documento dell'arrivo da cui viene (docs/api.md).
+            foto: fotoDiLotto(l.id).map(fotoDto),
+            fotoDocumento: a ? fotoDiArrivo(a.id).map(fotoDto) : [],
+          };
+        })
+        .filter(Boolean),
+      stampa: null,
+    };
+  });
+  return {
+    storicoId: r.id, prodottoNome: r.prodottoNome, lotto: r.lotto, copie: r.copie,
+    stampatoIl: r.stampatoIl, correttoIl: r.correttoIl || null, anelli,
+  };
 }
 
 /* ============================ dispositivi ============================ */
@@ -952,14 +1776,35 @@ function leggiDimensioniImmagine(buf, mime) {
 /* ============================ stampe: lavori attivi ============================ */
 const lavoriAttivi = new Map(); // lavoroId -> { annullato, copiaCorrente, inPausa, avanti, finisci, copie }
 
-// "prova" (revisione di questo giro): la "Stampa di prova" di Etichette
-// finisce comunque nello storico (per non perdere traccia di cosa e' uscito
-// dal banco), ma con esito "prova" invece di "completata", e non conta per
-// "usi"/"ultimoUso" del prodotto (altrimenti falserebbe "più usati").
-function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, prova = false }) {
+// Una prova (POST /api/stampe/prova-prodotto, e la "Stampa di prova" delle
+// Impostazioni che pero' non passa da qui) NON finisce nello storico
+// (decisione del cliente del 24/09/2026: "le etichette fatte con la stampa
+// di prova non devono entrare nello storico") - ne' "usi"/"ultimoUso" del
+// prodotto (gia' cosi' prima). Il lavoro di stampa e i suoi eventi SSE sono
+// identici a una stampa vera: solo che qui sotto "riga" resta null, e
+// tutto quello che la tocca (avanzamento, chiusura) lo salta.
+//
+// Per una stampa vera la riga di storico nasce SUBITO, "in_stampa" e coi
+// lotti gia' registrati, quando la stampa viene accettata (docs/api.md,
+// "Storico", 23 settembre 2026), e prende esito e copie uscite a lavoro
+// finito, PRIMA dell'evento finale: cosi' un'etichetta uscita ha sempre la
+// sua riga.
+function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome, prova = false, registrazioneLotti = null }) {
   const lavoroId = "stampa-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const lavoro = { annullato: false, copiaCorrente: 0, inPausa: false, copie };
   lavoriAttivi.set(lavoroId, lavoro);
+  const riga = prova
+    ? null
+    : registraStorico(prodotto, {
+        copie: 0,
+        quantita,
+        scadenza,
+        lotto,
+        dispositivoNome,
+        esito: "in_stampa",
+        registrazioneLotti,
+        lavoroId,
+      });
 
   stampante = { ...stampante, stato: "in_stampa", messaggio: "Stampa in corso" };
   mandaEvento("stampante", stampante);
@@ -968,18 +1813,30 @@ function avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, disposi
     lavoriAttivi.delete(lavoroId);
     stampante = { ...stampante, stato: "pronta", messaggio: "Pronta" };
     mandaEvento("stampante", stampante);
-    if (lavoro.copiaCorrente > 0) {
-      registraStorico(prodotto, {
-        copie: lavoro.copiaCorrente,
-        quantita,
-        scadenza,
-        lotto,
-        dispositivoNome,
-        esito: stato === "errore" ? "errore" : prova ? "prova" : "completata",
-      });
-      if (!prova) {
-        prodotto.usi += 1;
-        prodotto.ultimoUso = dataLocaleIso();
+    // Una prova non ha riga (riga === null, vedi sopra): niente da chiudere,
+    // e /api/mock/esito-non-salvato (che simula la riga rimasta "in_stampa")
+    // non ha senso per una prova.
+    const copieUscite = lavoro.copiaCorrente;
+    if (riga) {
+      if (prossimoEsitoNonSalvato) {
+        prossimoEsitoNonSalvato = false;
+        setTimeout(() => {
+          riga.esito = stato;
+          riga.copie = copieUscite;
+        }, RITARDO_RIPROVA_ESITO_MS);
+      } else {
+        riga.esito = stato;
+        riga.copie = copieUscite;
+      }
+    }
+    if (lavoro.copiaCorrente > 0 && !prova) {
+      prodotto.usi += 1;
+      prodotto.ultimoUso = dataLocaleIso();
+      for (const ids of Object.values(registrazioneLotti?.lottiUsati ?? {})) {
+        for (const lid of ids) {
+          const l = lotti.find((x) => x.id === lid);
+          if (l) l.usi++;
+        }
       }
     }
     mandaEvento("stampa", {
@@ -1025,6 +1882,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORTA}`);
   const percorso = url.pathname;
   console.log(`${req.method} ${percorso}`);
+  chiudiScadutiAutomaticamente();
 
   try {
     /* ---- eventi ---- */
@@ -1044,6 +1902,15 @@ const server = http.createServer(async (req, res) => {
 
     /* ---- stampante ---- */
     if (percorso === "/api/stampante" && req.method === "GET") return rispondiJson(res, 200, stampante);
+
+    // "Cerca di nuovo" delle Impostazioni (docs/api.md, "Impostazioni come
+    // il prototipo"): forza subito una nuova ricerca, invece di aspettare il
+    // giro automatico, e torna lo stato aggiornato (stesso corpo del GET).
+    if (percorso === "/api/stampante/cerca" && req.method === "POST") {
+      stampante = { ...stampante, ultimoControllo: dataLocaleIso() };
+      mandaEvento("stampante", stampante);
+      return rispondiJson(res, 200, stampante);
+    }
 
     if (percorso === "/api/stampante/prova" && req.method === "POST") {
       const lavoroId = "prova-" + Date.now().toString(36);
@@ -1152,11 +2019,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (percorso === "/api/stampe" && req.method === "POST") {
+      if (stampante.stato === "scollegata") return erroreJson(res, 409, "Stampante spenta o scollegata");
       const corpo = await leggiCorpoJson(req);
       const prodotto = trovaProdotto(Number(corpo.prodottoId));
       if (!prodotto) return erroreJson(res, 400, "Prodotto non valido");
       const copie = Math.max(1, Math.min(99, Number(corpo.copie) || 1));
-      const schema = impostazioni.schema_lotto;
+      // Lo schema e' dell'etichetta di QUESTO prodotto (docs/api.md,
+      // "Impostazioni come il prototipo"), non piu' un'impostazione globale.
+      const schema = prodotto.etichetta?.schemaLotto ?? "data";
       const lottoInviato = typeof corpo.lotto === "string" ? corpo.lotto.trim() : "";
       // Il client manda il lotto solo se scritto a mano o se l'ha cambiato
       // rispetto alla proposta: se manca, o e' rimasto uguale alla proposta,
@@ -1166,16 +2036,22 @@ const server = http.createServer(async (req, res) => {
       let lotto;
       if (!lottoInviato) {
         if (schema === "mano") return erroreJson(res, 400, "Il lotto è obbligatorio con lo schema «a mano»");
-        lotto = consumaLottoProposto();
+        lotto = consumaLottoProposto(schema);
       } else if (schema !== "mano" && lottoInviato === propostaAttuale) {
-        lotto = consumaLottoProposto();
+        lotto = consumaLottoProposto(schema);
       } else {
         lotto = lottoInviato;
       }
       const quantita = (typeof corpo.quantita === "string" && corpo.quantita.trim()) || prodotto.quantita;
-      const scadenza = (typeof corpo.scadenza === "string" && corpo.scadenza.trim()) || dataLocale(piuGiorni(new Date(), prodotto.giorniScadenza));
+      const scadenza = (typeof corpo.scadenza === "string" && corpo.scadenza.trim()) || dataLocale(piuGiorni(new Date(), GIORNI_SCADENZA_PROPOSTI));
+      // La scelta a mano dei lotti (docs/api.md, "Stampa: quali lotti si
+      // registrano"): solo per gli ingredienti tracciati, mai per i
+      // semilavorati (si risolvono sempre da soli). Senza il campo, o per
+      // un ingrediente assente dalla mappa, vale la regola di serie.
+      const registrazione = registraLottiStampa(prodotto, corpo.lotti && typeof corpo.lotti === "object" ? corpo.lotti : null);
+      if (registrazione.errore) return erroreJson(res, 400, registrazione.errore);
       const dispositivo = identificaDispositivo(req, res);
-      const lavoroId = avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome: dispositivo.nome });
+      const lavoroId = avviaLavoroStampa(prodotto, { copie, quantita, scadenza, lotto, dispositivoNome: dispositivo.nome, registrazioneLotti: registrazione });
       return rispondiJson(res, 200, { lavoroId, lotto, scadenza });
     }
 
@@ -1187,16 +2063,20 @@ const server = http.createServer(async (req, res) => {
       if (!prodotto) return erroreJson(res, 404, "Quel prodotto non c'è più");
       const copie = Math.max(1, Math.min(99, Number(corpo.copie) || ultima.copie || 1));
       const dispositivo = identificaDispositivo(req, res);
+      // La ristampa non porta una scelta a mano: si ricalcola la regola di
+      // serie al momento (i lotti aperti potrebbero essere cambiati da
+      // allora).
+      const registrazione = registraLottiStampa(prodotto, null);
       const lavoroId = avviaLavoroStampa(prodotto, {
-        copie, quantita: ultima.quantita, scadenza: ultima.scadenza, lotto: ultima.lotto, dispositivoNome: dispositivo.nome,
+        copie, quantita: ultima.quantita, scadenza: ultima.scadenza, lotto: ultima.lotto, dispositivoNome: dispositivo.nome, registrazioneLotti: registrazione,
       });
       return rispondiJson(res, 200, { lavoroId });
     }
 
     // La "Stampa di prova" della vista Etichette: prova il prodotto COSI'
     // COM'E' in modifica (anche non salvato, etichetta compresa), su una sola
-    // copia. Finisce nello storico con esito "prova" (avviaLavoroStampa se ne
-    // occupa), non tocca "usi"/"ultimoUso".
+    // copia. Dal 24/09/2026 non finisce piu' nello storico (avviaLavoroStampa
+    // se ne occupa, prova: true), non tocca "usi"/"ultimoUso".
     if (percorso === "/api/stampe/prova-prodotto" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req);
       const prodotto = corpo.prodotto;
@@ -1207,7 +2087,7 @@ const server = http.createServer(async (req, res) => {
       const lavoroId = avviaLavoroStampa(prodotto, {
         copie: 1,
         quantita: prodotto.quantita,
-        scadenza: dataLocale(piuGiorni(new Date(), prodotto.giorniScadenza)),
+        scadenza: dataLocale(piuGiorni(new Date(), GIORNI_SCADENZA_PROPOSTI)),
         lotto: "PROVA",
         dispositivoNome: dispositivo.nome,
         prova: true,
@@ -1274,7 +2154,7 @@ const server = http.createServer(async (req, res) => {
         }
         return a.nome.localeCompare(b.nome, "it");
       });
-      return rispondiJson(res, 200, elenco);
+      return rispondiJson(res, 200, elenco.map(prodottoDto));
     }
     // Senza corpo: il prodotto nuovo del prototipo, pronto da riscrivere
     // subito (nome "Etichetta nuova", commit f612a64 del servizio, 3 giorni,
@@ -1289,7 +2169,10 @@ const server = http.createServer(async (req, res) => {
         id: prossimoProdottoId++,
         nome,
         nomeStampa: corpo.nomeStampa || (corpo.nome ? String(corpo.nome).toUpperCase() : "ETICHETTA NUOVA"),
-        etichetta: corpo.etichetta && Array.isArray(corpo.etichetta.blocchi) ? corpo.etichetta : etichettaNuova(),
+        etichetta:
+          corpo.etichetta && Array.isArray(corpo.etichetta.blocchi)
+            ? { ...corpo.etichetta, schemaLotto: corpo.etichetta.schemaLotto ?? "data" }
+            : etichettaNuova(),
         ingredienti: corpo.ingredienti || "",
         allergeni: Array.isArray(corpo.allergeni) ? corpo.allergeni : [],
         modoUso: corpo.modoUso || "",
@@ -1298,13 +2181,14 @@ const server = http.createServer(async (req, res) => {
         quantita: corpo.quantita || "500 g",
         valoriNutrizionali: Array.isArray(corpo.valoriNutrizionali) ? corpo.valoriNutrizionali : [],
         siglaOperatore: corpo.siglaOperatore || "",
+        tracciati: sanitizzaTracciati(corpo.tracciati) ?? [],
         usi: 0,
         ultimoUso: null,
         creatoIl: ora,
         modificatoIl: ora,
       };
       prodotti.push(nuovo);
-      return rispondiJson(res, 200, nuovo);
+      return rispondiJson(res, 200, prodottoDto(nuovo));
     }
     // "Duplica prodotto": copia tutto, etichetta compresa (funzionalita' del
     // prototipo, funzione duplicaProdotto). Il nome stampato segue quello in
@@ -1328,7 +2212,7 @@ const server = http.createServer(async (req, res) => {
         modificatoIl: ora,
       };
       prodotti.push(copia);
-      return rispondiJson(res, 201, copia);
+      return rispondiJson(res, 201, prodottoDto(copia));
     }
     const unProdotto = percorso.match(/^\/api\/prodotti\/(\d+)$/);
     if (unProdotto) {
@@ -1336,13 +2220,16 @@ const server = http.createServer(async (req, res) => {
       const prodotto = trovaProdotto(id);
       if (req.method === "GET") {
         if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
-        return rispondiJson(res, 200, prodotto);
+        return rispondiJson(res, 200, prodottoDto(prodotto));
       }
       if (req.method === "PUT") {
         if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
         const corpo = await leggiCorpoJson(req);
-        Object.assign(prodotto, corpo, { id, modificatoIl: dataLocaleIso() });
-        return rispondiJson(res, 200, prodotto);
+        const tracciati = sanitizzaTracciati(corpo.tracciati) ?? prodotto.tracciati;
+        Object.assign(prodotto, corpo, { id, tracciati, modificatoIl: dataLocaleIso() });
+        // Come alla creazione: se il corpo non mandava schemaLotto, vale "data".
+        if (prodotto.etichetta) prodotto.etichetta.schemaLotto = prodotto.etichetta.schemaLotto ?? "data";
+        return rispondiJson(res, 200, prodottoDto(prodotto));
       }
       if (req.method === "DELETE") {
         if (!prodotto) return erroreJson(res, 404, "Prodotto non trovato");
@@ -1371,7 +2258,11 @@ const server = http.createServer(async (req, res) => {
     }
     // Il prodotto in modifica (anche non salvato, etichetta compresa): non
     // c'e' piu' un "prodottoId" a parte, ne' un'etichetta separata da unire -
-    // revisione di questo giro, e' tutto dentro "prodotto".
+    // revisione di questo giro, e' tutto dentro "prodotto". scadenzaSegnaposto
+    // (docs/api.md, 24/09/2026, editor): il finto disegna righe finte per
+    // "scadenza" (infoBlocco piu' sopra), non testo vero, quindi non c'e' un
+    // segnaposto da disegnare - basta accettare il parametro senza errori,
+    // come qui (JSON.parse non si lamenta di un campo in piu').
     if (percorso === "/api/resa/anteprima.png" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req);
       const prodotto = corpo.prodotto;
@@ -1384,7 +2275,8 @@ const server = http.createServer(async (req, res) => {
     }
     // Le misure della stessa bozza (per la cornice: corta o lunga, e la
     // didascalia "... × ... mm"), non solo il PNG: stesso corpo di
-    // /api/resa/anteprima.png, cambia solo la risposta.
+    // /api/resa/anteprima.png (scadenzaSegnaposto compreso, ignorato per lo
+    // stesso motivo: nessun testo vero da sostituire), cambia solo la risposta.
     if (percorso === "/api/resa/anteprima/misure" && req.method === "POST") {
       const corpo = await leggiCorpoJson(req);
       const prodotto = corpo.prodotto;
@@ -1414,14 +2306,230 @@ const server = http.createServer(async (req, res) => {
 
     /* ---- lotto ---- */
     if (percorso === "/api/lotto" && req.method === "GET") {
-      return rispondiJson(res, 200, { schema: impostazioni.schema_lotto, schemi: schemiLotto() });
+      // Senza prodottoId: solo l'elenco degli schemi, per la schermata che
+      // li spiega (schema/oggi null). Con prodottoId: anche lo schema di
+      // QUELL'etichetta e cosa uscirebbe oggi (docs/api.md, "Impostazioni
+      // come il prototipo").
+      const prodottoIdParam = url.searchParams.get("prodottoId");
+      if (prodottoIdParam === null) {
+        return rispondiJson(res, 200, { schema: null, oggi: null, schemi: schemiLotto() });
+      }
+      const prodottoLotto = trovaProdotto(Number(prodottoIdParam));
+      if (!prodottoLotto) return erroreJson(res, 404, "Prodotto non trovato");
+      const schemaLotto = prodottoLotto.etichetta?.schemaLotto ?? "data";
+      const oggi = schemiLotto().find((s) => s.codice === schemaLotto)?.oggi ?? null;
+      return rispondiJson(res, 200, { schema: schemaLotto, oggi, schemi: schemiLotto() });
+    }
+
+    /* ---- programma: versione, cartella dei dati, copie di sicurezza ---- */
+    // docs/api.md, "Impostazioni come il prototipo".
+    if (percorso === "/api/programma" && req.method === "GET") {
+      return rispondiJson(res, 200, {
+        versione: versione.versione,
+        cartellaDati: "C:\\ProgramData\\Etichette",
+        backup,
+      });
+    }
+    if (percorso === "/api/programma/backup" && req.method === "PUT") {
+      const corpo = await leggiCorpoJson(req);
+      if (corpo.cartella === null) {
+        // Spegne le copie: senza cartella non si copia niente (docs/api.md).
+        backup = { cartella: null, ultima: null, ultimaRiuscita: null, prossima: null };
+      } else {
+        const cartella = typeof corpo.cartella === "string" ? corpo.cartella.trim() : "";
+        if (!/^[a-zA-Z]:\\/.test(cartella)) {
+          return erroreJson(res, 400, "La cartella non esiste");
+        }
+        if (/sola.?lettura/i.test(cartella)) {
+          return erroreJson(res, 400, "La cartella non è scrivibile");
+        }
+        backup = { ...backup, cartella, prossima: prossimeTreDiNotte() };
+      }
+      return rispondiJson(res, 200, {
+        versione: versione.versione,
+        cartellaDati: "C:\\ProgramData\\Etichette",
+        backup,
+      });
+    }
+    // "Fai una copia adesso": risponde con l'esito appena scritto (lo stesso
+    // oggetto "ultima" del GET, non tutto /api/programma - docs/api.md).
+    if (percorso === "/api/programma/backup" && req.method === "POST") {
+      if (!backup.cartella) return erroreJson(res, 409, "Nessuna cartella di backup configurata");
+      if (backupInCorso) return erroreJson(res, 409, "Una copia è già in corso");
+      backupInCorso = true;
+      await new Promise((risolvi) => setTimeout(risolvi, 800));
+      const fallisce = prossimoBackupFallisce;
+      prossimoBackupFallisce = false;
+      const ultima = fallisce
+        ? { quando: dataLocaleIso(), dimensioneByte: 0, foto: 0, esito: "fallita", errore: "Spazio insufficiente sulla cartella di destinazione" }
+        : {
+            quando: dataLocaleIso(),
+            dimensioneByte: 43_212_345 + Math.floor(Math.random() * 1_000_000),
+            foto: 138,
+            esito: "riuscita",
+            errore: null,
+          };
+      // Un tentativo fallito aggiorna solo "ultima" (l'ultimo TENTATIVO):
+      // "ultimaRiuscita" (l'ultima copia buona) cambia solo quando questo
+      // tentativo e' andato bene - non si cancella mai per un fallimento
+      // successivo (docs/api.md, "Copie ravvicinate e ultima copia buona").
+      backup = { ...backup, ultima, ultimaRiuscita: ultima.esito === "riuscita" ? ultima : backup.ultimaRiuscita };
+      backupInCorso = false;
+      return rispondiJson(res, 200, ultima);
+    }
+    // Solo per le prove manuali, come /api/mock/errore-nastro.
+    if (percorso === "/api/mock/backup-fallisce" && req.method === "POST") {
+      prossimoBackupFallisce = true;
+      return rispondiJson(res, 200, { ok: true });
+    }
+    // Solo per le prove manuali, come /api/mock/errore-nastro: mette la
+    // stampante in uno stato a scelta per vedere come lo mostra
+    // l'interfaccia (pastiglia in testata, Stampa, Impostazioni), per
+    // esempio {"stato":"errore","messaggio":"Coperchio aperto"} oppure
+    // {"stato":"scollegata"}; {"stato":"pronta"} la rimette a posto. Come il
+    // servizio vero (StampeService#verificaStampantePronta), da scollegata
+    // le stampe rispondono 409.
+    if (percorso === "/api/mock/stato-stampante" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      const stati = { pronta: "Pronta", in_stampa: "In stampa", errore: "Errore", scollegata: "Stampante spenta o scollegata" };
+      if (!Object.hasOwn(stati, corpo.stato)) return erroreJson(res, 400, "stato: pronta, in_stampa, errore o scollegata");
+      stampante = {
+        ...stampante,
+        stato: corpo.stato,
+        messaggio: corpo.messaggio || stati[corpo.stato],
+        errori: corpo.stato === "errore" ? [corpo.messaggio || "Errore"] : [],
+        rotolo: corpo.stato === "scollegata" ? null : stampante.rotolo ?? 62,
+      };
+      mandaEvento("stampante", stampante);
+      return rispondiJson(res, 200, stampante);
+    }
+    // Solo per le prove manuali, come /api/mock/errore-nastro: il pannello
+    // "Stampata" di Stampa.tsx con l'avviso in ambra "l'esito non è stato
+    // salvato" (vedi prossimoEsitoNonSalvato).
+    if (percorso === "/api/mock/esito-non-salvato" && req.method === "POST") {
+      prossimoEsitoNonSalvato = true;
+      return rispondiJson(res, 200, { ok: true });
+    }
+    // Solo per le prove manuali, come /api/mock/errore-nastro: aggiunge
+    // righe di storico finte, sparse sugli ultimi 60 giorni, per provare
+    // "Mostra altre" (RIGHE_PER_PAGINA_STORICO in hooks.ts e' 200: con
+    // "righe" oltre quel numero la paginazione vera entra in gioco) e gli
+    // esiti che in pratica capitano di rado (annullata/interrotta/errore),
+    // senza dover fermare a mano decine di stampe vere. Corpo:
+    // {"righe": 450}. I lotti sono plausibili ma non "veri" (non toccano
+    // progressivoGiornoPerData, che resta per i lotti registrati sul serio).
+    if (percorso === "/api/mock/semina-storico" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      const righeDaFare = Number(corpo.righe);
+      if (!Number.isInteger(righeDaFare) || righeDaFare < 1 || righeDaFare > 5000) {
+        return erroreJson(res, 400, "righe deve stare fra 1 e 5000");
+      }
+      const dispositiviSemina = ["PC", "Telefono della cucina", "Telefono del banco"];
+      // Completata in maggioranza, il resto sparso sugli altri esiti veri
+      // (docs/api.md, "Storico"): "errore" e "interrotta" con meno copie di
+      // quelle chieste (la stampa non e' arrivata in fondo). Niente "prova"
+      // qui dentro dal 24/09/2026: una prova non scrive piu' nessuna riga
+      // (vedi avviaLavoroStampa), quindi seminarne di finte sarebbe fuorviante.
+      const esitiSemina = [
+        ...Array(88).fill("completata"),
+        ...Array(5).fill("annullata"),
+        ...Array(4).fill("interrotta"),
+        ...Array(3).fill("errore"),
+      ];
+      const unoAcaso = (lista) => lista[Math.floor(Math.random() * lista.length)];
+      for (let i = 0; i < righeDaFare; i++) {
+        const p = unoAcaso(prodotti);
+        const quando = new Date(Date.now() - Math.floor(Math.random() * 60 * 86_400_000));
+        const esito = unoAcaso(esitiSemina);
+        const copieChieste = 1 + Math.floor(Math.random() * 5);
+        const copie = esito === "errore" ? 0 : esito === "interrotta" ? Math.max(1, Math.floor(copieChieste / 2)) : copieChieste;
+        const lotto = `L ${chiaveGiorno(quando)}-${String(500 + (i % 400)).padStart(3, "0")}`;
+        storico.push({
+          id: prossimoStoricoId++,
+          stampatoIl: dataLocaleIso(quando),
+          prodottoId: p.id,
+          prodottoNome: p.nome,
+          lotto,
+          quantita: p.quantita,
+          scadenza: dataLocale(piuGiorni(quando, p.giorniScadenza)),
+          copie,
+          dispositivoNome: unoAcaso(dispositiviSemina),
+          esito,
+          ...registraLottiStampa(p, null),
+          correttoIl: null,
+          lavoroId: null,
+        });
+      }
+      storico.sort(confrontaStorico);
+      return rispondiJson(res, 200, { ok: true, aggiunte: righeDaFare, totale: storico.length });
     }
 
     /* ---- storico ---- */
+    // Tutti i filtri sono facoltativi e combinabili (docs/api.md, "Storico"):
+    // prodottoId, esito e lavoroId restringono; limite (1..1000) e primaDi
+    // (l'id dell'ultima riga ricevuta) sfogliano a pagine. primaDi con un id
+    // che non c'e': 400, come il servizio.
     if (percorso === "/api/storico" && req.method === "GET") {
       const periodo = url.searchParams.get("periodo") || "tutto";
       const q = url.searchParams.get("q") || "";
-      return rispondiJson(res, 200, filtraStorico(periodo, q));
+      const prodottoId = url.searchParams.get("prodottoId") ? Number(url.searchParams.get("prodottoId")) : null;
+      const esito = url.searchParams.get("esito") || null;
+      const lavoroId = url.searchParams.get("lavoroId") || null;
+      let limite = null;
+      if (url.searchParams.get("limite")) {
+        limite = Number(url.searchParams.get("limite"));
+        if (!Number.isInteger(limite) || limite < 1 || limite > 1000) return erroreJson(res, 400, "limite deve stare fra 1 e 1000");
+      }
+      let righe = filtraStorico(periodo, q)
+        .filter((r) => prodottoId === null || r.prodottoId === prodottoId)
+        .filter((r) => esito === null || r.esito === esito)
+        .filter((r) => lavoroId === null || r.lavoroId === lavoroId)
+        .sort(confrontaStorico);
+      if (url.searchParams.get("primaDi")) {
+        const riferimento = storico.find((r) => r.id === Number(url.searchParams.get("primaDi")));
+        if (!riferimento) return erroreJson(res, 400, "primaDi: riga di storico sconosciuta");
+        righe = righe.filter((r) => confrontaStorico(riferimento, r) < 0);
+      }
+      if (limite !== null) righe = righe.slice(0, limite);
+      return rispondiJson(res, 200, righe.map(storicoRigaDto));
+    }
+    // GET /api/storico/esporta?formato=xlsx|csv|pdf&periodo=...&q=...: stessi
+    // filtri e stesse righe di GET /api/storico qui sopra, ma SENZA "limite"
+    // (l'esportazione prende sempre tutto quello che passa il filtro). Nel
+    // servizio finto c'e' solo il CSV vero; xlsx e pdf rispondono 501 - li fa
+    // solo il servizio vero, qui basta che l'interfaccia sappia gestirlo
+    // (EsportaElenco.tsx).
+    if (percorso === "/api/storico/esporta" && req.method === "GET") {
+      const formato = url.searchParams.get("formato") || "";
+      if (formato !== "csv" && formato !== "xlsx" && formato !== "pdf") return erroreJson(res, 400, "formato deve essere xlsx, csv o pdf");
+      if (formato !== "csv") return erroreJson(res, 501, "Nel servizio finto c'è solo il CSV.");
+      const periodo = url.searchParams.get("periodo") || "tutto";
+      const q = url.searchParams.get("q") || "";
+      const righe = filtraStorico(periodo, q).sort(confrontaStorico);
+      const testo = "﻿" + righeCsvStorico(righe).join("\r\n") + "\r\n";
+      const etichettaPeriodo = periodo === "oggi" ? "oggi" : periodo === "7" ? "7-giorni" : periodo === "30" ? "30-giorni" : "tutto";
+      const buffer = Buffer.from(testo, "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="storico-stampe-${etichettaPeriodo}-${dataLocale()}.csv"`,
+        "Content-Length": buffer.length,
+      });
+      return res.end(buffer);
+    }
+    // L'ultima stampa valida di ogni semilavorato chiesto (docs/api.md): la
+    // stessa riga che si registrerebbe stampando adesso (ultimaProduzioneValida,
+    // la regola di registraLottiStampa). Come il servizio, un prodotto senza
+    // stampa valida non compare nella risposta; al massimo 100 id.
+    if (percorso === "/api/storico/ultime-valide" && req.method === "GET") {
+      const ids = (url.searchParams.get("prodotti") || "").split(",").map((s) => s.trim()).filter(Boolean).map(Number);
+      if (ids.some((id) => !Number.isInteger(id))) return erroreJson(res, 400, "prodotti: servono id numerici separati da virgole");
+      if (ids.length > 100) return erroreJson(res, 400, "Al massimo 100 prodotti per richiesta");
+      const risposta = {};
+      for (const id of ids) {
+        const riga = ultimaProduzioneValida(id);
+        if (riga) risposta[id] = storicoRigaDto(riga);
+      }
+      return rispondiJson(res, 200, risposta);
     }
     const ristampaStorico = percorso.match(/^\/api\/storico\/(\d+)\/ristampa$/);
     if (ristampaStorico && req.method === "POST") {
@@ -1432,10 +2540,57 @@ const server = http.createServer(async (req, res) => {
       const corpo = await leggiCorpoJson(req).catch(() => ({}));
       const copie = Math.max(1, Math.min(99, Number(corpo.copie) || 1));
       const dispositivo = identificaDispositivo(req, res);
+      const registrazione = registraLottiStampa(prodotto, null);
       const lavoroId = avviaLavoroStampa(prodotto, {
-        copie, quantita: riga.quantita, scadenza: riga.scadenza, lotto: riga.lotto, dispositivoNome: dispositivo.nome,
+        copie, quantita: riga.quantita, scadenza: riga.scadenza, lotto: riga.lotto, dispositivoNome: dispositivo.nome, registrazioneLotti: registrazione,
       });
       return rispondiJson(res, 200, { lavoroId });
+    }
+    // La catena dei lotti di una stampa (docs/api.md, "Storico: la catena").
+    const catenaStorico = percorso.match(/^\/api\/storico\/(\d+)\/catena$/);
+    if (catenaStorico) {
+      const riga = storico.find((r) => r.id === Number(catenaStorico[1]));
+      if (!riga) return erroreJson(res, 404, "Riga non trovata");
+      if (req.method === "GET") return rispondiJson(res, 200, catenaStoricoDto(riga));
+      if (req.method === "PUT") {
+        const corpo = await leggiCorpoJson(req);
+        const lottiCorretti = corpo.lotti && typeof corpo.lotti === "object" ? corpo.lotti : {};
+        for (const [ingredienteIdTesto, scelta] of Object.entries(lottiCorretti)) {
+          const ingredienteId = Number(ingredienteIdTesto);
+          if (!Array.isArray(scelta)) continue;
+          const ids = [];
+          for (const voce of scelta) {
+            const lid = Number(voce);
+            const l = lotti.find((x) => x.id === lid);
+            if (!l || l.ingredienteId !== ingredienteId) {
+              const ing = ingredienti.find((i) => i.id === ingredienteId);
+              return erroreJson(res, 400, `Il lotto scelto non è di ${ing ? ing.nome : "quell'ingrediente"}.`);
+            }
+            ids.push(lid);
+          }
+          riga.lottiUsati = { ...(riga.lottiUsati || {}), [ingredienteId]: ids };
+        }
+        // Correzione degli anelli di produzione propria (docs/api.md, "Foto,
+        // proposte dal testo e correzione dei semilavorati"): la chiave e'
+        // l'idProdotto tracciato come semilavorato, il valore lo storicoId
+        // della stampa davvero usata, o null per "non registrato".
+        const stampeCorrette = corpo.stampe && typeof corpo.stampe === "object" ? corpo.stampe : {};
+        for (const [prodottoIdTesto, valore] of Object.entries(stampeCorrette)) {
+          const prodottoId = Number(prodottoIdTesto);
+          if (valore === null) {
+            riga.produzioniUsate = { ...(riga.produzioniUsate || {}), [prodottoId]: null };
+            continue;
+          }
+          const storicoIdScelto = Number(valore);
+          const sorgente = storico.find((s) => s.id === storicoIdScelto);
+          if (!sorgente || sorgente.prodottoId !== prodottoId) {
+            return erroreJson(res, 400, "Quella riga di storico non è una stampa di quel prodotto.");
+          }
+          riga.produzioniUsate = { ...(riga.produzioniUsate || {}), [prodottoId]: storicoIdScelto };
+        }
+        riga.correttoIl = dataLocale();
+        return rispondiJson(res, 200, catenaStoricoDto(riga));
+      }
     }
 
     /* ---- dispositivi ---- */
@@ -1479,6 +2634,253 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    /* ---- ingredienti e fornitori (docs/api.md, "Ingredienti, fornitori e lotti") ---- */
+    if (percorso === "/api/ingredienti" && req.method === "GET") {
+      const q = (url.searchParams.get("q") || "").toLowerCase();
+      const filtro = url.searchParams.get("filtro") || "tutti";
+      let elenco = ingredienti.filter((i) => !q || i.nome.toLowerCase().includes(q));
+      if (filtro === "attenzione") {
+        elenco = elenco.filter((i) => ["manca", "scaduto", "scade"].includes(calcolaStatoIngrediente(i.id)));
+      }
+      elenco = [...elenco].sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+      return rispondiJson(res, 200, elenco.map(ingredienteDto));
+    }
+    if (percorso === "/api/ingredienti" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      const nome = typeof corpo.nome === "string" ? corpo.nome.trim() : "";
+      if (!nome) return erroreJson(res, 400, "Serve il nome dell'ingrediente");
+      const doppio = trovaIngredienteDoppio(nome, null);
+      if (doppio) return erroreJson(res, 409, messaggioNomeDoppio(doppio));
+      const nuovo = { id: prossimoIngredienteId++, nome, fornitoreId: risolviFornitoreId(corpo) };
+      ingredienti.push(nuovo);
+      return rispondiJson(res, 201, ingredienteDto(nuovo));
+    }
+    // Sotto i due caratteri il servizio risponde comunque una lista vuota:
+    // va prima del match generico /api/ingredienti/{id} qui sotto.
+    if (percorso === "/api/ingredienti/simili" && req.method === "GET") {
+      const nome = url.searchParams.get("nome") || "";
+      const escludiRaw = url.searchParams.get("escludi");
+      const escludiId = escludiRaw !== null && escludiRaw !== "" ? Number(escludiRaw) : null;
+      return rispondiJson(res, 200, ingredientiSimili(nome, escludiId));
+    }
+    if (percorso === "/api/ingredienti/proposte" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req).catch(() => ({}));
+      const testo = typeof corpo.testo === "string" ? corpo.testo : "";
+      const pezzi = spezzaTestoIngredienti(testo);
+      const trovati = [];
+      const visti = new Set();
+      for (const pezzo of pezzi) {
+        const ing = trovaIngredientePerPezzo(pezzo);
+        if (ing && !visti.has(ing.id)) {
+          visti.add(ing.id);
+          trovati.push({ id: ing.id, nome: ing.nome, pezzo });
+        }
+      }
+      return rispondiJson(res, 200, trovati);
+    }
+    const unIngrediente = percorso.match(/^\/api\/ingredienti\/(\d+)$/);
+    if (unIngrediente) {
+      const id = Number(unIngrediente[1]);
+      const ing = ingredienti.find((i) => i.id === id);
+      if (req.method === "GET") {
+        if (!ing) return erroreJson(res, 404, "Ingrediente non trovato");
+        return rispondiJson(res, 200, ingredienteConLottiDto(ing));
+      }
+      if (req.method === "PUT") {
+        if (!ing) return erroreJson(res, 404, "Ingrediente non trovato");
+        const corpo = await leggiCorpoJson(req);
+        const nome = typeof corpo.nome === "string" ? corpo.nome.trim() : "";
+        if (!nome) return erroreJson(res, 400, "Serve il nome dell'ingrediente");
+        const doppio = trovaIngredienteDoppio(nome, id);
+        if (doppio) return erroreJson(res, 409, messaggioNomeDoppio(doppio));
+        ing.nome = nome;
+        ing.fornitoreId = risolviFornitoreId(corpo);
+        return rispondiJson(res, 200, ingredienteDto(ing));
+      }
+      if (req.method === "DELETE") {
+        if (!ing) return erroreJson(res, 404, "Ingrediente non trovato");
+        if (lottiDiIngrediente(id).length > 0) return erroreJson(res, 409, "Non posso eliminarlo: ha dei lotti registrati.");
+        const collegato = prodotti.some((p) => tracciatiProdotto(p).some((t) => t.tipo === "ingrediente" && t.id === id));
+        if (collegato) return erroreJson(res, 409, "Non posso eliminarlo: è collegato a un prodotto.");
+        ingredienti.splice(ingredienti.indexOf(ing), 1);
+        res.writeHead(204).end();
+        return;
+      }
+    }
+    if (percorso === "/api/fornitori" && req.method === "GET") {
+      return rispondiJson(res, 200, [...fornitori].sort((a, b) => a.nome.localeCompare(b.nome, "it")).map(fornitoreConContiDto));
+    }
+    // docs/api.md, "Gestire i fornitori": rinomina e cancellazione, dalla
+    // finestra Fornitori dentro Ingredienti.
+    const unFornitore = percorso.match(/^\/api\/fornitori\/(\d+)$/);
+    if (unFornitore) {
+      const id = Number(unFornitore[1]);
+      const f = fornitori.find((x) => x.id === id);
+      if (req.method === "PUT") {
+        if (!f) return erroreJson(res, 404, "Fornitore non trovato");
+        const corpo = await leggiCorpoJson(req);
+        const nome = typeof corpo.nome === "string" ? corpo.nome.trim() : "";
+        if (!nome) return erroreJson(res, 400, "Serve il nome del fornitore");
+        const doppio = trovaFornitoreDoppio(nome, id);
+        if (doppio) return erroreJson(res, 409, `C'è già un fornitore con questo nome: ${doppio.nome}.`);
+        // Il nome cambia dappertutto (docs/api.md): gli ingredienti leggono
+        // il fornitore per riferimento (fornitoreId, via fornitoreDto), ma
+        // gli arrivi ne tengono una COPIA scritta al momento della consegna
+        // (fornitoreNome, sotto) apposta perche' sopravviva a una
+        // cancellazione - quindi qui va risincronizzata anche lei, non solo
+        // il fornitore.
+        f.nome = nome;
+        for (const a of arrivi) if (a.fornitoreId === id) a.fornitoreNome = nome;
+        return rispondiJson(res, 200, fornitoreConContiDto(f));
+      }
+      if (req.method === "DELETE") {
+        if (!f) return erroreJson(res, 404, "Fornitore non trovato");
+        if (contaIngredientiFornitore(id) > 0) return erroreJson(res, 409, messaggioFornitoreInUso(id));
+        // Le consegne passate non lo impediscono (docs/api.md): restano in
+        // "arrivi" con l'id ormai orfano, ma il loro fornitoreNome e' gia'
+        // scritto (alla registrazione, o all'ultima rinomina sopra) e non
+        // dipende piu' da questa riga che sta per sparire - storico e
+        // catena restano leggibili col nome vero, non con un segnaposto.
+        fornitori.splice(fornitori.indexOf(f), 1);
+        res.writeHead(204).end();
+        return;
+      }
+    }
+
+    /* ---- merce arrivata ---- */
+    if (percorso === "/api/arrivi" && req.method === "POST") {
+      const corpo = await leggiCorpoJson(req);
+      const righeIn = Array.isArray(corpo.righe) ? corpo.righe : [];
+      if (!righeIn.length) return erroreJson(res, 400, "Serve almeno una riga arrivata");
+      for (const r of righeIn) {
+        if (!ingredienti.some((i) => i.id === Number(r.ingredienteId))) return erroreJson(res, 400, "Un ingrediente della consegna non esiste");
+      }
+      const fornitoreId = risolviFornitoreId(corpo);
+      const documento = typeof corpo.documento === "string" ? corpo.documento.trim() : "";
+      const dataArrivo = typeof corpo.data === "string" && corpo.data ? corpo.data : dataLocale();
+      // Il nome si scrive QUI, al momento della registrazione (docs/api.md,
+      // "Gestire i fornitori"): non e' un puro fornitoreId da risolvere ogni
+      // volta, altrimenti cancellando il fornitore la consegna perderebbe il
+      // nome invece di restare leggibile con quello di allora. Segue il
+      // fornitore quando viene rinominato (vedi PUT /api/fornitori/{id}
+      // sotto), resta com'era quando viene cancellato.
+      const fornitoreNome = fornitori.find((f) => f.id === fornitoreId)?.nome ?? "Fornitore non indicato";
+      const arrivo = { id: prossimoArrivoId++, fornitoreId, fornitoreNome, documento, data: dataArrivo };
+      arrivi.push(arrivo);
+      const lottiCreati = [];
+      const conPiuLottiAperti = [];
+      for (const r of righeIn) {
+        const ingredienteId = Number(r.ingredienteId);
+        const ing = ingredienti.find((i) => i.id === ingredienteId);
+        const lottoTesto = typeof r.lotto === "string" ? r.lotto.trim() : "";
+        const codice = lottoTesto || (documento ? `${documento} · ${formattaDataBreve(dataArrivo)}` : formattaDataBreve(dataArrivo));
+        const lotto = {
+          id: prossimoLottoId++,
+          ingredienteId,
+          codice,
+          scadenza: typeof r.scadenza === "string" && r.scadenza ? r.scadenza : null,
+          quantita: typeof r.quantita === "string" ? r.quantita.trim() : "",
+          stato: "aperto",
+          apertoDal: dataArrivo,
+          chiusoIl: null,
+          chiusoDa: null,
+          arrivoId: arrivo.id,
+          usi: 0,
+        };
+        lotti.push(lotto);
+        lottiCreati.push(lotto);
+        if (lottiApertiDiIngrediente(ingredienteId).length > 1) conPiuLottiAperti.push(ing.nome);
+      }
+      return rispondiJson(res, 201, { id: arrivo.id, lotti: lottiCreati.map(lottoIngredienteDto), conPiuLottiAperti });
+    }
+    const unArrivo = percorso.match(/^\/api\/arrivi\/(\d+)$/);
+    if (unArrivo && req.method === "GET") {
+      const a = arrivi.find((x) => x.id === Number(unArrivo[1]));
+      if (!a) return erroreJson(res, 404, "Consegna non trovata");
+      return rispondiJson(res, 200, {
+        id: a.id,
+        fornitore: arrivoFornitoreDto(a),
+        data: a.data,
+        documento: a.documento,
+        lotti: lotti.filter((l) => l.arrivoId === a.id).map(lottoIngredienteDto),
+        foto: fotoDiArrivo(a.id).map(fotoDto),
+      });
+    }
+    const fotoArrivo = percorso.match(/^\/api\/arrivi\/(\d+)\/foto$/);
+    if (fotoArrivo && req.method === "POST") {
+      const a = arrivi.find((x) => x.id === Number(fotoArrivo[1]));
+      if (!a) return erroreJson(res, 404, "Consegna non trovata");
+      return caricaFoto(req, res, "arrivo", a.id);
+    }
+
+    /* ---- lotti-ingrediente ---- */
+    const chiudiLottoIngrediente = percorso.match(/^\/api\/lotti-ingrediente\/(\d+)\/chiudi$/);
+    if (chiudiLottoIngrediente && req.method === "POST") {
+      const l = lotti.find((x) => x.id === Number(chiudiLottoIngrediente[1]));
+      if (!l) return erroreJson(res, 404, "Lotto non trovato");
+      l.stato = "chiuso";
+      l.chiusoIl = dataLocale();
+      l.chiusoDa = "mano";
+      res.writeHead(204).end();
+      return;
+    }
+    const riapriLottoIngrediente = percorso.match(/^\/api\/lotti-ingrediente\/(\d+)\/riapri$/);
+    if (riapriLottoIngrediente && req.method === "POST") {
+      const l = lotti.find((x) => x.id === Number(riapriLottoIngrediente[1]));
+      if (!l) return erroreJson(res, 404, "Lotto non trovato");
+      const altroApertoValido = lottiApertiDiIngrediente(l.ingredienteId).some((x) => x.id !== l.id && !lottoScaduto(x));
+      if (lottoScaduto(l) && altroApertoValido) return erroreJson(res, 409, "È scaduto e l'ingrediente ha già un altro lotto aperto non scaduto.");
+      l.stato = "aperto";
+      l.chiusoIl = null;
+      l.chiusoDa = null;
+      res.writeHead(204).end();
+      return;
+    }
+    const unLottoIngrediente = percorso.match(/^\/api\/lotti-ingrediente\/(\d+)$/);
+    if (unLottoIngrediente && req.method === "PUT") {
+      const l = lotti.find((x) => x.id === Number(unLottoIngrediente[1]));
+      if (!l) return erroreJson(res, 404, "Lotto non trovato");
+      const corpo = await leggiCorpoJson(req);
+      if (typeof corpo.scadenza === "string" && corpo.scadenza) l.scadenza = corpo.scadenza;
+      return rispondiJson(res, 200, lottoIngredienteDto(l));
+    }
+    // Il foglio di richiamo (docs/api.md): le stampe fatte con quel lotto,
+    // dalla piu' recente.
+    const usiLottoIngrediente = percorso.match(/^\/api\/lotti-ingrediente\/(\d+)\/usi$/);
+    if (usiLottoIngrediente && req.method === "GET") {
+      const id = Number(usiLottoIngrediente[1]);
+      if (!lotti.some((x) => x.id === id)) return erroreJson(res, 404, "Lotto non trovato");
+      const righe = storico
+        .filter((r) => Object.values(r.lottiUsati || {}).some((ids) => ids.includes(id)))
+        .map((r) => ({ storicoId: r.id, stampatoIl: r.stampatoIl, prodottoNome: r.prodottoNome, lotto: r.lotto, copie: r.copie, scadenza: formattaDataBreve(r.scadenza) }));
+      return rispondiJson(res, 200, righe);
+    }
+    const fotoLotto = percorso.match(/^\/api\/lotti-ingrediente\/(\d+)\/foto$/);
+    if (fotoLotto && req.method === "POST") {
+      const l = lotti.find((x) => x.id === Number(fotoLotto[1]));
+      if (!l) return erroreJson(res, 404, "Lotto non trovato");
+      return caricaFoto(req, res, "lotto", l.id);
+    }
+
+    /* ---- foto ---- */
+    const unaFoto = percorso.match(/^\/api\/foto\/(\d+)\.jpg$/);
+    if (unaFoto && (req.method === "GET" || req.method === "HEAD")) {
+      const f = foto.find((x) => x.id === Number(unaFoto[1]));
+      if (!f) return erroreJson(res, 404, "Foto non trovata");
+      res.writeHead(200, { "Content-Type": f.mime, "Content-Length": f.buffer.length });
+      res.end(req.method === "HEAD" ? undefined : f.buffer);
+      return;
+    }
+    const eliminaFotoMatch = percorso.match(/^\/api\/foto\/(\d+)$/);
+    if (eliminaFotoMatch && req.method === "DELETE") {
+      const id = Number(eliminaFotoMatch[1]);
+      const indice = foto.findIndex((x) => x.id === id);
+      if (indice === -1) return erroreJson(res, 404, "Foto non trovata");
+      foto.splice(indice, 1);
+      res.writeHead(204).end();
+      return;
+    }
+
     erroreJson(res, 404, "Non trovato: " + percorso);
   } catch (errore) {
     erroreJson(res, 500, errore instanceof Error ? errore.message : "Errore interno");
@@ -1488,5 +2890,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORTA, () => {
   console.log(`Servizio finto "Etichette" in ascolto su http://localhost:${PORTA}`);
   console.log("Rotte: stampante, impostazioni, rete, versione, eventi (fase 1);");
-  console.log("       prodotti (con l'etichetta dentro), resa, lotto, stampe, storico, dispositivi (fase 2)");
+  console.log("       prodotti (con l'etichetta dentro), resa, lotto, stampe, storico, dispositivi (fase 2);");
+  console.log("       programma, stampante/cerca (Impostazioni come il prototipo)");
 });

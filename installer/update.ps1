@@ -249,24 +249,80 @@ function Stop-EtichetteServiceByName {
         Write-Host "Il servizio Etichette non e' registrato; nessun arresto necessario."
         return
     }
-    if ($svc.Status -eq "Stopped") {
-        Write-Host "Il servizio Etichette e' gia' fermo."
-        return
-    }
-
+    # Anche a servizio gia' fermo: "fermo" puo' voler dire che sta fallendo
+    # e ripartendo ogni due minuti (azioni di ripristino), e un riavvio a
+    # meta' msiexec riaprirebbe i file che si stanno sostituendo.
     Disable-EtichetteServiceAutoStart
 
-    Write-Host "Fermo il servizio Etichette (timeout ${TimeoutSeconds}s)..."
-    Stop-Service -Name "Etichette" -Force -ErrorAction SilentlyContinue
+    if ($svc.Status -eq "Stopped") {
+        Write-Host "Il servizio Etichette e' gia' fermo."
+    } else {
+        Write-Host "Fermo il servizio Etichette (timeout ${TimeoutSeconds}s)..."
+        Stop-Service -Name "Etichette" -Force -ErrorAction SilentlyContinue
 
-    if (Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds $TimeoutSeconds) {
-        Write-Host "Servizio fermato."
-        return
+        if (Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds $TimeoutSeconds) {
+            Write-Host "Servizio fermato."
+        } else {
+            Write-Warning "Il servizio Etichette non si e' fermato entro ${TimeoutSeconds}s; termino il suo albero di processi."
+            Stop-ServiceProcessTree -Name "Etichette"
+            [void](Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds 5)
+        }
     }
 
-    Write-Warning "Il servizio Etichette non si e' fermato entro ${TimeoutSeconds}s; termino il suo albero di processi."
-    Stop-ServiceProcessTree -Name "Etichette"
-    [void](Wait-ForServiceStopped -Name "Etichette" -TimeoutSeconds 5)
+    Stop-EtichetteOrphanJvm
+}
+
+function Stop-EtichetteOrphanJvm {
+    <#
+      Termina le JVM del runtime installato rimaste vive senza servizio.
+      Il 25 settembre 2026 il servizio risultava fermo (363 avvii falliti:
+      "Port 8765 was already in use") mentre la JVM della 0.1.41, partita
+      all'avvio del PC e sopravvissuta al suo WinSW, rispondeva ancora sulla
+      8765: col servizio "gia' fermo" lo script passava subito a msiexec, che
+      avrebbe trovato etichette.jar e il runtime in uso (come il 12/9,
+      uscito 1602). Si riconoscono dal percorso dell'eseguibile, sotto la
+      cartella di installazione: nessun'altra java.exe usa quel runtime.
+    #>
+    $installRoot = Get-EtichetteInstallRoot
+    if (-not $installRoot) {
+        return
+    }
+    # Win32_Process e non Get-Process: la JVM gira come LocalSystem e
+    # MainModule puo' essere negato anche a un amministratore; il percorso
+    # letto da CIM in una sessione elevata c'e' sempre.
+    $orphans = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='java.exe' OR Name='javaw.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ExecutablePath -and (Test-IsUnderDirectory -Path $_.ExecutablePath -Directory $installRoot) })
+    if ($orphans.Count -eq 0) {
+        return
+    }
+    foreach ($proc in $orphans) {
+        Write-Warning "JVM del servizio ancora viva senza servizio (PID $($proc.ProcessId), avviata $($proc.CreationDate)): la termino."
+        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    Wait-Process -Id ($orphans | ForEach-Object { [int]$_.ProcessId }) -Timeout 10 -ErrorAction SilentlyContinue
+}
+
+function Get-EtichetteInstallRoot {
+    # Dal percorso registrato del servizio:
+    # "C:\Program Files\Etichette\app\Etichette.exe" -> C:\Program Files\Etichette
+    try {
+        $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='Etichette'" -ErrorAction SilentlyContinue
+        if ($null -eq $service -or -not $service.PathName) {
+            return $null
+        }
+        if ($service.PathName -match '^\s*"([^"]+)"') {
+            $exe = $Matches[1]
+        } else {
+            $exe = ($service.PathName.Trim() -split '\s+')[0]
+        }
+        $root = Split-Path -Parent (Split-Path -Parent $exe)
+        if ($root -and (Test-Path -LiteralPath $root)) {
+            return $root
+        }
+    } catch {
+        Write-Warning "Impossibile ricavare la cartella di installazione dal servizio: $($_.Exception.Message)"
+    }
+    return $null
 }
 
 function Invoke-Msiexec {

@@ -36,6 +36,12 @@ public class StampanteController {
         return monitor.statoCorrente();
     }
 
+    /** {@code POST /api/stampante/cerca} (docs/api.md): forza subito una nuova ricerca invece di aspettare il giro automatico. */
+    @PostMapping("/cerca")
+    public StatoStampante cerca() {
+        return monitor.cercaOra();
+    }
+
     @PostMapping("/prova")
     public Map<String, String> stampaDiProva() {
         StatoStampante stato = monitor.statoCorrente();

@@ -1,4 +1,4 @@
-import { useCallback, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { ALLERGENI } from "../../api/tipi";
 import { IconaGiu } from "../Icone";
 
@@ -49,7 +49,13 @@ export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia
         placeholder={placeholder}
         rows={3}
         aria-label={etichetta}
-        className="scorre border border-[var(--bordo2)] rounded-xl bg-white px-3.5 py-2.5 text-[14px] leading-normal text-inherit resize-y"
+        // "resize-y" non e' piu' qui (E3, 25/09/2026): stava come utility di
+        // Tailwind, che nel cascade di questo file vince SEMPRE su
+        // "textarea.scorre" (index.css, @layer components - vedi il
+        // commento in cima al file) - impediva di spegnerlo sul telefono da
+        // li'. resize vive tutto in index.css adesso, vertical su PC,
+        // none sul telefono.
+        className="scorre border border-[var(--bordo2)] rounded-xl bg-white px-3.5 py-2.5 text-[14px] leading-normal text-inherit"
       />
     </div>
   );
@@ -154,6 +160,7 @@ export function Gruppo({
   sotto,
   aperto,
   onToggle,
+  evidenziato,
   children,
 }: {
   chiave: string;
@@ -161,11 +168,25 @@ export function Gruppo({
   sotto?: string;
   aperto: boolean;
   onToggle: (chiave: string) => void;
+  // Il blocco appena aggiunto (deciso da Gianluca, 25/09/2026): il suo
+  // gruppo si porta in vista da solo (scroll morbido, "ancorato" al centro)
+  // e resta evidenziato un paio di secondi - Etichette.tsx decide QUANDO
+  // (evidenziaBlocco), questo componente si limita a scorrere fin qui non
+  // appena la spunta arriva vera, cosi' funziona identico sia sul gruppo PC
+  // che su quello del telefono (sono due <Gruppo> diversi con la stessa
+  // "chiave", uno dei due nascosto via CSS: vedi .soloPC/.soloTel).
+  evidenziato?: boolean;
   children: ReactNode;
 }) {
   const clic = useCallback(() => onToggle(chiave), [onToggle, chiave]);
+  const rif = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!evidenziato || !rif.current) return;
+    const motionRidotto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    rif.current.scrollIntoView({ behavior: motionRidotto ? "auto" : "smooth", block: "center" });
+  }, [evidenziato]);
   return (
-    <div className={"gruppo" + (aperto ? " aperto" : "")}>
+    <div ref={rif} className={"gruppo" + (aperto ? " aperto" : "") + (evidenziato ? " evidenziato" : "")}>
       <button type="button" className="capoGruppo w-full" onClick={clic} aria-expanded={aperto}>
         <div className="testi">
           <div className="h nomeGruppo">{titolo}</div>

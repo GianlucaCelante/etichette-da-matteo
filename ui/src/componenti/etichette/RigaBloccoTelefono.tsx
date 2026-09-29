@@ -1,6 +1,6 @@
 import { useCallback, type ChangeEvent } from "react";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
-import { IconaVia } from "../Icone";
+import { IconaCestino } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { BottoniAllineamento } from "./ControlloAllineamento";
 import { BottoniPosizione } from "./ControlloPosizione";
@@ -66,8 +66,8 @@ export default function RigaBloccoTelefono({ blocco, onToggleAcceso, onCambiaCor
             ))}
           </select>
         )}
-        <button type="button" className="via" onClick={clicVia} aria-label={`Togli ${nome}`}>
-          <IconaVia larghezza={14} spessoreTratto={2} />
+        <button type="button" className="cestino" onClick={clicVia} title={`Togli il blocco ${nome}`} aria-label={`Togli il blocco ${nome}`}>
+          <IconaCestino larghezza={14} spessoreTratto={2} />
         </button>
       </div>
       {mostraAllineamento && (

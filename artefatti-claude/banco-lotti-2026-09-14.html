@@ -1,0 +1,2470 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banco lotti</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  /* Variabili del tema, identiche a ui/src/index.css */
+  :root {
+    --fondo: #EADECE; --testo: #58443C; --tenue: #7A6A5E; --spento: #9C8C7C;
+    --carta: #ffffff; --crema: #FBF5EC; --sabbia: #F7F0E4; --riga: #EDE3D5; --bordo: #DCCFBB; --bordo2: #CFC0AA; --tratteggio: #C0AF9B;
+    --verde: #5E7B18; --verdescuro: #4B6313; --verdechiaro: #E3EAD1; --verdebordo: #B9C89A;
+    --ambra: #A97514; --ambrachiaro: #F7EBD3; --ambrabordo: #E5CB93;
+    --rosso: #a3301a; --rossocupo: #8c3520; --rossochiaro: #fbe4e0; --rossobordo: #f0b5a8;
+    --barra: #E4DACA; --ombra: 0 8px 24px rgba(88, 68, 60, 0.10);
+  }
+
+  /* ======= CSS dell'app, preso pari pari da ui/src/index.css (@layer components) ======= */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--testo);
+  font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .h {
+  font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  margin: 0;
+  font-weight: 600;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--verde); outline-offset: 2px; border-radius: 8px; }
+input { font: inherit; color: inherit; background: none; border: 0; width: 100%; }
+input:focus { outline: none; }
+svg { display: block; flex-shrink: 0; }
+
+/* ---------- impianto ---------- */
+.app { display: flex; height: 100dvh; }
+.rail {
+  width: 88px; flex-shrink: 0; background: var(--crema); border-right: 1px solid var(--bordo);
+  display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px;
+}
+.marchio {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--verde); color: #fff;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+}
+.voce {
+  width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 4px; color: var(--tenue); font-size: 12px; font-weight: 700;
+}
+.voce.on { background: var(--verdechiaro); color: var(--verdescuro); }
+.corpo { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.testata {
+  height: 76px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 0 32px;
+}
+.titolo { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.schermo { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 0 32px 28px; }
+.colonna {
+  background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 16px;
+  display: flex; flex-direction: column; min-height: 0;
+}
+/* la colonna di sinistra di Stampa (ricerca, gettoni, griglia) nel prototipo
+   e' un div nudo, senza la carta bianca: solo la scheda del prodotto a
+   destra ce l'ha (vistaStampa, "sx" non e' ".colonna"). */
+.colonnaElenco { display: flex; flex-direction: column; min-height: 0; }
+/* L'elenco dei prodotti ridotto a una barra stretta (Etichette, deciso da
+   Gianluca): il bottone la riapre, il nome scelto resta leggibile ruotato in
+   verticale (con lo stesso nome per intero nel title, come tooltip). */
+.elencoCollassato { flex: 0 0 44px; width: 44px; padding: 10px 0; align-items: center; gap: 12px; }
+.riapriElenco, .riduciElenco {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--bordo2); background: var(--sabbia);
+  display: flex; align-items: center; justify-content: center; color: var(--tenue); flex-shrink: 0;
+}
+.nomeVerticale {
+  writing-mode: vertical-rl; text-orientation: mixed; font-size: 12.5px; font-weight: 700; color: var(--tenue);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-height: 0; padding: 2px 0;
+}
+.scorre { overflow-y: auto; overscroll-behavior: contain; }
+.scorre::-webkit-scrollbar { width: 8px; }
+.scorre::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
+.barrasotto { display: none; }
+
+/* Impostazioni: due colonne uguali dai 1024px in su (Stampante e Stampa
+   nella prima riga, Telefoni e tablet sotto a sinistra, per l'ordine in cui
+   le schede compaiono nel markup), una colonna sotto. La combinazione di due
+   classi (.schermo.grigliaImpostazioni) ha piu' specificita' di .schermo da
+   sola, quindi vince in modo pulito senza !important e senza dipendere
+   dall'ordine delle regole nel file. */
+.schermo.grigliaImpostazioni { display: flex; flex-direction: column; }
+.schermo.grigliaImpostazioni > .sezione { align-self: stretch; }
+@media (min-width: 1024px) {
+  .schermo.grigliaImpostazioni { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; }
+  .schermo.grigliaImpostazioni > .sezione { align-self: start; }
+}
+
+/* ---------- pezzi ---------- */
+.btn {
+  height: 48px; padding: 0 22px; border-radius: 12px; display: inline-flex; align-items: center;
+  justify-content: center; gap: 9px; font-size: 16px; font-weight: 700; white-space: nowrap;
+  border: 1px solid var(--bordo2); background: var(--carta);
+}
+.btn.primario { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.primario:disabled, .btn:disabled { opacity: .55; cursor: default; }
+.btn.grande { height: 60px; font-size: 19px; border-radius: 14px; }
+.pastiglia {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 12px;
+  border-radius: 18px; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.punto { width: 9px; height: 9px; border-radius: 50%; }
+.pronta { background: var(--verdechiaro); color: var(--verdescuro); }
+.pronta .punto { background: var(--verde); }
+.incorso { background: var(--ambrachiaro); color: var(--ambra); }
+.incorso .punto { background: var(--ambra); }
+.guasta { background: var(--rossochiaro); color: var(--rosso); }
+.guasta .punto { background: var(--rosso); }
+/* "scollegata" non esiste nel prototipo (la demo non modella la stampante
+   spenta): grigio spento sul fondo sabbia, coerente col resto del tema */
+.spenta { background: var(--sabbia); color: var(--tenue); }
+.spenta .punto { background: var(--spento); }
+.cerca {
+  height: 52px; border: 1px solid var(--bordo2); border-radius: 14px; background: var(--carta);
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; color: var(--spento); font-size: 16px;
+}
+.cerca input { color: var(--testo); }
+.cerca input::placeholder { color: var(--spento); }
+.gettone {
+  height: 40px; padding: 0 18px; border-radius: 20px; border: 1px solid var(--bordo2);
+  background: var(--carta); font-size: 14px; font-weight: 700; color: #6B5A4E; white-space: nowrap;
+}
+.gettone.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+.etichettina { font-size: 12px; font-weight: 700; color: var(--tenue); letter-spacing: .04em; text-transform: uppercase; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.casella {
+  min-height: 52px; border: 1px solid var(--bordo2); border-radius: 12px; background: var(--carta);
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 17px;
+}
+.casella .unita { margin-left: auto; font-size: 14px; color: var(--spento); }
+/* il lotto (mono) sta stretto in meta' griglia: corpo piu' piccolo, come nel
+   prototipo (campoLetto con mono:true), e meno spazio perso in padding/gap,
+   cosi' il numero intero e "AUTO" ci stanno senza troncare anche sui 390px. */
+.casella.mono { font-size: 13px; white-space: nowrap; padding: 10px 10px; gap: 4px; }
+/* segna un valore proposto dal servizio (lotto auto, come nel prototipo):
+   resta modificabile, la pastiglia dice solo da dove viene il valore. */
+.casella .auto {
+  margin-left: auto; font-size: 10px; font-weight: 700; background: var(--riga); color: #6B5A4E;
+  padding: 2px 6px; border-radius: 5px; letter-spacing: .04em; flex-shrink: 0;
+}
+.scheda { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.sep { height: 1px; background: var(--riga); }
+
+.riga {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px;
+  border-bottom: 1px solid var(--riga);
+}
+.riga:last-child { border-bottom: none; }
+.riga .t { font-size: 16px; font-weight: 700; }
+.riga .s { font-size: 13px; color: var(--tenue); }
+.riga .v { margin-left: auto; font-size: 15px; color: var(--tenue); white-space: nowrap; }
+
+.interruttore { width: 52px; height: 30px; border-radius: 15px; background: var(--verde); position: relative; flex-shrink: 0; }
+.interruttore::after {
+  content: ""; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff; transition: all .16s;
+}
+.interruttore.off { background: #C6B7A3; }
+.interruttore.off::after { right: calc(100% - 26px); }
+.cerchio { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #C6B7A3; flex-shrink: 0; }
+.cerchio.on { border-color: var(--verde); background: var(--verde); box-shadow: inset 0 0 0 3px #fff; }
+
+/* ---------- finestra ---------- */
+.velo {
+  position: fixed; inset: 0; background: rgba(58, 49, 40, .42); display: flex; align-items: center;
+  justify-content: center; padding: 24px; z-index: 20;
+}
+.finestra {
+  background: var(--carta); border-radius: 22px; box-shadow: 0 24px 60px rgba(58, 49, 40, .3);
+  width: min(1120px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+}
+.avviso {
+  border: 1px solid var(--rossobordo); background: var(--rossochiaro); border-radius: 16px;
+  padding: 14px 16px; display: flex; gap: 12px; color: var(--rosso);
+}
+.finestra.piccola { width: min(440px, 100%); padding: 24px 24px 20px; gap: 18px; }
+.piedeFinestra { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.avvisino {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
+  padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
+  pointer-events: none;
+}
+.kv { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 14px; color: var(--tenue); }
+.kv b { font-size: 15px; color: var(--testo); }
+.mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------- Stampa ed Etichette: prodotti, campi, allergeni ---------- */
+.griglia { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; }
+.prodotto {
+  text-align: left; border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta);
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-height: 118px; justify-content: flex-start;
+}
+.prodotto .n { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 19px; font-weight: 600; line-height: 1.15; }
+.prodotto .d { font-size: 13px; color: var(--tenue); margin-top: auto; }
+.prodotto.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 17px 19px; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.fuoriEtichetta { font-size: 12.5px; color: var(--spento); line-height: 1.45; padding: 0 6px; flex-shrink: 0; }
+.scelto { background: var(--verdechiaro); color: var(--verdescuro); }
+.rigaEt { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.rigaEt .cambia { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 700; color: var(--verdescuro); }
+
+.allergene {
+  height: 32px; padding: 0 9px; border-radius: 16px; border: 1px solid var(--bordo2);
+  background: var(--carta); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.allergene.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+.allergene.aggiungi { border-style: dashed; border-color: var(--tratteggio); color: var(--tenue); font-weight: 400; }
+
+/* ---------- blocchi dell'etichetta (vista Etichette) ---------- */
+.vassoio { display: flex; flex-direction: column; gap: 8px; padding: 8px 6px; flex-shrink: 0; background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+.riquadro { display: flex; flex-direction: column; gap: 12px; padding: 12px 12px 14px; flex-shrink: 0; background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+.capoRiquadro { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 20px; }
+.nomeRiquadro { font-size: 14px; font-weight: 700; }
+.sottoRiquadro { font-weight: 400; font-size: 12.5px; color: var(--spento); }
+.blocco {
+  min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 5px;
+  border: 1px solid var(--bordo); border-left: 4px solid var(--verde); border-radius: 9px; background: var(--carta);
+  box-shadow: 0 1px 3px rgba(58, 49, 40, .07); font-size: 12.5px; font-weight: 700;
+}
+.blocco.spento { border-left-color: #C6B7A3; }
+.blocco.trascina { opacity: .4; }
+.blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blocco.spento .nome { color: var(--spento); }
+/* riga semplificata del telefono (revisione di questo giro): il nome non si
+   tronca mai, anche a costo di andare a capo. */
+.blocco.telefono .nome { white-space: normal; overflow: visible; text-overflow: unset; }
+.blocco.libero { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px; }
+.blocco .testa { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+.blocco .testoLibero {
+  border: 1px solid var(--bordo2); border-radius: 9px; background: #fff; padding: 9px 11px;
+  font: inherit; font-size: 14px; font-weight: 400; color: inherit;
+}
+.maniglia { width: 14px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--tratteggio); cursor: grab; padding: 3px 0; touch-action: none; }
+.posto { font-size: 10px; line-height: 11px; font-weight: 700; color: var(--spento); font-variant-numeric: tabular-nums; }
+.sw { width: 40px; height: 22px; border-radius: 11px; background: var(--verde); position: relative; flex-shrink: 0; }
+.sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.sw.off { background: #C6B7A3; }
+.sw.off::after { right: calc(100% - 19px); }
+.misura {
+  height: 26px; min-width: 46px; padding: 0 4px 0 9px; border: 1px solid var(--bordo2); border-radius: 8px;
+  background: var(--carta); font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--testo);
+  appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239C8C7C' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; padding-right: 22px;
+}
+.lato { width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
+.lato.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+/* le tre icone dell'allineamento (o della posizione) di un blocco: stessa
+   altezza/stile di .lato, ma un gruppo segmentato (come .quote) invece di un
+   bottone solo che gira. Usate da sole (col riquadro suo) sul telefono. */
+.allineamento, .posizione { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
+.allineamento button, .posizione button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; }
+.allineamento button.on, .posizione button.on { background: var(--testo); color: #fff; }
+/* Su PC (BloccoRiga.tsx, 10 settembre) l'allineamento e la posizione stanno
+   nella stessa riga del blocco, in un riquadro solo (BottoniAllineamento +
+   BottoniPosizione "nudi", senza il loro riquadro, con un separatore leggero
+   in mezzo): risparmia lo spazio dei due riquadri separati. */
+.azioniBlocco { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta); flex-shrink: 0; }
+.azioniBlocco button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
+.azioniBlocco button.on { background: var(--testo); color: #fff; }
+.azioniBlocco .separatore { width: 1px; height: 16px; background: var(--bordo2); flex-shrink: 0; }
+.via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+/* Il gruppo "due colonne" (deciso da Gianluca, non nel mockup): i blocchi sx/dx
+   consecutivi stanno dentro questo riquadro verde, che li segnala come un
+   unico blocco a due colonne; le righe dentro restano bianche come le altre.
+   Su PC ha anche l'intestazione (.zonaTesta); sul telefono e' lo stesso
+   riquadro ma senza, solo per far vedere dove sta la zona. */
+.zonaGruppo { display: flex; flex-direction: column; gap: 6px; background: var(--verdechiaro); border: 1px solid var(--verdebordo); border-radius: 12px; padding: 6px; }
+.zonaTesta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px 2px; }
+.zonaDestra { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.quote { display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
+.quote button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.quote button.on { background: var(--verde); color: #fff; }
+.tavolozza { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); font-size: 13.5px; font-weight: 700; white-space: nowrap; width: 100%; }
+.tavolozza.usato { background: var(--sabbia); color: #B0A08E; border-style: dashed; }
+.tavolozza .piu { margin-left: auto; color: var(--verde); font-size: 18px; }
+.piedeRotolo { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--riga); margin-top: 4px; flex-wrap: wrap; }
+.strumentiEt { display: flex; align-items: center; gap: 8px; }
+.strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }
+.strumentiEt .btn.tondo { width: 44px; padding: 0; gap: 0; border-radius: 22px; }
+.strumentiEt .sep { width: 1px; height: 28px; background: var(--bordo); margin: 0 4px; flex-shrink: 0; }
+/* schermo stretto ma non telefono: Duplica ed Elimina restano con la sola icona */
+@media (min-width: 861px) and (max-width: 1150px) {
+  .strumentiEt .btn.conTesto { width: 44px; padding: 0; gap: 0; }
+  .strumentiEt .btn.conTesto > span { display: none; }
+}
+.btn.elimina { color: var(--rosso); }
+.btn.elimina.forte { background: var(--rosso); border-color: var(--rosso); color: #fff; }
+
+/* ---------- galleria delle etichette e conferma a due tocchi ---------- */
+.galleriaEtichette { display: flex; flex-wrap: wrap; gap: 10px; }
+.cartaEtichetta {
+  width: 168px; flex-shrink: 0; text-align: left; border: 1px solid var(--bordo); border-radius: 14px;
+  background: var(--carta); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+}
+.cartaEtichetta.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 11px 13px; }
+.cartaEtichetta .nome { font-size: 15px; font-weight: 700; }
+.cartaEtichetta .sotto { font-size: 12px; color: var(--tenue); }
+.cartaEtichetta.nuova { border-style: dashed; border-color: var(--tratteggio); align-items: center; justify-content: center; gap: 6px; color: #6B5A4E; }
+
+/* ---------- anteprima e lente ---------- */
+.anteprima { position: relative; }
+/* L'anteprima ancorata in cima alla scheda sul telefono (Etichette, deciso
+   da Gianluca il 10 settembre): resta visibile mentre si scorrono i gruppi
+   sotto. Sfondo pieno (uguale a quello della colonna che la contiene, non
+   trasparente) perche' il contenuto scorso ci passa sotto; l'ombra compare
+   solo quando e' davvero staccata dal suo posto naturale (la colonna e'
+   scorsa: vedi anteprimaStaccata in Etichette.tsx), non sempre. */
+.anteprimaAncorata { position: sticky; top: 0; z-index: 3; background: var(--carta); padding-bottom: 8px; margin-bottom: -8px; }
+.anteprimaAncorata.staccata { box-shadow: 0 6px 10px -8px rgba(58, 49, 40, .45); }
+/* corta o lunga, la cornice e' sempre larga quanto il posto a disposizione
+   al piu' (mai di piu': e' l'immagine dentro, non lei, a sforare quando
+   l'etichetta e' un nastro lungo - vedi useAdattaAnteprima) e alta quanto
+   la misura adattata: le dimensioni vere arrivano dallo style in linea. */
+.cornice {
+  overflow-y: hidden; overflow-x: auto; border-radius: 2px; position: relative;
+  flex-shrink: 0; display: block; align-self: flex-start; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
+}
+.cornice::-webkit-scrollbar { height: 6px; }
+.cornice::-webkit-scrollbar-track { background: transparent; }
+.cornice.continua::-webkit-scrollbar-track { background: var(--barra); border-radius: 3px; }
+.cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
+/* il nastro continua oltre il riquadro: lo si dice sfumando il bordo destro */
+.cornice.continua {
+  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+}
+.cornice img { display: block; }
+.lupa {
+  position: absolute; top: 6px; left: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
+  color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.finestra.lente { width: 100%; height: 100%; }
+.capoLente { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--riga); }
+.capoLente .chiudi { width: 40px; height: 40px; border-radius: 20px; border: 1px solid var(--bordo); background: var(--sabbia); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); }
+.corpoLente .foglio { margin: auto; padding: 16px; }
+.corpoLente img { box-shadow: 0 6px 20px rgba(88, 68, 60, .14); display: block; max-width: 100%; height: auto; }
+/* "Da leggere" (revisione di questo giro): l'immagine ai suoi pixel veri,
+   niente margin:auto (si scorre da un angolo) cosi' si legge il testo
+   piccolo invece di vederlo rimpicciolito per stare tutto a schermo. */
+.corpoLente.leggibile .foglio { margin: 0; }
+.corpoLente.leggibile img { max-width: none; width: auto; }
+.segmento { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--bordo2); border-radius: 10px; background: var(--carta); flex-shrink: 0; }
+.segmento button { height: 32px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--tenue); }
+.segmento button.on { background: var(--testo); color: #fff; }
+
+/* ---------- stampa in corso ---------- */
+.barraAvanzamento { height: 10px; border-radius: 5px; background: var(--barra); overflow: hidden; }
+.barraAvanzamento > span { display: block; height: 100%; background: var(--ambra); transition: width .25s; }
+
+/* ---------- storico ---------- */
+.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 88px 104px 104px 104px; }
+.tabella { display: grid; gap: 10px; padding: 0 12px 6px; border-bottom: 1px solid var(--riga); }
+.vocestorico { display: grid; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--riga); }
+.giornoStorico { padding: 14px 12px 6px; }
+.vocestorico.tel {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center;
+  width: 100%; min-height: 62px; padding: 10px 12px 10px 16px; border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta);
+}
+.vocestorico.tel .n { grid-column: 1; font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 16.5px; font-weight: 600; line-height: 1.15; }
+.vocestorico.tel .d { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); }
+.ristampino {
+  grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+  border-radius: 18px; border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+
+/* ---------- Etichette sul telefono: la scheda si apre un gruppo alla volta ---------- */
+.gruppo { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.capoGruppo { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.capoGruppo .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nomeGruppo { font-size: 16.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sottoGruppo { font-size: 13px; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.puntaGruppo { display: flex; color: var(--spento); transition: transform .16s; }
+.gruppo.aperto .puntaGruppo { transform: rotate(180deg); }
+.dentroGruppo { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; border-top: 1px solid var(--riga); }
+
+/* ---------- telefoni collegati (Impostazioni) ---------- */
+.telefonoRiga { flex-wrap: wrap; }
+
+/* ---------- telefono: barra sotto e adattamenti ---------- */
+@media (max-width: 860px) {
+  .app { flex-direction: column; }
+  .rail { display: none; }
+  .testata { height: auto; padding: 14px 20px 10px; flex-wrap: wrap; row-gap: 10px; }
+  .titolo { font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* sul telefono "strumenti" (indietro/avanti, Duplica/Elimina) va su una riga
+     propria sotto; le azioni (Salva prodotto, Esporta l'elenco...) restano
+     con il titolo sulla prima riga, come nel prototipo. */
+  .testataAzioni { order: 2; }
+  .testataStrumenti { order: 3; }
+  /* vuoto (viste senza "strumenti"), non deve riservarsi una riga propria */
+  .strumentiEt:has(*) { flex-basis: 100%; }
+  .strumentiEt .btn.conTesto { flex: 1 1 0; }
+  .schermo { flex-direction: column; padding: 0 20px 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .schermo .scorre { overflow: visible; flex: none !important; }
+  input, select, textarea { font-size: max(16px, 1em); }
+  .avvisino { bottom: 84px; max-width: calc(100% - 32px); text-align: center; }
+  .colonna { border: 0; background: none; padding: 0; border-radius: 0; overflow: visible; }
+  .schermo > .colonna { width: auto !important; flex: none !important; }
+  .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 14px; }
+  .sezione { padding: 14px 16px !important; }
+  /* il lotto e' un campo che si scrive (a differenza dello span del
+     prototipo): sotto i 16px iOS ingrandisce la pagina (regola qui sopra),
+     e a quel corpo il numero intero non sta in meta' della griglia 2x2.
+     Gli si da' tutta la riga, Copie passa sotto. */
+  .campoLottoStampa { grid-column: 1 / -1; }
+  .riga { padding: 10px 2px; }
+  .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
+  .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
+  .riga.rotolo { flex-wrap: wrap; }
+
+  /* stampa: una riga piena per prodotto, con la freccia che dice che si apre */
+  .griglia { grid-template-columns: 1fr; gap: 6px; }
+  .prodotto {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px;
+    min-height: 62px; padding: 10px 12px 10px 16px; border-radius: 14px;
+  }
+  .prodotto.on { padding: 9px 11px 9px 15px; box-shadow: none; }
+  .prodotto .n { font-size: 16.5px; }
+  .prodotto .d { font-size: 13px; margin-top: 0; }
+  .prodotto .n, .prodotto .d { grid-column: 1; }
+  .prodotto .freccia { grid-column: 2; grid-row: 1 / span 2; display: flex; color: var(--tratteggio); }
+  .ristampaTel {
+    display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 14px;
+    border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); width: 100%;
+  }
+  .ristampaTel .testo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ristampaTel .testo b { font-size: 15px; }
+  .ristampaTel .testo span { font-size: 13px; color: var(--verde); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* la scheda del prodotto e' una pagina a se', col bottone Stampa fermo in basso */
+  .schermo.dettaglio { padding-bottom: 0; }
+  .schermo.dettaglio > .colonna.scheda { border: 0; background: none; border-radius: 0; padding: 0; flex: 1 0 auto !important; }
+  .schermo.dettaglio .azioni { position: sticky; bottom: 0; margin: auto -20px 0; padding: 14px 20px 12px; background: linear-gradient(to bottom, rgba(234, 222, 206, 0), var(--fondo) 35%); }
+  .indietro { width: 40px; height: 40px; margin-left: -10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* la vista Stampa e' due pagine sul telefono: l'elenco, oppure la scheda del prodotto scelto */
+  .vistaStampa:not(.dettaglio) > .pannelloProdotto { display: none; }
+  .vistaStampa.dettaglio > .colonnaElenco { display: none; }
+
+  .allergene { height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; }
+  .blocco { min-height: 52px; border-radius: 12px; font-size: 13.5px; padding: 0 10px; }
+  .cartaEtichetta { width: 100%; }
+
+  /* storico: ricerca sopra e gettoni sotto come in Stampa, poi una riga piena per stampa che si tocca per rifarla */
+  .storicoTel .prima { flex-direction: column-reverse; gap: 10px; }
+  .storicoTel .prima .cerca { height: 52px !important; flex: none !important; }
+  .storicoTel .scorre { gap: 6px; }
+  .storicoTel .giornoStorico { padding: 8px 16px 0 !important; }
+
+  .barrasotto {
+    display: flex; background: var(--crema); border-top: 1px solid var(--bordo);
+    padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0;
+  }
+  .tab { flex: 1; height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--tenue); }
+  .tab.on { color: var(--verdescuro); }
+  .soloPC { display: none !important; }
+  .finestra { width: 100%; max-height: 100%; border-radius: 18px; }
+  .velo { padding: 12px; }
+}
+@media (min-width: 861px) { .soloTel { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  /* ======= fine CSS dell'app ======= */
+
+  /* Cio' che nell'app arriva da Tailwind e qui serve come classe */
+  body { overflow: hidden; font-size: 15px; }
+  /* dentro un contenitore che scorre i figli non si stringono: altrimenti la striscia dei lotti (overflow hidden per gli
+     angoli) e la cornice dell'anteprima si accorciano invece di far scorrere la colonna */
+  .scorre > * { flex-shrink: 0; }
+  textarea { font: inherit; color: inherit; }
+  .areaTesto { border: 1px solid var(--bordo2); border-radius: 12px; background: #fff; padding: 10px 14px; font-size: 14px; line-height: 1.5; resize: vertical; width: 100%; }
+  .areaTesto:focus { outline: none; }
+  .selCasella { width: 100%; height: 50px; padding: 0 14px; background: transparent; border: 0; font: inherit; color: inherit; font-weight: 700; cursor: pointer; }
+  .voceEt { width: 100%; text-align: left; padding: 8px 12px; border-radius: 10px; font-size: 15px; font-weight: 700; line-height: 1.2; }
+  .voceEt .sotto { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; color: var(--tenue); }
+  .voceEt.scelto .sotto { color: inherit; }
+  .nuovaEt { height: 44px; border: 1px dashed var(--tratteggio); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: #6B5A4E; margin-bottom: 4px; width: 100%; }
+  .btnTratto { width: 100%; justify-content: center; background: transparent; border-style: dashed; border-color: var(--tratteggio); color: #6B5A4E; }
+  .inline { display: flex; align-items: center; gap: 12px; }
+  .inline > .etichettina { width: 138px; flex-shrink: 0; }
+  .inline > .campoDentro { flex: 1; min-width: 0; }
+  .mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
+  .num { font-variant-numeric: tabular-nums; }
+  .opz .testi .mono, .rl .lot .mono, .lotto .codice, .kv .mono, .catena .mono, .foglioStampa td:nth-child(2) { white-space: nowrap; }
+  .b { font-weight: 700; }
+  .tenue { color: var(--tenue); }
+  .spentoT { color: var(--spento); }
+  .nota12 { font-size: 12px; color: var(--spento); }
+  .avvisoResa { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--ambra); }
+  .titoloScheda { font-size: 19px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv b { font-weight: 700; }
+  .radioRiga { width: 100%; }
+  .radioRiga .v { font-weight: 700; color: var(--testo); }
+
+  /* anteprima finta: l'etichetta e' disegnata nel DOM, non una PNG del servizio */
+  .cornice.finta { width: 100%; cursor: zoom-in; display: block; }
+  .cornice.finta .foglio { padding: 8px 10px; font-family: Arial, Helvetica, sans-serif; color: #111; display: flex; flex-direction: column; gap: 2px; }
+  .cornice.finta .due { display: grid; gap: 8px; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; padding: 3px 0; margin: 2px 0; }
+  .cornice.finta .due > div + div { border-left: 1px solid #bbb; padding-left: 8px; }
+  .cornice.finta.compatta .foglio { zoom: .72; }
+  .lupa { pointer-events: none; }
+
+  /* ---------- parti nuove: striscia guida del prototipo ---------- */
+  .guida { display: flex; gap: 12px; align-items: flex-start; background: var(--crema); border: 1px dashed var(--verdebordo); border-radius: 14px; padding: 12px 16px; font-size: 13.5px; line-height: 1.45; color: var(--tenue); flex-shrink: 0; }
+  .guida .tag { flex-shrink: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--verdescuro); background: var(--verdechiaro); border-radius: 8px; padding: 3px 8px; margin-top: 1px; }
+  .guida b { color: var(--testo); }
+  .tagNuovo { font-family: "Atkinson Hyperlegible", system-ui, sans-serif; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--verdescuro); background: var(--verdechiaro); border-radius: 7px; padding: 2px 6px; vertical-align: middle; margin-left: 8px; }
+  .voce, .tab { position: relative; }
+  .voce .nuovo, .tab .nuovo { position: absolute; top: 4px; right: 6px; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; background: var(--ambra); color: #fff; border-radius: 8px; padding: 2px 5px; font-weight: 700; }
+
+  /* stati dei lotti */
+  .stato { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .stato.aperto { background: var(--verdechiaro); color: var(--verdescuro); }
+  .stato.piu { background: var(--sabbia); color: var(--tenue); border: 1px solid var(--bordo); }
+  .stato.chiuso { background: none; color: var(--spento); border: 1px solid var(--riga); }
+  .stato.scaduto { background: var(--rossochiaro); color: var(--rossocupo); }
+  .stato.scade, .stato.manca { background: var(--ambrachiaro); color: var(--ambra); }
+
+  /* elenco ingredienti: le stesse carte di Stampa (.prodotto), con lo stato a destra */
+  .prodotto .statoRiga { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+  @media (max-width: 860px) { .prodotto .statoRiga { grid-column: 1; margin-top: 2px; } }
+
+  /* una riga di lotto nella scheda dell'ingrediente: chiusa e' due righe, si apre toccandola */
+  .lotto { border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta); display: flex; flex-direction: column; }
+  .lotto.aperto { border-color: var(--verdebordo); }
+  .lotto.chiuso { opacity: .7; }
+  .lotto.aperto2 { background: var(--crema); }
+  .capoLotto { width: 100%; text-align: left; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
+  .lotto .chiudiRiga { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .lotto .riga1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lotto .codice { font-size: 16px; font-weight: 700; }
+  .lotto .scad { margin-left: auto; font-size: 13px; color: var(--tenue); white-space: nowrap; }
+  .lotto .riga2 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tenue); }
+  .lotto .riga2 .testo { flex: 1; min-width: 0; line-height: 1.4; }
+  .lotto .riga2 .icone { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .lotto .dettagli { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 14px; border-top: 1px solid var(--riga); }
+  .lotto .usato { font-size: 13px; color: var(--tenue); line-height: 1.5; }
+  .lotto .usato b { color: var(--testo); }
+  .lotto .stato { height: 22px; font-size: 11.5px; padding: 0 8px; }
+  .btn.piccolo { height: 38px; padding: 0 14px; font-size: 14px; gap: 7px; border-radius: 10px; }
+
+  /* foto finte: un foglio con righe (fattura) o un cartellino (etichetta) */
+  .foto { width: 58px; height: 74px; border-radius: 6px; border: 1px solid var(--bordo2); background: #fff; position: relative; overflow: hidden; flex-shrink: 0; cursor: zoom-in;
+          box-shadow: 0 2px 6px rgba(88,68,60,.12); display: flex; flex-direction: column; justify-content: flex-end; }
+  .foto::before { content: ""; position: absolute; inset: 8px 8px 22px; background: repeating-linear-gradient(to bottom, var(--bordo2) 0 1.5px, transparent 1.5px 6px); opacity: .7; }
+  .foto.etichetta::before { inset: 10px 8px 24px; background: linear-gradient(var(--testo), var(--testo)) 0 0/60% 5px no-repeat, repeating-linear-gradient(to bottom, var(--bordo2) 0 1.5px, transparent 1.5px 5px) 0 10px/100% 100% no-repeat; }
+  .foto.etichetta::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 24px; height: 9px; background: repeating-linear-gradient(to right, var(--testo) 0 1px, transparent 1px 3px, var(--testo) 3px 5px, transparent 5px 6px); }
+  .foto span { position: relative; font-size: 9px; font-weight: 700; color: var(--tenue); background: var(--sabbia); padding: 3px 4px; line-height: 1.1; text-transform: uppercase; letter-spacing: .03em; }
+  .foto.vuota { border-style: dashed; background: var(--crema); box-shadow: none; cursor: pointer; justify-content: center; align-items: center; color: var(--tenue); gap: 2px; }
+  .foto.vuota::before, .foto.vuota::after { display: none; }
+  .foto.vuota span { background: none; text-transform: none; letter-spacing: 0; text-align: center; font-size: 10px; }
+  .fotoGrande { width: 100%; aspect-ratio: 3/4; max-height: 60vh; border-radius: 12px; border: 1px solid var(--bordo2); background: #fff; position: relative; overflow: hidden; }
+  .fotoGrande::before { content: ""; position: absolute; inset: 10% 12% 20%; background: repeating-linear-gradient(to bottom, var(--bordo2) 0 2px, transparent 2px 12px); opacity: .8; }
+  .fotoGrande::after { content: ""; position: absolute; left: 12%; top: 5%; width: 40%; height: 4%; background: var(--testo); }
+
+  /* i lotti in uso nel pannello di stampa */
+  .lottiStampa { border: 1px solid var(--bordo); border-radius: 14px; overflow: hidden; }
+  .lottiStampa .capo { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--sabbia); border-bottom: 1px solid var(--riga); }
+  .lottiStampa .capo .etichettina { flex: 1; }
+  .rl { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--riga); font-size: 14px; }
+  .rl:last-child { border-bottom: none; }
+  .rl.attenzione { background: #FCF6E9; }
+  .rl.grave { background: var(--rossochiaro); }
+  .rl .testa { display: flex; align-items: center; gap: 10px; }
+  .rl .ing { font-weight: 700; flex: 1; min-width: 0; }
+  .rl .ing small { font-weight: 400; color: var(--tenue); font-size: 12px; margin-left: 6px; }
+  .rl .cambia { font-size: 13px; font-weight: 700; color: var(--verdescuro); padding: 4px 8px; border-radius: 8px; white-space: nowrap; margin-right: -8px; }
+  .rl .cambia:hover { background: var(--verdechiaro); }
+  .rl .lot { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; }
+  .rl .lot small { font-size: 12.5px; color: var(--tenue); }
+  .rl .lot.manca { color: var(--ambra); font-weight: 700; }
+  .rl .lot .quadro { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--bordo2); display: inline-flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .rl .lot .quadro.on { background: var(--verde); border-color: var(--verde); }
+  .rl .lot.escluso .mono, .rl .lot.escluso small { color: var(--spento); text-decoration: line-through; }
+  .rl .chiudi { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--spento); white-space: nowrap; padding: 2px 4px; border-radius: 6px; }
+  .rl .chiudi:hover { background: var(--rossochiaro); color: var(--rosso); }
+  .rl .vai { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--verdescuro); white-space: nowrap; }
+  .rl .piu { font-size: 12px; color: var(--tenue); }
+  .rl .nota { font-size: 12.5px; line-height: 1.4; padding-top: 2px; }
+  .rl.attenzione .nota { color: var(--ambra); } .rl.grave .nota { color: var(--rossocupo); }
+  @media (max-width: 860px) { .rl .lot { flex-wrap: wrap; } }
+  /* i lotti chiusi dell'ingrediente, in una lista collassata sotto quelli aperti */
+  .rl .apriChiusi { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--tenue); padding: 2px 0; width: fit-content; }
+  .rl .apriChiusi .freccia { display: flex; color: var(--spento); }
+  .rl .lottoChiuso { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--spento); padding: 2px 0; }
+  .rl .lottoChiuso .mono { color: var(--spento); }
+  .rl .lottoChiuso small { font-size: 12px; color: var(--tenue); }
+  .rl .lottoChiuso .riapri { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--verdescuro); white-space: nowrap; }
+  .rl .altriChiusi { font-size: 12px; color: var(--tenue); padding: 2px 0 2px 2px; }
+  .scelta { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 4px; }
+  .opz { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); width: 100%; font-size: 14px; }
+  .opz .scegli { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; padding: 3px 0; }
+  .opz .btn.piccolo { height: 32px; padding: 0 10px; font-size: 12.5px; flex-shrink: 0; }
+  .opz.on { border-color: var(--verde); box-shadow: 0 0 0 3px var(--verdechiaro); }
+  .opz .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .opz small { color: var(--tenue); font-size: 12px; }
+  .spunta { display: flex; align-items: center; gap: 10px; font-size: 13.5px; padding: 4px 2px; }
+  .spunta .quadro { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--bordo2); display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .spunta.on .quadro { background: var(--verde); border-color: var(--verde); }
+
+  /* tendina dei nomi simili sotto il campo Nome (Nuovo ingrediente e scheda ingrediente) */
+  .campo.conTendina { position: relative; }
+  .tendinaSimili { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--carta); border: 1px solid var(--bordo2); border-radius: 12px; box-shadow: var(--ombra); max-height: 260px; overflow: auto; }
+  .tendinaSimili:empty { display: none; }
+  .tendinaSimili .titoloTendina { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); padding: 4px 8px 2px; }
+  .tendinaSimili .voce { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; border-radius: 8px; padding: 6px 8px; }
+  .tendinaSimili .voce:hover { background: var(--sabbia); }
+  .tendinaSimili .voce .nome { font-weight: 700; font-size: 14px; }
+  .tendinaSimili .voce .stessoNome { margin-left: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ambra); }
+  .tendinaSimili .voce .dettaglio { font-size: 12px; color: var(--tenue); }
+
+  /* ingredienti collegati (gruppo Ingredienti della scheda) */
+  .collegati { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--verdebordo); border-radius: 12px; background: #F6F9EE; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid var(--bordo2); background: var(--carta); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .chip.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+  .chip.aggiungi { border-style: dashed; border-color: var(--tratteggio); color: var(--tenue); font-weight: 400; }
+  .chip .x { display: flex; color: var(--spento); }
+  .chip.grande { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 19px; }
+  @media (max-width: 860px) { .chip { height: 40px; padding: 0 13px; border-radius: 20px; font-size: 14px; } }
+
+  /* merce arrivata: a sinistra il documento, a destra una scheda per ingrediente arrivato */
+  .rigaArrivo { border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .rigaArrivo.proposta { border-style: dashed; border-color: var(--ambrabordo); background: #FFFBF3; }
+  .rigaArrivo.attesa { border-style: dashed; border-color: var(--tratteggio); background: var(--crema); }
+  .rigaArrivo .capo { display: flex; align-items: center; gap: 10px; }
+  .rigaArrivo .capo .nome { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 17px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rigaArrivo .campi { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
+  .rigaArrivo .campi .casella { min-height: 46px; font-size: 15px; }
+  .rigaArrivo .piede { display: flex; align-items: center; gap: 10px; }
+  .rigaArrivo .piede .nota12 { flex: 1; min-width: 0; }
+  .fotoDoc { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .dueCampi { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .dueCampi { grid-template-columns: 1fr; } }
+  .capoArrivo { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+  .capoArrivo .nota { font-size: 12.5px; }
+  @media (max-width: 860px) { .capoArrivo .nota { flex-basis: 100%; } }
+  .proposta2 { border: 1px dashed var(--ambrabordo); background: var(--ambrachiaro); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.45; }
+  .proposta2 .capo { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ambra); }
+  .proposta2 .capo .tag { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; background: var(--ambra); color: #fff; border-radius: 8px; padding: 2px 6px; }
+  @media (max-width: 860px) {
+    .rigaArrivo .campi { grid-template-columns: 1fr 1fr; }
+    .rigaArrivo .campi > .campo:first-child { grid-column: 1 / -1; }
+  }
+
+  /* la catena nello storico */
+  .vocestorico.apribile { cursor: pointer; }
+  .vocestorico.aperta { background: var(--crema); }
+  .catena { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; padding: 8px 4px 12px; cursor: default; }
+  .capoCatena { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: var(--verdechiaro); color: var(--verdescuro); font-size: 14px; }
+  .capoCatena b { font-size: 15px; }
+  .anello { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 10px 14px; border: 1px solid var(--bordo); border-radius: 12px; background: var(--carta); }
+  .anello .ing { font-weight: 700; }
+  .anello .dati { font-size: 13px; color: var(--tenue); line-height: 1.45; min-width: 0; }
+  .anello .dati b { color: var(--testo); }
+  .anello .fotos { display: flex; gap: 6px; }
+  .anello.manca { border-color: var(--ambrabordo); background: #FCF6E9; }
+  .anello.manca .dati { color: var(--ambra); }
+  .catenaLink { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; font-weight: 700; color: var(--verdescuro); }
+  @media (max-width: 860px) {
+    .anello { grid-template-columns: minmax(0, 1fr) auto; }
+    .anello .ing { grid-column: 1 / -1; }
+    .vocestorico.tel .catena { grid-column: 1 / -1; }
+  }
+
+  /* striscia dei lotti chiusa sul telefono; domanda al cambio sacco; correzione nello storico */
+  .lottiStampa .riassunto { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 14px; width: 100%; text-align: left; }
+  .lottiStampa .riassunto .punta { margin-left: auto; display: flex; color: var(--spento); }
+  .domanda { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--ambrabordo); background: var(--ambrachiaro); border-radius: 12px; font-size: 13.5px; }
+  .domanda .capo { font-weight: 700; color: var(--ambra); }
+  .domanda .scelte { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rl .lot .piu { font-size: 12px; color: var(--tenue); }
+  .correggi { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+  .nota-corretto { font-size: 12.5px; color: var(--ambra); font-weight: 700; }
+  /* il foglio stampabile della catena (per l'ASL o per un richiamo): dal browser, Ctrl+P */
+  .finestra.foglio2 { width: min(760px, 100%); padding: 0; gap: 0; }
+  .foglioStampa { padding: 28px 32px; font-size: 14px; line-height: 1.5; color: #111; background: #fff; }
+  .foglioStampa h2 { font-size: 22px; margin-bottom: 4px; }
+  .foglioStampa table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  .foglioStampa th, .foglioStampa td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+  .foglioStampa th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #666; }
+  .piedeFoglio { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--riga); }
+  @media print { body { overflow: visible; } body > #app > * { display: none !important; } body > #app > .velo.stampa { display: block !important; position: static; background: none; padding: 0; } .velo.stampa .finestra { box-shadow: none; width: 100%; max-height: none; } .piedeFoglio { display: none; } }
+
+  @media (min-width: 1024px) { .schermo.grigliaImpostazioni > .sezione.larga { grid-column: 1 / -1; } }
+
+  /* finestra della foto */
+  .finestra.foto2 { width: min(460px, 100%); padding: 22px; gap: 14px; border-radius: 20px; }
+  .velo { z-index: 40; }
+  .avvisino { pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (t, p = {}, ...f) => { const n = Object.assign(document.createElement(t), p); for (const c of f.flat()) if (c != null) n.append(c.nodeType ? c : String(c)); return n; };
+const ico = (d, w = 22, sw = 1.75) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const svgSpan = (d, w, sw, stile = "display:flex") => { const s = el("span", { style: stile }); s.innerHTML = ico(d, w, sw); return s; };
+// le icone dell'app (ui/src/componenti/Icone.tsx)
+const I = {
+  stampa: '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>',
+  etichette: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
+  ingredienti: '<path d="M9 3h6l-1 3h-4z"/><path d="M10 6c-4 3-6 7-6 11a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3c0-4-2-8-6-11"/><path d="M9 14c1-2 5-2 6 0"/>',
+  storico: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  impostazioni: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  marchio: '<path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="8" cy="9" r="1.5"/>',
+  cerca: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  lente: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/><path d="M8 11h6M11 8v6"/>',
+  giu: '<path d="M6 9l6 6 6-6"/>', su: '<path d="M18 15l-6-6-6 6"/>', destra: '<path d="M9 6l6 6-6 6"/>', sinistra: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+  piu: '<path d="M12 5v14M5 12h14"/>', meno: '<path d="M5 12h14"/>', via: '<path d="M6 6l12 12M18 6L6 18"/>', spunta: '<path d="M5 13l4 4L19 7"/>',
+  allarme: '<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".6" fill="currentColor"/><path d="M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+  maniglia: '<circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.6" fill="currentColor" stroke="none"/>',
+  duplica: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  cestino: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>',
+  annulla: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  ripristina: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  giro: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>',
+  monitor: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  telefono: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18.5h2"/>',
+  matita: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  scarica: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+  carica: '<path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 19h16"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  barcode: '<path d="M3 5v14M7 5v14M10 5v14M14 5v14M17 5v14M21 5v14"/>',
+  camion: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  catena: '<path d="M10 14a4 4 0 0 0 5.6.4l3-3a4 4 0 0 0-5.6-5.6l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-5.6-.4l-3 3a4 4 0 0 0 5.6 5.6l1.5-1.5"/>',
+  immagine: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-8 8"/>',
+  alSx: '<path d="M4 6h16M4 12h10M4 18h13"/>', alCentro: '<path d="M4 6h16M7 12h10M6 18h12"/>', alDx: '<path d="M4 6h16M10 12h10M7 18h13"/>',
+};
+const larghezzaLato = { piena: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/>',
+  sx: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><rect x="2.6" y="3.6" width="5.1" height="8.8" rx=".5" fill="currentColor" stroke="none"/>',
+  dx: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><rect x="8.3" y="3.6" width="5.1" height="8.8" rx=".5" fill="currentColor" stroke="none"/>' };
+const icoLato = k => `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">${larghezzaLato[k]}</svg>`;
+
+/* ============================ date ============================ */
+// la demo vive in un giorno fisso, cosi' i dati (lotti che scadono, storico) restano sensati
+const OGGI = new Date(2026, 8, 14);
+const D = (g, m, a = 2026) => new Date(a, m - 1, g);
+const fmt = d => d ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}` : "";
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const daIso = s => { const [a, m, g] = s.split("-").map(Number); return new Date(a, m - 1, g); };
+const piuGiorni = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const giorniA = d => Math.round((d - OGGI) / 86400000);
+const plurale = (n, u, p) => `${n} ${n === 1 ? u : p}`;
+// chiave per confrontare due nomi: minuscolo, senza accenti, solo lettere/numeri separati da un solo spazio
+const chiaveNome = s => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+// distanza di edit (Levenshtein) fra due chiavi: serve a trovare i nomi scritti con un errore di battitura
+function distanzaEdit(a, b) {
+  const r = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let x = 1; x <= a.length; x++) {
+    let diag = r[0]; r[0] = x;
+    for (let y = 1; y <= b.length; y++) {
+      const sopra = r[y];
+      r[y] = a[x - 1] === b[y - 1] ? diag : 1 + Math.min(diag, sopra, r[y - 1]);
+      diag = sopra;
+    }
+  }
+  return r[b.length];
+}
+function etichettaGiorno(d) {
+  const n = giorniA(d);
+  const lungo = d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+  return n === 0 ? "Oggi · " + lungo : n === -1 ? "Ieri · " + lungo : lungo[0].toUpperCase() + lungo.slice(1);
+}
+const dataBreve = d => d.toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+// lo schema del lotto e' dell'etichetta (deciso il 15/9: niente personalizzazioni nelle Impostazioni); il progressivo del giorno e' unico per il locale
+const schemaDi = p => p?.etichetta?.schemaLotto || "data";
+const lottoDiOggi = p => { const sc = schemaDi(p); return sc === "giorno" ? "L 257/26" : sc === "continuo" ? `L ${String(4300 + S.progressivo).padStart(6, "0")}` : sc === "mano" ? "" : `L ${iso(OGGI).replace(/-/g, "")}-${String(S.progressivo).padStart(3, "0")}`; };
+
+/* ============================ etichette a blocchi, come docs/api.md ============================ */
+const SCALETTA = [7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48];
+const NOMIBLOCCO = { titolo: "Titolo prodotto", ingredienti: "Ingredienti", puoContenere: "Può contenere", modoUso: "Modo d'uso", scadenza: "Scadenza e conservazione", lotto: "Lotto",
+  quantita: "Quantità", valori: "Valori nutrizionali", produttore: "Produttore", dataProduzione: "Data di produzione", sigla: "Sigla di chi l'ha fatta",
+  testo: "Testo libero", testoGrande: "Testo grande", riga: "Riga separatrice", spazio: "Spazio vuoto", qr: "QR del lotto", logo: "Logo" };
+const TIPI_DATI = ["titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "lotto", "quantita", "valori", "produttore", "dataProduzione", "sigla"];
+const TIPI_LIBERI = ["testo", "testoGrande", "riga", "spazio", "qr", "logo"];
+const SENZA_ALLINEAMENTO = ["valori", "riga", "spazio"];
+const ALLERGENI = ["Glutine", "Crostacei", "Uova", "Pesce", "Arachidi", "Soia", "Latte", "Frutta a guscio", "Sedano", "Senape", "Sesamo", "Solfiti", "Lupini", "Molluschi"];
+const SCHEMI_LOTTO = [["data", "Data e progressivo del giorno", "L AAAAMMGG-NNN"], ["giorno", "Giorno dell'anno", "L GGG/AA"], ["continuo", "Progressivo continuo", "L NNNNNN"], ["mano", "Lo scrive chi stampa", "a mano"]];
+const b = (tipo, corpo, colonna = "piena", acceso = true, testo = "") => ({ tipo, corpo, colonna, acceso, testo, allineamento: "sinistra" });
+const MICHI = () => ({ ragioneSociale: "Michi s.n.c. di Michele Alberto Crivellari", sedeLegale: "Via Brigata Marche 257 - 31030 Carbonera (TV)", sedeProduzione: "Via Trieste 4/II - 31020 Fontane di Villorba (TV)" });
+const ETDEMO = {
+  vendita: () => ({ dicituraScadenza: "da consumare entro", formatoData: "GG/MM/AAAA", produttore: MICHI(), larghezzaDestra: "1/3", schemaLotto: "data", logo: false,
+    blocchi: [b("titolo", 18), b("ingredienti", 7), b("puoContenere", 7), b("modoUso", 7, "piena", false), b("scadenza", 8, "sx"), b("lotto", 7, "sx"), b("quantita", 28, "sx"), b("valori", 7, "dx"), Object.assign(b("produttore", 7, "sx"), { allineamento: "centro" })] }),
+  cucina: () => ({ dicituraScadenza: "Scade il", formatoData: "GG/MM/AAAA", produttore: MICHI(), larghezzaDestra: "1/2", schemaLotto: "data", logo: false,
+    blocchi: [b("titolo", 14), b("dataProduzione", 8), b("scadenza", 8), b("lotto", 7), b("sigla", 7)] }),
+  aperto: () => ({ dicituraScadenza: "Scade il", formatoData: "GG/MM/AAAA", produttore: MICHI(), larghezzaDestra: "1/2", schemaLotto: "data", logo: false,
+    blocchi: [b("testoGrande", 10, "piena", true, "APERTO IL"), b("scadenza", 20), b("lotto", 8)] }),
+  banco: () => ({ dicituraScadenza: "da consumare entro", formatoData: "GG/MM/AAAA", produttore: MICHI(), larghezzaDestra: "1/2", schemaLotto: "data", logo: false,
+    blocchi: [b("titolo", 28), b("testo", 8, "piena", true, "Servire caldo. Da consumare in giornata."), b("riga", 7), b("quantita", 28), b("scadenza", 8)] }),
+};
+
+/* ============================ i dati ============================ */
+const partenza = () => ({
+  vista: "stampa", prodotto: "classico", cerca: "", filtro: "usati", copie: 1, fase: null, copia: 0, dettaglio: false, quantita: null, scadenza: null,
+  ingrediente: "farina0", cercaIng: "", dettaglioIng: false, filtroIng: "tutti",
+  prodottoEt: "classico", cercaEt: "", elencoRidotto: false, gruppiEt: { prodotto: true, ingredienti: true }, gruppoTel: "prodotto", tavolozza: false, aggiungiIng: false, altriAllergeni: false,
+  arrivo: null, tornaAStampa: null, scelti: {}, chiusiInStampa: {},
+  storicoFiltro: "oggi", storicoCerca: "", aperta: null, foto: null, lenteAperta: false, nuovoIng: null, progressivo: 4, lottoMano: "", strisciaAperta: false, correggi: null, foglio: null, lottoAperto: null, altroFornitore: null,
+  impostazioni: { taglia: true, margine: 3 },
+  fornitori: ["Molino Dallagiovanna", "Metro Padova", "Caseificio Tomasoni", "Ortofrutta Pavan"],
+  ingredienti: [
+    { id: "farina0", nome: "Farina tipo 0", fornitore: "Molino Dallagiovanna" },
+    { id: "integrale", nome: "Farina integrale", fornitore: "Molino Dallagiovanna" },
+    { id: "semola", nome: "Semola rimacinata", fornitore: "Molino Dallagiovanna" },
+    { id: "mix", nome: "Mix farine low carb", fornitore: "Molino Dallagiovanna" },
+    { id: "lievito", nome: "Lievito di birra", fornitore: "Metro Padova" },
+    { id: "sale", nome: "Sale iodato", fornitore: "Metro Padova" },
+    { id: "olio", nome: "Olio extravergine", fornitore: "Metro Padova" },
+    { id: "pelati", nome: "Pomodori pelati", fornitore: "Metro Padova" },
+    { id: "anacardi", nome: "Anacardi", fornitore: "Metro Padova" },
+    { id: "manzo", nome: "Carne di manzo", fornitore: "Metro Padova" },
+    { id: "fiordilatte", nome: "Fior di latte", fornitore: "Caseificio Tomasoni" },
+    { id: "basilico", nome: "Basilico fresco", fornitore: "Ortofrutta Pavan" },
+    { id: "rosmarino", nome: "Rosmarino", fornitore: "Ortofrutta Pavan" },
+    { id: "zucca", nome: "Zucca", fornitore: "Ortofrutta Pavan" },
+  ],
+  // foto: quante pagine fotografate del documento (0 = nessuna)
+  arrivi: [
+    { id: "a6", fornitore: "Metro Padova", data: D(30, 7), documento: "Fattura 118411", foto: 1 },
+    { id: "a5", fornitore: "Metro Padova", data: D(18, 8), documento: "Fattura 118650", foto: 1 },
+    { id: "a0", fornitore: "Molino Dallagiovanna", data: D(19, 8), documento: "DDT 4302", foto: 1 },
+    { id: "a1", fornitore: "Molino Dallagiovanna", data: D(2, 9), documento: "DDT 4471", foto: 1 },
+    { id: "a2", fornitore: "Metro Padova", data: D(8, 9), documento: "Fattura 118702", foto: 2 },
+    { id: "a3", fornitore: "Caseificio Tomasoni", data: D(12, 9), documento: "DDT 2210", foto: 1 },
+    { id: "a4", fornitore: "Ortofrutta Pavan", data: D(13, 9), documento: "", foto: 0 },
+  ],
+  // Un lotto e' aperto dalla registrazione (apertoDal) finche' non viene chiuso (chiusoIl, chiusoDa: "domanda" | "scadenza" | "mano" | "stampa").
+  // quantita: quanti sacchi/pezzi sono arrivati (solo informativo)
+  lotti: [
+    { id: "l0", ing: "farina0", lotto: "L 24211", scadenza: D(28, 2, 2027), stato: "chiuso", arrivo: "a0", foto: true, quantita: "10 sacchi", apertoDal: D(19, 8), chiusoIl: D(3, 9), chiusoDa: "domanda" },
+    { id: "l1", ing: "farina0", lotto: "L 24263", scadenza: D(31, 3, 2027), stato: "aperto", arrivo: "a1", foto: true, quantita: "10 sacchi", apertoDal: D(2, 9) },
+    { id: "l2", ing: "farina0", lotto: "L 24290", scadenza: D(30, 4, 2027), stato: "aperto", arrivo: "a1", foto: true, quantita: "10 sacchi", apertoDal: D(2, 9) },
+    { id: "l3", ing: "integrale", lotto: "L 24251", scadenza: D(31, 1, 2027), stato: "aperto", arrivo: "a1", foto: true, quantita: "5 sacchi", apertoDal: D(2, 9) },
+    { id: "l4", ing: "semola", lotto: "L 24270", scadenza: D(31, 5, 2027), stato: "aperto", arrivo: "a1", foto: false, quantita: "2 sacchi", apertoDal: D(2, 9) },
+    { id: "l12", ing: "mix", lotto: "MX 0826-3", scadenza: D(28, 2, 2027), stato: "aperto", arrivo: "a1", foto: true, quantita: "4 sacchi", apertoDal: D(2, 9) },
+    { id: "l5", ing: "lievito", lotto: "0926-14", scadenza: D(16, 9), stato: "aperto", arrivo: "a2", foto: true, quantita: "10 panetti", apertoDal: D(8, 9) },
+    { id: "l6", ing: "sale", lotto: "S-2211", scadenza: D(31, 12, 2028), stato: "aperto", arrivo: "a2", foto: false, quantita: "", apertoDal: D(8, 9) },
+    { id: "l7a", ing: "olio", lotto: "OL 2588", scadenza: D(30, 9, 2027), stato: "chiuso", arrivo: "a6", foto: true, quantita: "1 latta", apertoDal: D(1, 8), chiusoIl: D(12, 8), chiusoDa: "domanda" },
+    { id: "l7b", ing: "olio", lotto: "OL 2597", scadenza: D(31, 10, 2027), stato: "chiuso", arrivo: "a6", foto: true, quantita: "1 latta", apertoDal: D(12, 8), chiusoIl: D(20, 8), chiusoDa: "domanda" },
+    { id: "l7", ing: "olio", lotto: "OL 2605", scadenza: D(30, 11, 2027), stato: "aperto", arrivo: "a5", foto: true, quantita: "1 latta", apertoDal: D(18, 8) },
+    { id: "l8", ing: "pelati", lotto: "PL 25188", scadenza: D(30, 6, 2028), stato: "aperto", arrivo: "a2", foto: true, quantita: "12 latte", apertoDal: D(8, 9) },
+    { id: "l13", ing: "anacardi", lotto: "AN 2607", scadenza: D(31, 7, 2027), stato: "aperto", arrivo: "a2", foto: true, quantita: "2 kg", apertoDal: D(8, 9) },
+    { id: "l9", ing: "fiordilatte", lotto: "TL 100926", scadenza: D(13, 9), stato: "aperto", arrivo: "a3", foto: true, quantita: "6 kg", apertoDal: D(12, 9) },
+    { id: "l10", ing: "fiordilatte", lotto: "TL 120926", scadenza: D(19, 9), stato: "aperto", arrivo: "a3", foto: true, quantita: "6 kg", apertoDal: D(12, 9) },
+    { id: "l11", ing: "basilico", lotto: "arrivo 13/09/2026", scadenza: D(16, 9), stato: "aperto", arrivo: "a4", foto: false, quantita: "2 mazzi", apertoDal: D(13, 9) },
+    { id: "l14", ing: "zucca", lotto: "arrivo 13/09/2026", scadenza: D(20, 9), stato: "aperto", arrivo: "a4", foto: false, quantita: "3 pezzi", apertoDal: D(13, 9) },
+  ],
+  // gli stessi nove prodotti del mock dell'app (ui/mock/server.mjs), con in piu' "tracciati"
+  prodotti: [
+    { id: "base", nome: "Base pizza low carb", nomeStampa: "BASE PIZZA LOW CARB ARTIGIANALE", giorni: 7, quantita: "2148 g", conservazione: "Fuori dal frigo", etichetta: ETDEMO.vendita(),
+      ingredienti: "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO, Lievito madre di farina di FRUMENTO in polvere, Lievito disattivato, Proteina di AVENA], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante in polvere per panificazione [Farina di GRANO tenero tipo 0, Enzimi], Miscela per spolvero [SEMOLA rimacinata di GRANO duro, Farina di riso, Farina di mais].",
+      allergeni: ["Latte", "Lupini", "Senape", "Sesamo", "Soia", "Uova"], modoUso: "3 modi per prepararle al meglio: 1. Infornare a 250° per circa 5 minuti; 2. Mettere in padella a fuoco medio per circa 7 minuti; 3. Riscaldare in friggitrice ad aria.",
+      valori: [["Energia", "385 kJ / 91 kcal"], ["Grassi", "2,6 g"], ["di cui acidi grassi saturi", "0,5 g"], ["Carboidrati", "2 g"], ["di cui zuccheri", "0,7 g"], ["Fibre", "3,1 g"], ["Proteine", "15 g"], ["Sale", "1,5 g"]], sigla: "",
+      tracciati: ["mix", "olio", "sale", "lievito", "semola"] },
+    { id: "classico", nome: "Impasto classico 24h", nomeStampa: "IMPASTO CLASSICO 24H", giorni: 3, quantita: "250 g", conservazione: "In frigo", etichetta: ETDEMO.cucina(),
+      ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", allergeni: ["Soia"], modoUso: "", valori: [], sigla: "M.C.", tracciati: ["farina0", "sale", "lievito"] },
+    { id: "integrale", nome: "Impasto integrale", nomeStampa: "IMPASTO INTEGRALE", giorni: 3, quantita: "250 g", conservazione: "In frigo", etichetta: ETDEMO.cucina(),
+      ingredienti: "Farina integrale di GRANO tenero, Acqua, Sale, Lievito di birra.", allergeni: [], modoUso: "", valori: [], sigla: "M.C.", tracciati: ["integrale", "sale", "lievito"] },
+    { id: "salsa", nome: "Salsa di pomodoro", nomeStampa: "SALSA DI POMODORO", giorni: 4, quantita: "1000 g", conservazione: "In frigo", etichetta: ETDEMO.vendita(),
+      ingredienti: "Pomodoro, Olio extravergine di oliva, Basilico, Sale.", allergeni: [], modoUso: "",
+      valori: [["Energia", "160 kJ / 38 kcal"], ["Grassi", "1,8 g"], ["Carboidrati", "4,1 g"], ["Proteine", "1,2 g"], ["Sale", "0,8 g"]], sigla: "", tracciati: ["pelati", "olio", "basilico", "sale"] },
+    { id: "zucca", nome: "Crema di zucca", nomeStampa: "CREMA DI ZUCCA", giorni: 3, quantita: "500 g", conservazione: "In frigo", etichetta: ETDEMO.cucina(),
+      ingredienti: "Zucca, Patate, Cipolla, Olio extravergine di oliva, Sale.", allergeni: [], modoUso: "", valori: [], sigla: "M.C.", tracciati: ["zucca", "olio", "sale"] },
+    { id: "mozzarella", nome: "Mozzarella tagliata", nomeStampa: "MOZZARELLA TAGLIATA", giorni: 2, quantita: "1000 g", conservazione: "In frigo", etichetta: ETDEMO.aperto(),
+      ingredienti: "LATTE vaccino, Sale, Caglio.", allergeni: ["Latte"], modoUso: "", valori: [], sigla: "", tracciati: ["fiordilatte"] },
+    { id: "pesto", nome: "Pesto di basilico", nomeStampa: "PESTO DI BASILICO", giorni: 5, quantita: "500 g", conservazione: "In frigo", etichetta: ETDEMO.vendita(),
+      ingredienti: "Basilico, Olio extravergine di oliva, ANACARDI, Sale, Aglio.", allergeni: ["Frutta a guscio", "Latte"], modoUso: "",
+      valori: [["Energia", "1980 kJ / 480 kcal"], ["Grassi", "48 g"], ["Carboidrati", "3 g"], ["Proteine", "5 g"], ["Sale", "1,9 g"]], sigla: "", tracciati: ["basilico", "olio", "anacardi", "sale"] },
+    { id: "focaccia", nome: "Focaccia al rosmarino", nomeStampa: "FOCACCIA AL ROSMARINO", giorni: 2, quantita: "400 g", conservazione: "Fuori dal frigo", etichetta: ETDEMO.banco(),
+      ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Olio extravergine di oliva, Rosmarino, Sale, Lievito di birra.", allergeni: [], modoUso: "", valori: [], sigla: "", tracciati: ["farina0", "olio", "rosmarino", "sale", "lievito"] },
+    { id: "ragu", nome: "Ragù bianco", nomeStampa: "RAGÙ BIANCO", giorni: 3, quantita: "800 g", conservazione: "In frigo", etichetta: ETDEMO.cucina(),
+      ingredienti: "Carne di manzo, SEDANO, Carota, Cipolla, Olio extravergine di oliva, Sale.", allergeni: ["Sedano"], modoUso: "", valori: [], sigla: "M.C.", tracciati: [] },
+    // un prodotto fatto con altre produzioni (semilavorati): "p:" davanti all'id del prodotto
+    { id: "teglia", nome: "Pizza in teglia alla zucca", nomeStampa: "PIZZA IN TEGLIA ALLA ZUCCA", giorni: 1, quantita: "1 teglia", conservazione: "Fuori dal frigo", etichetta: ETDEMO.banco(),
+      ingredienti: "Impasto classico [Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra], Crema di zucca [Zucca, Patate, Cipolla, Olio extravergine di oliva, Sale], Fior di latte (LATTE).",
+      allergeni: ["Latte"], modoUso: "", valori: [], sigla: "", tracciati: ["p:classico", "p:zucca", "fiordilatte"] },
+  ],
+  usi: { base: 12, classico: 8, integrale: 7, salsa: 6, zucca: 5, mozzarella: 4, pesto: 3, focaccia: 2, teglia: 2, ragu: 1 },
+  // lotti: per ogni ingrediente collegato, i lotti registrati (piu' d'uno se erano in uso insieme; vuoto = non registrato;
+  // "s:<id>" = una stampa di un semilavorato). corretto: data dell'ultima correzione a mano
+  storico: [
+    { id: "s7", data: D(14, 9), ora: "12:05", pid: "zucca", prodotto: "Crema di zucca", copie: 1, lotto: "L 20260914-003", quantita: "500 g", scadenza: "17/09/2026", da: "PC", lotti: { zucca: ["l14"], olio: ["l7"], sale: ["l6"] } },
+    { id: "s1", data: D(14, 9), ora: "11:20", pid: "classico", prodotto: "Impasto classico 24h", copie: 6, lotto: "L 20260914-002", quantita: "250 g", scadenza: "17/09/2026", da: "PC", lotti: { farina0: ["l1"], sale: ["l6"], lievito: ["l5"] } },
+    { id: "s2", data: D(14, 9), ora: "09:05", pid: "salsa", prodotto: "Salsa di pomodoro", copie: 2, lotto: "L 20260914-001", quantita: "1000 g", scadenza: "18/09/2026", da: "Telefono della cucina", lotti: { pelati: ["l8"], olio: ["l7"], basilico: ["l11"], sale: ["l6"] } },
+    { id: "s3", data: D(13, 9), ora: "18:40", pid: "base", prodotto: "Base pizza low carb", copie: 3, lotto: "L 20260913-004", quantita: "2148 g", scadenza: "20/09/2026", da: "PC", lotti: { mix: ["l12"], olio: ["l7"], sale: ["l6"], lievito: ["l5"], semola: ["l4"] } },
+    { id: "s4", data: D(13, 9), ora: "17:10", pid: "mozzarella", prodotto: "Mozzarella tagliata", copie: 2, lotto: "L 20260913-003", quantita: "1000 g", scadenza: "15/09/2026", da: "Telefono della cucina", lotti: { fiordilatte: ["l9"] } },
+    { id: "s5", data: D(13, 9), ora: "09:30", pid: "focaccia", prodotto: "Focaccia al rosmarino", copie: 4, lotto: "L 20260913-001", quantita: "400 g", scadenza: "15/09/2026", da: "PC", lotti: { farina0: ["l1"], olio: ["l7"], rosmarino: [], sale: ["l6"], lievito: ["l5"] } },
+    { id: "s6", data: D(3, 9), ora: "10:30", pid: "classico", prodotto: "Impasto classico 24h", copie: 6, lotto: "L 20260903-001", quantita: "250 g", scadenza: "06/09/2026", da: "PC", lotti: { farina0: ["l0", "l1"], sale: ["l6"], lievito: ["l5"] } },
+  ],
+  dispositivi: [
+    { nome: "Telefono della cucina", sistema: "Android · Chrome", quando: "collegato dal 13 set · ultimo accesso 2 minuti fa" },
+    { nome: "Tablet del banco", sistema: "iPadOS · Safari", quando: "collegato dal 9 set · ultimo accesso ieri" },
+  ],
+});
+// lo stato di prima installazione: tutto vuoto (#vuoto, o «Svuota tutto» nelle Impostazioni)
+const vuota = () => Object.assign(partenza(), { prodotti: [], ingredienti: [], lotti: [], arrivi: [], storico: [], fornitori: [], usi: {}, prodotto: null, prodottoEt: null, ingrediente: null, progressivo: 1 });
+var S = partenza();  // var, non let: cosi' S e' anche window.S e le prove a secco lo raggiungono
+
+/* ============================ letture sui dati ============================ */
+const prod = id => S.prodotti.find(p => p.id === id);
+const ingr = id => S.ingredienti.find(i => i.id === id);
+const lot = id => S.lotti.find(l => l.id === id);
+const arrivo = id => S.arrivi.find(a => a.id === id);
+const lottiDi = ingId => S.lotti.filter(l => l.ing === ingId);
+// un lotto e' aperto dalla registrazione finche' non lo si chiude: piu' lotti aperti insieme sono la normalita' nei giorni del cambio sacco
+const aperti = ingId => lottiDi(ingId).filter(l => l.stato === "aperto").sort((a, c) => (a.apertoDal || 0) - (c.apertoDal || 0));
+const scadeIl = l => l.scadenza ? "scade " + fmt(l.scadenza) : "scadenza da inserire";
+const scaduto = l => !!l.scadenza && giorniA(l.scadenza) < 0;
+const apertiValidi = ingId => aperti(ingId).filter(l => !scaduto(l));
+// i lotti che una stampa registra: quelli aperti e non scaduti; se sono tutti scaduti restano quelli (con l'avviso)
+const inUsoTutti = ingId => { const v = apertiValidi(ingId); return v.length ? v : aperti(ingId); };
+const inUso = ingId => inUsoTutti(ingId)[0] || null;
+function chiudiLotto(l, come) { l.stato = "chiuso"; l.chiusoIl = OGGI; l.chiusoDa = come; }
+// alla scadenza un lotto si chiude da solo, se l'ingrediente ne ha un altro valido; se era l'unico resta aperto con l'avviso
+function chiudiScaduti() {
+  for (const i of S.ingredienti) { const a = aperti(i.id); if (a.length < 2) continue; const validi = a.filter(l => !scaduto(l)); if (!validi.length) continue;
+    for (const l of a) if (scaduto(l)) { l.stato = "chiuso"; l.chiusoIl = l.scadenza; l.chiusoDa = "scadenza"; } }
+}// un ingrediente collegato puo' essere una produzione propria ("p:<id prodotto>"): il suo "lotto" e' l'ultima stampa non scaduta
+const eProduzione = id => typeof id === "string" && id.startsWith("p:");
+const prodottoDi = id => prod(id.slice(2));
+const nomeCollegato = id => eProduzione(id) ? prodottoDi(id).nome : ingr(id).nome;
+const scadenzaStampa = x => { const [g, m, a] = x.scadenza.split("/").map(Number); return new Date(a, m - 1, g); };
+const stampeValideDi = pid => S.storico.filter(x => x.pid === pid && giorniA(scadenzaStampa(x)) >= 0);
+const ultimaStampaDi = pid => stampeValideDi(pid)[0] || null;
+const giorniInUso = l => l.apertoDal ? -giorniA(l.apertoDal) : null;
+// quanto dura di solito un lotto di questo ingrediente (media dei lotti finiti): serve per l'avviso "e' ancora questo il sacco?"
+function durataSolita(ingId) {
+  const chiusi = lottiDi(ingId).filter(l => l.stato === "chiuso" && l.apertoDal && l.chiusoIl && l.chiusoDa !== "scadenza");
+  if (chiusi.length < 2) return null;
+  return Math.round(chiusi.reduce((n, l) => n + Math.round((l.chiusoIl - l.apertoDal) / 86400000), 0) / chiusi.length);
+}
+const lottoVecchio = l => { const d = durataSolita(l.ing), n = giorniInUso(l); return d != null && n != null && n > d * 1.5 ? { giorni: n, solito: d } : null; };
+// cosa finisce nello storico per un ingrediente collegato: la scelta fatta a mano, altrimenti il sacco aperto per
+// primo (il piu' vecchio) o l'ultima stampa del semilavorato. Con piu' lotti aperti si puo' spuntare anche l'altro
+// (o gli altri) nella striscia: vale solo per questa stampa. Se i lotti scelti a mano nel frattempo sono stati
+// chiusi (nessuno dei due resta aperto), si ricade sul piu' vecchio invece di restare senza niente.
+const lottiPerStampa = id => {
+  if (eProduzione(id)) return [ultimaStampaDi(id.slice(2))].filter(Boolean);
+  const ap = inUsoTutti(id);
+  if (!S.scelti[id]) return ap.slice(0, 1);
+  const scelti = ap.filter(l => S.scelti[id].includes(l.id));
+  return scelti.length ? scelti : ap.slice(0, 1);
+};
+const chiaveDi = r => r.pid ? "s:" + r.id : r.id;
+const usatoIn = lotId => S.storico.filter(x => Object.values(x.lotti).some(a => a.includes(lotId)));
+const tel = () => innerWidth <= 860;
+function statoScadenza(l) {
+  if (!l || !l.scadenza) return null;
+  const n = giorniA(l.scadenza);
+  if (n < 0) return { classe: "scaduto", testo: n === -1 ? "scaduto ieri" : `scaduto da ${-n} giorni` };
+  if (n === 0) return { classe: "scade", testo: "scade oggi" };
+  if (n <= 3) return { classe: "scade", testo: n === 1 ? "scade domani" : `scade tra ${n} giorni` };
+  return null;
+}
+const nomeStato = { aperto: "Aperto", chiuso: "Chiuso" };
+function comeChiuso(l) { return l.chiusoDa === "scadenza" ? "chiuso da solo alla scadenza" : l.chiusoDa === "domanda" ? "chiuso alla stampa" : l.chiusoDa === "mano" ? "chiuso a mano" : "chiuso"; }
+function origine(l) {
+  const a = arrivo(l.arrivo);
+  if (!a) return "scritto a mano alla stampa";
+  return `${a.fornitore} · ${a.documento || "senza documento"} · arrivato il ${fmt(a.data)}`;
+}
+const acceso = (et, tipo) => et.blocchi.some(x => x.tipo === tipo && x.acceso);
+// i nomi simili a "testo" fra gli ingredienti gia' in elenco (escludiId resta fuori): prima l'identico, poi i
+// contenimenti ("farina" dentro "farina tipo 0"), poi chi condivide una parola di almeno 4 lettere, infine chi e'
+// a una piccola distanza di edit. Si attiva da 2 caratteri scritti in su; al massimo 5 risultati, i piu' vicini prima.
+function nomiSimili(testo, escludiId) {
+  const chiave = chiaveNome(testo);
+  if (chiave.length < 2) return [];
+  const parole = chiave.split(" ").filter(p => p.length >= 4);
+  const righe = [];
+  for (const ing of S.ingredienti) {
+    if (ing.id === escludiId) continue;
+    const k = chiaveNome(ing.nome);
+    if (!k) continue;
+    let livello;
+    if (k === chiave) livello = 0;
+    else if (k.includes(chiave) || chiave.includes(k)) livello = 1;
+    else if (parole.some(p => k.split(" ").includes(p))) livello = 2;
+    else {
+      const soglia = Math.max(chiave.length, k.length) > 8 ? 3 : 2;
+      if (distanzaEdit(chiave, k) > soglia) continue;
+      livello = 3;
+    }
+    righe.push({ ing, livello });
+  }
+  righe.sort((x, y) => x.livello - y.livello || x.ing.nome.localeCompare(y.ing.nome));
+  return righe.slice(0, 5).map(r => r.ing);
+}
+// un ingrediente "ancora vuoto": appena creato, non ha lotti, fornitore, ne' e' collegato a un prodotto o a una consegna in corso
+const ingredienteAncoraVuoto = i => !lottiDi(i.id).length && !i.fornitore && !S.prodotti.some(p => p.tracciati.includes(i.id)) && !(S.arrivo && S.arrivo.righe.some(r => r.ing === i.id));
+
+/* ============================ pezzi comuni (le classi dell'app) ============================ */
+function bottone(testo, opz = {}) {
+  const b2 = el("button", { className: "btn " + (opz.classe || "") });
+  if (opz.icona) b2.innerHTML = ico(opz.icona, opz.iw || 20, opz.sw || 2);
+  if (testo) b2.append(el("span", {}, testo));
+  if (opz.onclick) b2.onclick = opz.onclick;
+  if (opz.disabilitato) b2.disabled = true;
+  if (opz.stile) b2.style.cssText = opz.stile;
+  if (opz.title) b2.title = opz.title;
+  return b2;
+}
+function avvisa(testo) {
+  document.querySelector(".avvisino")?.remove();
+  const a = el("div", { className: "avvisino" }, testo);
+  document.body.append(a);
+  setTimeout(() => a.remove(), 3600);
+}
+function guida(...testo) {
+  const g = el("div", { className: "guida" });
+  g.append(el("span", { className: "tag" }, "Nuovo"), el("div", {}, ...testo));
+  return g;
+}
+const stato = (classe, testo) => el("span", { className: "stato " + classe }, testo);
+function campoTesto(nome, valore, oninput, opz = {}) {
+  const c = el("div", { className: "campo" + (opz.simili ? " conTendina" : "") });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const cas = el("div", { className: "casella" + (opz.mono ? " mono" : "") });
+  const i = el("input", { value: valore || "", placeholder: opz.placeholder || "" });
+  if (opz.tipo) i.type = opz.tipo;
+  if (opz.chiave) i.dataset.fuoco = opz.chiave;
+  if (opz.grassetto !== false) i.style.fontWeight = "700";
+  cas.append(i);
+  if (opz.unita) cas.append(el("span", { className: "unita" }, opz.unita));
+  if (opz.auto) cas.append(el("span", { className: "auto" }, "AUTO"));
+  c.append(cas);
+  if (opz.nota) c.append(el("div", { className: "nota12" }, opz.nota));
+  if (opz.simili) {
+    // la tendina dei nomi gia' in elenco: si ricostruisce da sola a ogni tasto, senza disegna() (non deve rubare il fuoco)
+    const tendina = el("div", { className: "tendinaSimili" });
+    c.append(tendina);
+    const riempi = testo => {
+      tendina.textContent = "";
+      const trovati = opz.simili(testo);
+      if (!trovati.length) return;
+      tendina.append(el("div", { className: "titoloTendina" }, "Già in elenco:"));
+      for (const ing of trovati) {
+        const v = el("button", { className: "voce" });
+        v.onmousedown = e => e.preventDefault();  // cosi' il clic arriva prima del blur che chiuderebbe la tendina
+        v.onclick = () => opz.scegliSimile(ing);
+        const rNome = el("div", { className: "nome" }, ing.nome);
+        if (chiaveNome(ing.nome) === chiaveNome(testo)) rNome.append(el("span", { className: "stessoNome" }, "stesso nome"));
+        const n = aperti(ing.id).length;
+        v.append(rNome, el("div", { className: "dettaglio" }, (ing.fornitore || "senza fornitore") + " · " + (n ? plurale(n, "lotto aperto", "lotti aperti") : "nessun lotto aperto")));
+        tendina.append(v);
+      }
+    };
+    i.oninput = e => { oninput(e.target.value); riempi(e.target.value); };
+    i.onblur = () => { tendina.textContent = ""; };
+  } else {
+    i.oninput = e => oninput(e.target.value);
+  }
+  return c;
+}
+function campoArea(nome, valore, oninput, chiave, righe = 3) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const ta = el("textarea", { className: "areaTesto scorre", value: valore || "", rows: righe });
+  ta.dataset.fuoco = chiave;
+  ta.oninput = e => oninput(e.target.value);
+  c.append(ta);
+  return c;
+}
+function campoSelezione(nome, valore, opzioni, oncambia) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const cas = el("div", { className: "casella", style: "padding:0" });
+  const s = el("select", { className: "selCasella" });
+  for (const o of opzioni) s.append(el("option", { value: Array.isArray(o) ? o[0] : o, selected: (Array.isArray(o) ? o[0] : o) === valore }, Array.isArray(o) ? o[1] : o));
+  s.onchange = e => oncambia(e.target.value);
+  cas.append(s);
+  c.append(cas);
+  return c;
+}
+// tendina "Fornitore abituale" (Nessuno + salvati + "Altro fornitore..."): con "altro" acceso, sotto compare
+// il campo libero per il nome nuovo; confermarlo (si esce dal campo) lo aggiunge a S.fornitori se manca
+function campoFornitore(valore, altro, opz) {
+  const fornitori = [...S.fornitori];
+  if (!altro && valore && !fornitori.includes(valore)) fornitori.push(valore);
+  const out = [campoSelezione("Fornitore abituale", altro ? "__nuovo" : (valore || ""), [["", "Nessuno"], ...fornitori.map(f => [f, f]), ["__nuovo", "Altro fornitore…"]],
+    v => v === "__nuovo" ? opz.entra() : opz.scegli(v))];
+  if (altro) {
+    const campo = campoTesto("Nome del fornitore", valore, opz.scrivi, { chiave: opz.chiave, placeholder: "come sulla fattura", grassetto: false });
+    campo.querySelector("input").onchange = e => opz.conferma(e.target.value);
+    out.push(campo);
+  }
+  return out;
+}
+function campoInline(nome, dentro) {
+  const w = el("div", { className: "inline" });
+  w.append(el("div", { className: "etichettina" }, nome), el("div", { className: "campoDentro" }, dentro));
+  return w;
+}
+function casellaInput(valore, oninput, opz = {}) {
+  const cas = el("div", { className: "casella" + (opz.classe ? " " + opz.classe : "") });
+  const i = el("input", { value: valore, style: "font-weight:700" });
+  if (opz.chiave) i.dataset.fuoco = opz.chiave;
+  i.oninput = e => oninput(e.target.value);
+  cas.append(i);
+  if (opz.unita) cas.append(el("span", { className: "unita" }, opz.unita));
+  return cas;
+}
+function gettoni(coppie, attivo, onscegli) {
+  const f = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap" });
+  for (const [k, t] of coppie) {
+    const g = el("button", { className: "gettone" + (attivo === k ? " on" : "") }, t);
+    g.onclick = () => onscegli(k);
+    f.append(g);
+  }
+  return f;
+}
+function casellaCerca(placeholder, valore, chiave, oninput, stile = "flex:1;min-width:0") {
+  const cerca = el("div", { className: "cerca", style: stile });
+  cerca.innerHTML = ico(I.cerca, 20, 2);
+  const inp = el("input", { placeholder, value: valore });
+  inp.dataset.fuoco = chiave;
+  inp.oninput = e => oninput(e.target.value);
+  cerca.append(inp);
+  return cerca;
+}
+function spunta(testo, on, onclick) {
+  const s = el("button", { className: "spunta" + (on ? " on" : "") });
+  s.append(el("span", { className: "quadro", innerHTML: on ? ico(I.spunta, 14, 3) : "" }), el("span", {}, testo));
+  s.onclick = onclick;
+  return s;
+}
+function foto(tipo, testo, titolo) {
+  const f = el("button", { className: "foto " + tipo, title: "Apri la foto" });
+  f.append(el("span", {}, testo));
+  f.onclick = e => { e.stopPropagation(); S.foto = { tipo, titolo: titolo || testo }; disegna(); };
+  return f;
+}
+function fotoVuota(testo, onclick) {
+  const f = el("button", { className: "foto vuota" });
+  f.innerHTML = ico(I.camera, 20, 2);
+  f.append(el("span", {}, testo));
+  f.onclick = e => { e.stopPropagation(); onclick(); };
+  return f;
+}
+// la pastiglia della stampante in testata, come StatoStampante.tsx
+function statoStampante() {
+  const p = el("div", { className: "pastiglia pronta" });
+  p.append(el("span", { className: "punto" }));
+  if (tel()) p.append("62 mm · pronta");
+  else p.append(el("b", {}, "Brother QL-1100c (USB)"), el("span", { style: "font-weight:400" }, "rotolo 62 mm · pronta"));
+  return p;
+}
+
+/* ============================ anteprima (RiquadroAnteprima) ============================ */
+// l'etichetta e' disegnata nel DOM, con i blocchi accesi nell'ordine e nelle colonne dell'etichetta
+function foglioEtichetta(p, quantita, scadenza, lotto) {
+  const et = p.etichetta;
+  const c = el("div", { className: "foglio" });
+  const pt = corpo => `font-size:${Math.round(corpo * 0.95)}px;line-height:1.25`;
+  const grassettoAllergeni = t => t.replace(/\b([A-ZÀ-Ü]{3,})\b/g, "<b>$1</b>");
+  const reso = x => {
+    const d = el("div", { style: pt(x.corpo) });
+    switch (x.tipo) {
+      case "titolo": d.innerHTML = `<b>${p.nomeStampa}</b>`; break;
+      case "ingredienti": d.innerHTML = `<b>INGREDIENTI:</b> ${grassettoAllergeni(p.ingredienti)}`; break;
+      case "puoContenere": if (!p.allergeni.length) return null; d.innerHTML = `Può contenere: <b>${p.allergeni.join(", ")}</b>`; break;
+      case "modoUso": if (!p.modoUso) return null; d.textContent = p.modoUso; break;
+      case "scadenza": d.innerHTML = `${et.dicituraScadenza} <b>${scadenza}</b><br>${p.conservazione.toUpperCase()}`; break;
+      case "lotto": d.innerHTML = `<span class="mono">${lotto}</span>`; break;
+      case "quantita": d.innerHTML = `<span style="font-size:9px;border-bottom:1px solid #999">Quantità</span><br><b>${quantita}</b>`; break;
+      case "valori": d.innerHTML = `<b>VALORI NUTRIZIONALI (100 g)</b>` + p.valori.map(v => `<div style="display:flex;justify-content:space-between;gap:6px"><span>${v[0]}</span><span>${v[1]}</span></div>`).join(""); break;
+      case "produttore": d.textContent = `${et.produttore.ragioneSociale} - ${et.produttore.sedeLegale}` + (et.produttore.sedeProduzione ? ` - Prodotto in: ${et.produttore.sedeProduzione}` : ""); break;
+      case "dataProduzione": d.innerHTML = `Prodotto il <b>${fmt(OGGI)}</b>`; break;
+      case "sigla": if (!p.sigla) return null; d.textContent = "Preparato da " + p.sigla; break;
+      case "testo": d.textContent = x.testo; break;
+      case "testoGrande": d.innerHTML = `<b>${x.testo}</b>`; break;
+      case "riga": d.style.cssText = "border-top:1px solid #333;height:0;margin:3px 0"; break;
+      case "spazio": d.style.cssText = `height:${x.corpo}px`; break;
+      case "qr": d.style.cssText = `width:${x.corpo * 3}px;height:${x.corpo * 3}px;background:repeating-conic-gradient(#111 0 25%, #fff 0 50%) 0 0/8px 8px;border:2px solid #fff;outline:1px solid #111`; break;
+      case "logo": return null;
+    }
+    if (x.allineamento === "centro") d.style.textAlign = "center"; else if (x.allineamento === "destra") d.style.textAlign = "right";
+    return d;
+  };
+  let zona = null;
+  for (const x of et.blocchi) {
+    if (!x.acceso) continue;
+    if (x.colonna === "piena") { zona = null; const d = reso(x); if (d) c.append(d); continue; }
+    if (!zona) {
+      zona = el("div", { className: "due" });
+      zona.style.gridTemplateColumns = { "1/4": "3fr 1fr", "1/3": "2fr 1fr", "1/2": "1fr 1fr", "2/3": "1fr 2fr" }[et.larghezzaDestra] || "2fr 1fr";
+      zona.append(el("div", { style: "display:flex;flex-direction:column;gap:2px;min-width:0" }), el("div", { style: "display:flex;flex-direction:column;gap:2px;min-width:0" }));
+      c.append(zona);
+    }
+    const d = reso(x); if (d) zona.children[x.colonna === "sx" ? 0 : 1].append(d);
+  }
+  return c;
+}
+function riquadroAnteprima(p, opz = {}) {
+  const w = el("div", { style: "display:flex;flex-direction:column;gap:8px;min-width:0" });
+  const a = el("div", { className: "anteprima" });
+  const cornice = el("button", { className: "cornice finta" + (opz.compatta ? " compatta" : ""), title: "Ingrandisci l'anteprima" });
+  cornice.append(foglioEtichetta(p, opz.quantita || p.quantita, opz.scadenza || fmt(piuGiorni(OGGI, p.giorni)), opz.lotto || lottoDiOggi(p) || "L …"));
+  cornice.onclick = () => { S.lenteAperta = { p, ...opz }; disegna(); };
+  a.append(cornice, el("span", { className: "lupa", style: "right:6px;left:auto", innerHTML: ico(I.lente, 16, 2.2) }));
+  w.append(a);
+  return w;
+}
+function lente() {
+  const { p, ...opz } = S.lenteAperta;
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) { S.lenteAperta = false; disegna(); } };
+  const f = el("div", { className: "finestra lente" });
+  const capo = el("div", { className: "capoLente" });
+  const chiudi = el("button", { className: "chiudi", innerHTML: ico(I.via, 18, 2.2) });
+  chiudi.onclick = () => { S.lenteAperta = false; disegna(); };
+  capo.append(chiudi, el("div", { style: "min-width:0" }, el("div", { className: "h", style: "font-size:18px" }, p.nome), el("div", { className: "nota12" }, "Anteprima rotolo 62 mm")));
+  const corpo = el("div", { className: "corpoLente" });
+  const foglio = el("div", { className: "foglio" });
+  const cornice = el("div", { className: "cornice finta", style: "width:min(760px,90vw);cursor:default;box-shadow:0 6px 20px rgba(88,68,60,.14)" });
+  cornice.append(foglioEtichetta(p, opz.quantita || p.quantita, opz.scadenza || fmt(piuGiorni(OGGI, p.giorni)), opz.lotto || lottoDiOggi(p) || "L …"));
+  cornice.querySelector(".foglio").style.transform = "scale(1.6)"; cornice.querySelector(".foglio").style.transformOrigin = "top left"; cornice.querySelector(".foglio").style.width = "62.5%";
+  cornice.style.overflow = "hidden";
+  foglio.append(cornice);
+  corpo.append(foglio);
+  f.append(capo, corpo);
+  velo.append(f);
+  return velo;
+}
+
+// un'etichetta nuova come nell'app: nome «Etichetta nuova», 3 giorni, in frigo, 500 g, blocchi titolo, scadenza e lotto
+function nuovaEtichetta() {
+  const id = "p" + Date.now();
+  S.prodotti.push({ id, nome: "Etichetta nuova", nomeStampa: "ETICHETTA NUOVA", giorni: 3, quantita: "500 g", conservazione: "In frigo",
+    etichetta: { dicituraScadenza: "Scade il", formatoData: "GG/MM/AAAA", produttore: S.prodotti[0]?.etichetta.produttore ? { ...S.prodotti[0].etichetta.produttore } : { ragioneSociale: "", sedeLegale: "", sedeProduzione: "" }, larghezzaDestra: "1/2", schemaLotto: "data", logo: false, blocchi: [b("titolo", 14), b("scadenza", 8), b("lotto", 7)] },
+    ingredienti: "", allergeni: [], modoUso: "", valori: [], sigla: "", tracciati: [] });
+  S.vista = "etichette"; S.prodottoEt = id; S.gruppiEt.prodotto = true; disegna();
+  setTimeout(() => { const n = document.querySelector('[data-fuoco="nomeP"]'); if (n) { n.focus(); n.select(); } }, 0);
+}
+/* ============================ schermata: Stampa etichetta ============================ */
+function vistaStampa() {
+  const p = prod(S.prodotto);
+  const schermo = el("div", { className: "schermo vistaStampa" + (S.dettaglio ? " dettaglio" : "") });
+  const sx = el("div", { className: "colonnaElenco", style: "flex:1;min-width:0;gap:12px" });
+  const prima = el("div", { style: "display:flex;gap:12px" });
+  prima.append(casellaCerca("Cerca etichetta…", S.cerca, "cerca", v => { S.cerca = v; disegna(); }));
+  if (!S.fase) prima.append(bottone("Nuova etichetta", { classe: "soloPC", icona: I.piu, iw: 18, sw: 2.2, stile: "height:52px;padding:0 16px", onclick: nuovaEtichetta }));
+  sx.append(prima);
+  sx.append(gettoni([["usati", "Più usati"], ["tutti", "Tutti"]], S.filtro, k => { S.filtro = k; disegna(); }));
+  if (!S.fase) { const r = el("button", { className: "ristampaTel soloTel", style: "justify-content:center" }); r.innerHTML = ico(I.piu, 20, 2.2) + '<span style="font-weight:700;font-size:15px">Nuova etichetta</span>'; r.onclick = nuovaEtichetta; sx.append(r); }
+
+  let lista = S.prodotti.filter(x => x.nome.toLowerCase().includes(S.cerca.toLowerCase()));
+  if (S.filtro === "usati") lista = [...lista].sort((a, c) => (S.usi[c.id] || 0) - (S.usi[a.id] || 0));
+  const griglia = el("div", { className: "griglia scorre", style: "flex:1;min-height:0" + (S.fase === "stampa" ? ";opacity:.45;pointer-events:none" : "") });
+  for (const x of lista) {
+    const b2 = el("button", { className: "prodotto" + (x.id === S.prodotto ? " on" : "") });
+    b2.append(el("span", { className: "n" }, x.nome),
+      el("span", { className: "d" }, "Scade dopo ", el("b", {}, plurale(x.giorni, "giorno", "giorni")), " · " + x.quantita),
+      el("span", { className: "freccia soloTel", innerHTML: ico(I.destra, 20, 2) }));
+    b2.onclick = () => { S.prodotto = x.id; S.fase = null; S.dettaglio = true; S.quantita = null; S.scadenza = null; S.copie = 1; S.strisciaAperta = false; S.lottoMano = ""; S.scelti = {}; S.chiusiInStampa = {}; disegna(); };
+    griglia.append(b2);
+  }
+  if (!lista.length) griglia.append(el("div", { className: "tenue", style: "padding:8px;line-height:1.5" }, S.prodotti.length ? "Nessuna etichetta con questo nome." : "Non c'è ancora nessuna etichetta. Creane una con «Nuova etichetta»: si stampa da qui."));
+  sx.append(griglia);
+
+  const dx = el("div", { className: "colonna scheda pannelloProdotto", style: "width:100%;flex-shrink:0;min-width:0;gap:12px" + (tel() ? "" : ";width:420px") });
+  if (!p) dx.append(el("div", { className: "tenue", style: "padding:8px" }, "Scegli un'etichetta dall'elenco."));
+  else if (S.fase) dx.append(...pannelloStampa(p)); else dx.append(...pannelloProdotto(p));
+  schermo.append(sx, dx);
+  return schermo;
+}
+function pannelloProdotto(p) {
+  const out = [];
+  const titolo = el("div", { style: "display:flex;align-items:center;gap:8px;min-width:0" });
+  const indietro = el("button", { className: "indietro soloTel", innerHTML: ico(I.sinistra, 22, 2), title: "Torna alle etichette" });
+  indietro.onclick = () => { S.dettaglio = false; disegna(); };
+  titolo.append(indietro, el("div", { className: "h titoloScheda" }, p.nome));
+  out.push(titolo);
+  const quantita = S.quantita ?? p.quantita, scadenza = S.scadenza ?? iso(piuGiorni(OGGI, p.giorni));
+  // anteprima, campi e lotti scorrono; il bottone Stampa resta fermo in fondo
+  const corpo = el("div", { className: "scorre", style: "flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px" });
+  corpo.append(riquadroAnteprima(p, { quantita, scadenza: fmt(daIso(scadenza)) }));
+  const griglia = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  griglia.append(campoTesto("Quantità", quantita, v => { S.quantita = v; }, { chiave: "qta" }));
+  const cs = campoTesto("Scadenza", scadenza, v => { S.scadenza = v; }, { chiave: "scad", tipo: "date", nota: `Oggi + ${p.giorni} giorni` });
+  griglia.append(cs);
+  const aMano = schemaDi(p) === "mano";
+  const cl = campoTesto("Lotto", aMano ? (S.lottoMano || "") : lottoDiOggi(p), v => { S.lottoMano = v; }, { chiave: "lotto", mono: true, auto: !aMano, placeholder: aMano ? "es. 20260915-A" : "" });
+  cl.classList.add("campoLottoStampa");
+  griglia.append(cl, contatoreCopie());
+  corpo.append(griglia, lottiInStampa(p));
+  out.push(corpo);
+  const azioni = el("div", { className: "azioni", style: "display:flex;gap:10px" });
+  const matita = bottone("", { icona: I.matita, stile: "width:52px;padding:0;flex-shrink:0;justify-content:center", title: "Modifica l'etichetta", onclick: () => { S.vista = "etichette"; S.prodottoEt = p.id; disegna(); } });
+  const st = bottone(S.copie > 1 ? `Stampa ${S.copie} copie` : "Stampa", { classe: "primario grande", icona: I.stampa, stile: "flex:1", onclick: () => avviaStampa() });
+  azioni.append(matita, st);
+  out.push(azioni);
+  return out;
+}
+function contatoreCopie() {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, "Copie"));
+  const cas = el("div", { style: "display:flex;align-items:center;gap:6px" });
+  const meno = bottone("", { icona: I.meno, iw: 18, sw: 2.2, stile: "width:52px;height:52px;padding:0;justify-content:center;flex-shrink:0", onclick: () => { S.copie = Math.max(1, S.copie - 1); disegna(); } });
+  const piu = bottone("", { icona: I.piu, iw: 18, sw: 2.2, stile: "width:52px;height:52px;padding:0;justify-content:center;flex-shrink:0", onclick: () => { S.copie = Math.min(50, S.copie + 1); disegna(); } });
+  cas.append(meno, el("div", { className: "casella", style: "flex:1;justify-content:center;font-weight:700;font-size:18px" }, String(S.copie)), piu);
+  c.append(cas);
+  return c;
+}
+// la striscia dei lotti in uso: e' il cuore della richiesta, e non chiede niente se tutto e' a posto.
+// Sul telefono sta chiusa in una riga e si apre da sola solo se c'e' qualcosa da guardare.
+function lottiInStampa(p) {
+  const box = el("div", { className: "lottiStampa" });
+  const capo = el("div", { className: "capo" });
+  capo.append(svgSpan(I.catena, 16, 2), el("div", { className: "etichettina" }, "Lotti degli ingredienti"));
+  box.append(capo);
+  if (!p.tracciati.length) {
+    box.append(el("div", { className: "tenue", style: "padding:12px 14px;font-size:13.5px;line-height:1.45" },
+      "Nessun ingrediente collegato: la stampa non registra lotti. Si collegano una volta sola in Etichette, nel gruppo Ingredienti (serve il blocco Ingredienti sull'etichetta)."));
+    return box;
+  }
+  const righe = p.tracciati.map(id => {
+    const voci = lottiPerStampa(id);
+    let livello = "", nota = null;
+    if (!voci.length) { livello = "attenzione"; nota = eProduzione(id) ? `Nessuna produzione recente di ${nomeCollegato(id)}: si stampa lo stesso, nello storico resta «non registrato».` : "Si stampa lo stesso: nello storico resta «non registrato»."; }
+    else if (!eProduzione(id)) {
+      const sc = voci.map(statoScadenza).find(Boolean);
+      const vecchio = voci.map(lottoVecchio).find(Boolean);
+      if (sc?.classe === "scaduto") { livello = "grave"; nota = `L'unico lotto aperto è ${sc.testo}. Controlla il prodotto o registra la merce nuova.`; }
+      else if (sc) { livello = "attenzione"; nota = `Il lotto aperto ${sc.testo}.`; }
+      else if (vecchio && voci.length === 1) { livello = "attenzione"; nota = `Aperto da ${vecchio.giorni} giorni, di solito ne dura ${vecchio.solito}: è ancora questo il sacco?`; }
+    }
+    return { id, voci, livello, nota };
+  });
+  const problemi = righe.filter(r => r.livello).length;
+  // prima cio' che va guardato: lotto mancante o scaduto, poi gli avvisi, poi il resto nell'ordine dell'etichetta
+  const peso = r => r.livello === "grave" ? 0 : r.livello === "attenzione" && !r.voci.length ? 1 : r.livello ? 2 : 3;
+  righe.sort((a, c) => peso(a) - peso(c));
+  const chiusa = tel() && !S.strisciaAperta && !problemi;
+  if (chiusa) {
+    const r = el("button", { className: "riassunto" });
+    r.append(el("span", { className: "b" }, plurale(righe.reduce((n, r2) => n + r2.voci.length, 0), "lotto", "lotti")), el("span", { className: "tenue" }, "· tutto a posto"), el("span", { className: "punta", innerHTML: ico(I.giu, 18, 2.2) }));
+    r.onclick = () => { S.strisciaAperta = true; disegna(); };
+    box.append(r);
+    return box;
+  }
+  for (const { id, voci, livello, nota } of righe) {
+    const r = el("div", { className: "rl" + (livello ? " " + livello : "") });
+    r.append(el("div", { className: "testa" }, el("div", { className: "ing", title: nomeCollegato(id) }, nomeCollegato(id), eProduzione(id) ? el("small", {}, "tua produzione") : null)));
+    const tutti = eProduzione(id) ? voci : inUsoTutti(id);
+    for (const v of tutti) {
+      if (v.pid) { r.append(el("div", { className: "lot" }, el("span", { className: "mono b" }, v.lotto), el("small", {}, `stampata ${giorniA(v.data) === 0 ? "oggi" : "il " + fmt(v.data)} alle ${v.ora} · scade ${v.scadenza}`))); continue; }
+      const usato = voci.includes(v);
+      const riga = el("div", { className: "lot" + (usato ? "" : " escluso") });
+      if (tutti.length > 1) {
+        // la spunta dice quale sacco e' finito in questa preparazione; di serie e' spuntato solo il piu' vecchio (lottiPerStampa)
+        const sp = el("button", { className: "quadro" + (usato ? " on" : ""), title: usato ? "Usato in questa preparazione: tocca per toglierlo" : "Non usato: tocca per rimetterlo", innerHTML: usato ? ico(I.spunta, 12, 3) : "" });
+        sp.onclick = () => { if (usato && voci.length <= 1) return avvisa("Almeno un lotto."); S.scelti[id] = usato ? voci.filter(l => l.id !== v.id).map(l => l.id) : [...voci.map(l => l.id), v.id]; disegna(); };
+        riga.append(sp);
+      }
+      // il bottone chiude il lotto: e' l'unico gesto sui lotti in stampa oltre alla spunta (proposta D del 15/9)
+      const x = el("button", { className: "chiudi", title: `Chiudi il lotto ${v.lotto}: finito, non lo usi più` }, "Chiudi lotto");
+      x.onclick = () => { chiudiLotto(v, "mano"); S.scelti[id] = (S.scelti[id] || []).filter(k => k !== v.id); disegna(); const resto = inUsoTutti(id); avvisa(resto.length ? `Chiuso ${v.lotto}. Resta aperto ${resto.map(z => z.lotto).join(" + ")}.` : `Chiuso ${v.lotto}. ${nomeCollegato(id)} non ha lotti aperti: registra la merce quando arriva.`); };
+      riga.append(el("span", { className: "mono b" }, v.lotto), el("small", {}, scadeIl(v)), x);
+      r.append(riga);
+    }
+    if (!voci.length) {
+      const riga = el("div", { className: "lot manca" }, eProduzione(id) ? "nessuna stampa valida" : "nessun lotto aperto");
+      if (eProduzione(id)) { const va = el("button", { className: "vai" }, "Stampala ora"); va.onclick = () => { S.prodotto = id.slice(2); S.dettaglio = true; S.strisciaAperta = false; disegna(); }; riga.append(va); }
+      else { const reg = el("button", { className: "vai" }, "Registra la merce"); reg.onclick = () => { S.tornaAStampa = { prodotto: S.prodotto }; S.vista = "ingredienti"; apriArrivo(id); }; riga.append(reg); }
+      r.append(riga);
+    }
+    // col cambio di regola del 22/9, di serie si registra solo il sacco aperto per primo: un avviso spiega perche'
+    // il secondo (o gli altri) compaiono barrati, e come spuntarli se sono stati usati davvero
+    if (tutti.length > 1) r.append(el("div", { className: "piu" }, tutti.length === 2
+      ? "Di serie si registra il sacco aperto per primo: spunta anche l'altro se hai usato tutti e due."
+      : "Di serie si registra il sacco aperto per primo: spunta anche gli altri se li hai usati tutti."));
+    // i lotti chiusi dell'ingrediente, collassati: solo per gli ingredienti veri, le produzioni non hanno lotti
+    if (!eProduzione(id)) {
+      const chiusi = lottiDi(id).filter(l => l.stato === "chiuso").sort((a2, c2) => (c2.chiusoIl || 0) - (a2.chiusoIl || 0));
+      if (chiusi.length) {
+        const aperto2 = !!S.chiusiInStampa[id];
+        const interruttore = el("button", { className: "apriChiusi" }, el("span", {}, plurale(chiusi.length, "lotto chiuso", "lotti chiusi")), el("span", { className: "freccia", innerHTML: ico(aperto2 ? I.su : I.giu, 14, 2.2) }));
+        interruttore.onclick = () => { S.chiusiInStampa[id] = !aperto2; disegna(); };
+        r.append(interruttore);
+        if (aperto2) {
+          for (const l of chiusi.slice(0, 5)) {
+            const riga = el("div", { className: "lottoChiuso" });
+            riga.append(el("span", { className: "mono" }, l.lotto), el("small", {}, `${comeChiuso(l)} il ${fmt(l.chiusoIl)}`));
+            const ria = el("button", { className: "riapri" }, "Riapri");
+            ria.onclick = () => {
+              // trappola: disegna() richiama chiudiScaduti(), che rimette chiuso da solo un lotto scaduto se
+              // l'ingrediente ne ha gia' un altro aperto valido. In quel caso non lo si riapre nemmeno qui.
+              if (scaduto(l) && apertiValidi(l.ing).length) { avvisa(`${l.lotto} è scaduto: resta chiuso finché c'è un altro lotto valido aperto.`); return; }
+              // la scelta corrente va calcolata PRIMA di riaprire il lotto (altrimenti lottiPerStampa lo troverebbe gia' fra gli aperti,
+              // col rischio di scegliere lui solo in quanto piu' vecchio): il lotto riaperto si aggiunge a chi era gia' spuntato
+              const scelta = lottiPerStampa(id).map(x => x.id);
+              l.stato = "aperto"; delete l.chiusoIl; delete l.chiusoDa;
+              S.scelti[id] = [...scelta, l.id];
+              disegna(); avvisa(`Riaperto ${l.lotto}: ora puoi sceglierlo per questa stampa.`);
+            };
+            riga.append(ria);
+            r.append(riga);
+          }
+          if (chiusi.length > 5) r.append(el("div", { className: "altriChiusi" }, `e altri ${chiusi.length - 5}`));
+        }
+      }
+    }
+    if (nota) r.append(el("div", { className: "nota" }, nota));
+    box.append(r);
+  }
+  if (tel() && S.strisciaAperta && !problemi) { const ch = el("button", { className: "riassunto", style: "border-top:1px solid var(--riga)" }); ch.append(el("span", { className: "tenue" }, "Chiudi"), el("span", { className: "punta", innerHTML: ico(I.su, 18, 2.2) })); ch.onclick = () => { S.strisciaAperta = false; disegna(); }; box.append(ch); }
+  return box;
+}
+let timer = null;
+function avviaStampa() { S.fase = "stampa"; S.copia = 1; S.dettaglio = true; disegna(); timer = setTimeout(avanza, 900); }
+function avanza() { if (S.copia >= S.copie) return concludi(S.copie); S.copia++; disegna(); timer = setTimeout(avanza, 900); }
+function concludi(copie) {
+  clearTimeout(timer);
+  const p = prod(S.prodotto);
+  const lotti = {};
+  for (const id of p.tracciati) {
+    const voci = lottiPerStampa(id);
+    lotti[id] = voci.map(chiaveDi);
+  }
+  const ora = new Date();
+  S.storico.unshift({ id: "s" + Date.now(), data: OGGI, ora: `${String(ora.getHours()).padStart(2, "0")}:${String(ora.getMinutes()).padStart(2, "0")}`, pid: p.id, prodotto: p.nome, copie,
+    lotto: schemaDi(p) === "mano" ? (S.lottoMano || "a mano") : lottoDiOggi(p), quantita: S.quantita ?? p.quantita, scadenza: fmt(daIso(S.scadenza ?? iso(piuGiorni(OGGI, p.giorni)))), da: tel() ? "Telefono della cucina" : "PC", lotti });
+  S.progressivo++; S.usi[p.id] = (S.usi[p.id] || 0) + 1;
+  S.scelti = {}; S.chiusiInStampa = {}; S.copia = copie; S.fase = "fatta"; disegna();
+}
+function pannelloStampa(p) {
+  const out = [];
+  if (S.fase === "stampa") {
+    out.push(el("div", { className: "h", style: "font-size:20px" }, "Stampa in corso"));
+    out.push(el("div", { className: "tenue", style: "font-size:15px;margin-top:-6px" }, p.nome));
+    out.push(el("div", { style: "display:flex;align-items:baseline;gap:8px" },
+      el("div", { className: "h", style: "font-size:44px;font-weight:700;line-height:1;color:var(--ambra)" }, String(S.copia)),
+      el("div", { className: "tenue", style: "font-size:17px" }, `di ${S.copie} copie`)));
+    const barra = el("div", { className: "barraAvanzamento" });
+    barra.append(el("span", { style: `width:${Math.round((S.copia - .5) / S.copie * 100)}%` }));
+    out.push(barra);
+    out.push(el("div", { className: "tenue", style: "font-size:13px;line-height:1.4" }, "Le copie partono una alla volta: fermando la serie, quella in corso finisce e le altre non vengono stampate."));
+    out.push(el("div", { style: "flex:1" }));
+    out.push(bottone("Ferma la serie", { classe: "grande", icona: I.via, onclick: () => concludi(S.copia) }));
+    return out;
+  }
+  const u = S.storico[0];
+  const c = el("div", { style: "display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0" });
+  c.innerHTML = `<div style="width:96px;height:96px;border-radius:48px;background:var(--verdechiaro);display:flex;align-items:center;justify-content:center;color:var(--verde)">${ico(I.spunta, 52, 2.6)}</div>
+    <div style="text-align:center"><div class="h" style="font-size:28px;font-weight:700">${u.copie === 1 ? "Stampata" : "Stampate"}</div>
+    <div class="tenue" style="font-size:16px;margin-top:4px">${u.copie === 1 ? "Prendila dalla stampante" : u.copie + " copie: prendile dalla stampante"}</div></div>`;
+  out.push(c);
+  out.push(el("div", { className: "tenue", style: "font-size:13px;text-align:center;line-height:1.4" }, `Registrata nello storico alle ${u.ora}, da ${u.da === "PC" ? "questo PC" : "questo telefono"}.`));
+  const dati = el("div", { className: "scheda", style: "padding:12px 16px" });
+  for (const [k, v] of [["Etichetta", u.prodotto], ["Quantità", u.quantita], ["Scadenza", u.scadenza], ["Lotto", u.lotto]])
+    dati.append(el("div", { className: "kv" }, el("span", {}, k), el("b", { className: k === "Lotto" ? "mono" : "" }, v)));
+  out.push(dati);
+  const voci = Object.entries(u.lotti);
+  if (voci.length) {
+    const reg = el("div", { className: "scheda", style: "padding:12px 16px;background:var(--crema)" });
+    reg.append(el("div", { className: "etichettina", style: "margin-bottom:4px" }, "Lotti degli ingredienti registrati"));
+    for (const [id, chiavi] of voci) {
+      const codici = chiavi.map(k => k.startsWith("s:") ? S.storico.find(x => x.id === k.slice(2))?.lotto : lot(k)?.lotto).filter(Boolean);
+      reg.append(el("div", { className: "kv" }, el("span", {}, nomeCollegato(id)), codici.length ? el("b", { className: "mono" }, codici.join(" + ")) : el("b", { style: "color:var(--ambra)" }, "non registrato")));
+    }
+    out.push(reg);
+  }
+  out.push(el("div", { style: "flex:1" }));
+  const azioni = el("div", { style: "display:flex;flex-direction:column;gap:10px" });
+  azioni.append(bottone(u.copie === 1 ? "Stampane un'altra" : `Stampane altre ${u.copie}`, { classe: "primario grande", icona: I.piu, onclick: () => avviaStampa() }));
+  azioni.append(bottone("Torna all'elenco", { icona: I.sinistra, onclick: () => { S.fase = null; S.dettaglio = false; disegna(); } }));
+  out.push(azioni);
+  return out;
+}
+
+/* ============================ schermata: Etichette ============================ */
+function vistaEtichette() {
+  const p = prod(S.prodottoEt), et = p?.etichetta;
+  const schermo = el("div", { className: "schermo" });
+  if (!p) {
+    // nessuna etichetta scelta o nessuna etichetta: come nell'app, la colonna centrale si allarga e la destra sparisce
+    const c = el("div", { className: "colonna scheda", style: "flex:1;align-items:center;justify-content:center;text-align:center;gap:10px;padding:56px 24px" });
+    c.append(el("div", { className: "h", style: "font-size:18px" }, S.prodotti.length ? "Nessuna etichetta scelta" : "Non c'è ancora nessuna etichetta."));
+    if (S.prodotti.length) c.append(el("div", { className: "tenue", style: "font-size:14px;max-width:280px" }, "Scegline una dall'elenco, oppure creane una nuova."));
+    c.append(bottone("Nuova etichetta", { classe: "primario", icona: I.piu, iw: 17, sw: 2.2, stile: "margin-top:8px", onclick: nuovaEtichetta }));
+    if (S.prodotti.length && !tel()) {
+      const sx = el("div", { className: "colonna soloPC", style: "flex:0 1 240px;min-width:190px;gap:4px" });
+      for (const x of [...S.prodotti].sort((a, c2) => a.nome.localeCompare(c2.nome))) { const v = el("button", { className: "voceEt" }, x.nome); v.onclick = () => { S.prodottoEt = x.id; disegna(); }; sx.append(v); }
+      schermo.append(sx);
+    }
+    schermo.append(c);
+    return schermo;
+  }
+
+  // elenco a sinistra (solo PC): ricerca, "Nuova etichetta", voci con i blocchi accesi
+  if (S.elencoRidotto) {
+    const ridotto = el("div", { className: "colonna soloPC elencoCollassato" });
+    const riapri = el("button", { className: "riapriElenco", innerHTML: ico(I.destra, 16, 2), title: "Mostra l'elenco delle etichette" });
+    riapri.onclick = () => { S.elencoRidotto = false; disegna(); };
+    ridotto.append(riapri, el("span", { className: "nomeVerticale", title: p.nome }, p.nome));
+    schermo.append(ridotto);
+  } else {
+    const sx = el("div", { className: "colonna soloPC", style: "flex:0 1 240px;min-width:190px;gap:4px" });
+    const riga1 = el("div", { style: "display:flex;align-items:center;gap:6px" });
+    riga1.append(casellaCerca("Cerca…", S.cercaEt, "cercaEt", v => { S.cercaEt = v; disegna(); }, "height:44px;font-size:15px;flex:1;min-width:0"));
+    const riduci = el("button", { className: "riduciElenco", innerHTML: ico(I.sinistra, 16, 2), title: "Riduci l'elenco delle etichette" });
+    riduci.onclick = () => { S.elencoRidotto = true; disegna(); };
+    riga1.append(riduci);
+    sx.append(riga1);
+    const nuova = el("button", { className: "nuovaEt" }); nuova.innerHTML = ico(I.piu, 17, 2.2) + "<span>Nuova etichetta</span>";
+    nuova.onclick = nuovaEtichetta;
+    sx.append(nuova);
+    const elenco = el("div", { className: "scorre", style: "display:flex;flex-direction:column;gap:4px;flex:1;min-height:0" });
+    for (const x of [...S.prodotti].sort((a, c) => a.nome.localeCompare(c.nome)).filter(x => x.nome.toLowerCase().includes(S.cercaEt.toLowerCase()))) {
+      const v = el("button", { className: "voceEt" + (x.id === S.prodottoEt ? " scelto" : "") });
+      v.append(el("span", {}, x.nome), el("span", { className: "sotto" }, plurale(x.etichetta.blocchi.filter(z => z.acceso).length, "blocco acceso", "blocchi accesi")));
+      v.onclick = () => { S.prodottoEt = x.id; S.aggiungiIng = false; disegna(); };
+      elenco.append(v);
+    }
+    sx.append(elenco);
+    schermo.append(sx);
+  }
+
+  // colonna dei valori: i gruppi dell'app (Etichette.tsx, "sezioni"), su PC apribili uno o piu', sul telefono uno alla volta
+  const val = el("div", { className: "colonna scheda scorre", style: "flex:none;width:100%;min-width:0;gap:12px" + (tel() ? "" : ";flex:0 1 456px") });
+  if (tel()) {
+    const c = el("div", { className: "campo" });
+    c.append(el("div", { className: "etichettina" }, "Etichetta"));
+    const cas = el("div", { className: "casella", style: "padding:0" });
+    const s = el("select", { className: "selCasella", style: "font-size:16px;padding:0 12px" });
+    for (const x of S.prodotti) s.append(el("option", { value: x.id, selected: x.id === S.prodottoEt }, x.nome));
+    s.append(el("option", { value: "nuovo" }, "+ Nuova etichetta…"));
+    s.onchange = e => { if (e.target.value === "nuovo") return nuovaEtichetta(); S.prodottoEt = e.target.value; disegna(); };
+    cas.append(s);
+    c.append(cas);
+    val.append(c);
+    const anc = el("div", { className: "anteprimaAncorata", style: "min-width:0" });
+    anc.append(riquadroAnteprima(p, { compatta: true }));
+    val.append(anc);
+  }
+  const sezioni = gruppiEtichetta(p, et).filter(Boolean);
+  for (const g of sezioni) {
+    const apertoG = tel() ? S.gruppoTel === g.chiave : !!S.gruppiEt[g.chiave];
+    const w = el("div", { className: "gruppo" + (apertoG ? " aperto" : "") });
+    const capo = el("button", { className: "capoGruppo", style: "width:100%" });
+    const nome = el("div", { className: "h nomeGruppo" }, g.titolo);
+    capo.append(el("div", { className: "testi" }, nome, g.sotto ? el("div", { className: "sottoGruppo" }, g.sotto) : null), el("span", { className: "puntaGruppo", innerHTML: ico(I.giu, 20, 2) }));
+    capo.onclick = () => { if (tel()) S.gruppoTel = apertoG ? null : g.chiave; else S.gruppiEt[g.chiave] = !apertoG; disegna(); };
+    w.append(capo);
+    if (apertoG) { const d = el("div", { className: "dentroGruppo" }); d.append(...g.campi.filter(Boolean)); w.append(d); }
+    val.append(w);
+  }
+  if (tel()) {
+    const apertoB = S.gruppoTel === "blocchi";
+    const w = el("div", { className: "gruppo" + (apertoB ? " aperto" : "") });
+    const capo = el("button", { className: "capoGruppo", style: "width:100%" });
+    capo.append(el("div", { className: "testi" }, el("div", { className: "h nomeGruppo" }, "Blocchi dell'etichetta"), el("div", { className: "sottoGruppo" }, `${et.blocchi.filter(x => x.acceso).length} accesi su ${et.blocchi.length}`)),
+      el("span", { className: "puntaGruppo", innerHTML: ico(I.giu, 20, 2) }));
+    capo.onclick = () => { S.gruppoTel = apertoB ? null : "blocchi"; disegna(); };
+    w.append(capo);
+    if (apertoB) {
+      const d = el("div", { className: "dentroGruppo" });
+      d.append(vassoioBlocchi(et, true));
+      const piede = el("div", { className: "piedeRotolo" });
+      piede.append(el("span", { className: "etichettina" }, "Rotolo"), el("span", { className: "b", style: "font-size:14px" }, "62 mm"), el("span", { className: "tenue", style: "font-size:13px" }, "letto dalla stampante"));
+      d.append(piede);
+      w.append(d);
+    }
+    val.append(w);
+  }
+  schermo.append(val);
+
+  // anteprima e vassoio dei blocchi (solo PC)
+  const dx = el("div", { className: "colonna scorre soloPC", style: "flex:1;min-width:0;gap:12px" });
+  dx.append(riquadroAnteprima(p));
+  dx.append(el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-top:8px;border-top:1px solid var(--riga)" },
+    el("div", { className: "b", style: "font-size:14px" }, "Blocchi dell'etichetta"), el("div", { className: "tenue", style: "font-size:12px" }, "trascina per ordinare")));
+  dx.append(vassoioBlocchi(et, false));
+  const piede = el("div", { className: "piedeRotolo" });
+  piede.append(el("span", { className: "etichettina" }, "Rotolo"), el("span", { className: "b", style: "font-size:14px" }, "62 mm"), el("span", { className: "tenue", style: "font-size:13px" }, "letto dalla stampante"), el("span", { className: "tenue", style: "margin-left:auto;font-size:13px" }, "Lunghezza: automatica"));
+  dx.append(piede);
+  schermo.append(dx);
+  return schermo;
+}
+function gruppiEtichetta(p, et) {
+  const on = t => acceso(et, t);
+  const riassunto = [p.nome, on("scadenza") ? plurale(p.giorni, "giorno", "giorni") : null, on("quantita") ? p.quantita : null].filter(Boolean).join(" · ");
+  const due = (...f) => { const g = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:14px" }); g.append(...f); return g; };
+  const anteprimaTesto = (t, n) => t.length > n ? t.slice(0, n) + "…" : t;
+  const schema = SCHEMI_LOTTO.find(s => s[0] === schemaDi(p));
+  const selConservazione = () => { const cas = el("div", { className: "casella", style: "padding:0" }); const s = el("select", { className: "selCasella" }); for (const o of ["In frigo", "Fuori dal frigo", "In freezer"]) s.append(el("option", { value: o, selected: o === p.conservazione }, o)); s.onchange = e => { p.conservazione = e.target.value; }; cas.append(s); return cas; };
+  return [
+    // regola decisa il 15/9: un gruppo compare solo se almeno un blocco presente lo riempie; i valori dei blocchi tolti restano salvati
+    (on("titolo") || on("scadenza") || on("quantita")) && { chiave: "prodotto", titolo: "Etichetta", sotto: riassunto, campi: [
+      campoTesto("Nome", p.nome, v => { p.nome = v; }, { chiave: "nomeP", nota: "Come lo trovi nell'elenco." }),
+      on("titolo") && campoTesto("Nome stampato", p.nomeStampa, v => { p.nomeStampa = v; }, { chiave: "nomeS" }),
+      on("scadenza") && campoInline("Scadenza", casellaInput(String(p.giorni), v => { p.giorni = parseInt(v) || 0; }, { chiave: "giorni", unita: "giorni" })),
+      on("scadenza") && campoInline("Conservazione", selConservazione()),
+      on("quantita") && campoInline("Quantità", casellaInput(p.quantita.replace(/\s*g$/, ""), v => { p.quantita = v + " g"; }, { chiave: "qtaEt", unita: "g" })),
+    ] },
+    // un solo gruppo Ingredienti: testo stampato, allergeni e ingredienti collegati per i lotti; senza il blocco non c'e' affatto
+    (on("ingredienti") || on("puoContenere")) && { chiave: "ingredienti", titolo: "Ingredienti", sotto: on("ingredienti") ? anteprimaTesto(p.ingredienti, 60) : p.allergeni.join(", ") || "Nessun allergene", campi: [
+      on("ingredienti") && campoArea("Ingredienti", p.ingredienti, v => { p.ingredienti = v; }, "ingrTesto"),
+      on("puoContenere") && campoAllergeni(p),
+      on("ingredienti") && campoCollegati(p, true),
+    ] },
+    on("modoUso") && { chiave: "modoUso", titolo: NOMIBLOCCO.modoUso, sotto: p.modoUso ? anteprimaTesto(p.modoUso, 60) : "Da scrivere", campi: [campoArea("Modo d'uso", p.modoUso, v => { p.modoUso = v; }, "modoUso")] },
+    on("valori") && { chiave: "valori", titolo: NOMIBLOCCO.valori, sotto: "per 100 g", campi: [campoValori(p)] },
+    on("scadenza") && { chiave: "scadenzaEtichetta", titolo: "Scadenza sull'etichetta", sotto: `“${et.dicituraScadenza}” · ${et.formatoData}`, campi: [
+      due(campoSelezione("Dicitura scadenza", et.dicituraScadenza, ["Scade il", "da consumare entro", "da consumarsi preferibilmente entro"], v => { et.dicituraScadenza = v; }),
+          campoSelezione("Formato data", et.formatoData, ["GG/MM/AAAA", "GG/MM/AA", "GG.MM.AAAA"], v => { et.formatoData = v; })) ] },
+    (on("lotto") || on("qr")) && { chiave: "lotto", titolo: "Lotto", sotto: schema[0] === "mano" ? "Lo scrive chi stampa" : `${schema[1]} · oggi ${lottoDiOggi(p)}`, campi: [(() => {
+      const c = campoSelezione("Come si genera", schemaDi(p), SCHEMI_LOTTO.map(s => [s[0], `${s[1]} · ${s[2]}`]), v => { et.schemaLotto = v; disegna(); });
+      c.append(el("div", { className: "mono nota12" }, schemaDi(p) === "mano" ? "a mano: si scrive prima di stampare" : `oggi: ${lottoDiOggi(p)}`),
+        el("div", { className: "tenue", style: "font-size:12px" }, "Vale per questa etichetta. Il progressivo del giorno è unico per tutto il locale."));
+      return c; })()] },
+    on("logo") && { chiave: "logo", titolo: NOMIBLOCCO.logo, sotto: et.logo ? "Caricato" : "Nessun logo caricato", campi: [(() => {
+      const w = el("div", { style: "display:flex;gap:14px;align-items:flex-start" });
+      w.append(el("div", { style: "width:96px;height:96px;border-radius:12px;border:1px solid var(--bordo);background:var(--sabbia);display:flex;align-items:center;justify-content:center;color:var(--tratteggio);flex-shrink:0", innerHTML: ico(I.immagine, 30, 1.6) }),
+        el("div", { style: "display:flex;flex-direction:column;gap:8px;flex:1;min-width:0" }, el("div", { className: "tenue", style: "font-size:13px;line-height:1.45" }, et.logo ? "Logo caricato: si stampa alto quanto dice il blocco «Logo»." : "Nessun logo caricato: il blocco «Logo» non stampa nulla finché non ce n'è uno."),
+          el("div", { style: "display:flex;gap:8px" }, bottone(et.logo ? "Sostituisci" : "Carica", { icona: I.carica, iw: 18, onclick: () => { et.logo = true; disegna(); avvisa("Nella demo non si carica nulla."); } }), et.logo ? bottone("Togli", { onclick: () => { et.logo = false; disegna(); } }) : null),
+          el("div", { className: "nota12" }, "PNG o JPEG, fino a 2 MB. Vale per questa etichetta.")));
+      return w; })()] },
+    on("produttore") && { chiave: "produttore", titolo: NOMIBLOCCO.produttore, sotto: et.produttore.ragioneSociale, campi: [
+      campoTesto("Ragione sociale", et.produttore.ragioneSociale, v => { et.produttore.ragioneSociale = v; }, { chiave: "rs" }),
+      campoTesto("Sede legale", et.produttore.sedeLegale, v => { et.produttore.sedeLegale = v; }, { chiave: "sl" }),
+      campoTesto("Sede di produzione", et.produttore.sedeProduzione, v => { et.produttore.sedeProduzione = v; }, { chiave: "sp" }) ] },
+    on("sigla") && { chiave: "sigla", titolo: NOMIBLOCCO.sigla, sotto: p.sigla || "Da scrivere", campi: [campoTesto("Sigla", p.sigla, v => { p.sigla = v; }, { chiave: "sigla", placeholder: "es. M.C." })] },
+    ...et.blocchi.filter(x => (x.tipo === "testo" || x.tipo === "testoGrande") && x.acceso).map((x, k) => ({ chiave: "testo" + k, titolo: NOMIBLOCCO[x.tipo], sotto: x.testo || "Da scrivere",
+      campi: [campoTesto("Testo", x.testo, v => { x.testo = v; }, { chiave: "testo" + k })] })),
+  ];
+}
+function campoAllergeni(p) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, "Può contenere"));
+  const chips = el("div", { style: "display:flex;flex-wrap:wrap;gap:4px" });
+  for (const a of p.allergeni) { const ch = el("button", { className: "allergene on" }, a); ch.onclick = () => { p.allergeni = p.allergeni.filter(x => x !== a); disegna(); }; chips.append(ch); }
+  const altri = ALLERGENI.filter(a => !p.allergeni.includes(a));
+  if (S.altriAllergeni) {
+    for (const a of altri) { const ch = el("button", { className: "allergene" }, a); ch.onclick = () => { p.allergeni.push(a); disegna(); }; chips.append(ch); }
+    const fatto = el("button", { className: "allergene aggiungi" }, "Fatto"); fatto.onclick = () => { S.altriAllergeni = false; disegna(); }; chips.append(fatto);
+  } else if (altri.length) { const piu = el("button", { className: "allergene aggiungi" }, "+ Altri"); piu.onclick = () => { S.altriAllergeni = true; disegna(); }; chips.append(piu); }
+  c.append(chips);
+  return c;
+}
+function campoValori(p) {
+  const c = el("div", { style: "display:flex;flex-direction:column;gap:8px" });
+  for (const v of p.valori) {
+    const r = el("div", { style: "display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:8px" });
+    r.append(el("div", { className: "casella", style: "min-height:42px;font-size:14px;padding:6px 12px" }, el("input", { value: v[0], oninput: e => { v[0] = e.target.value; } })),
+      el("div", { className: "casella", style: "min-height:42px;font-size:14px;padding:6px 12px" }, el("input", { value: v[1], className: "num", oninput: e => { v[1] = e.target.value; } })));
+    c.append(r);
+  }
+  c.append(bottone("Aggiungi voce", { classe: "piccolo", icona: I.piu, iw: 16, onclick: () => { p.valori.push(["", ""]); disegna(); }, stile: "align-self:flex-start" }));
+  return c;
+}
+// il pezzo nuovo del gruppo Ingredienti: gli ingredienti dell'anagrafica collegati all'etichetta
+// conTesto: se l'etichetta stampa il testo degli ingredienti, si puo' proporre l'elenco da li'; altrimenti niente da proporre
+function campoCollegati(p, conTesto) {
+  const cc = el("div", { className: "collegati" });
+  cc.append(el("div", { className: "etichettina", style: "display:flex;align-items:center;gap:8px;color:var(--verdescuro)" }, svgSpan(I.catena, 15, 2), "Ingredienti collegati, per i lotti"));
+  const chips = el("div", { className: "chips" });
+  for (const id of p.tracciati) {
+    const ch = el("button", { className: "chip on", title: "Togli" });
+    if (eProduzione(id)) ch.append(svgSpan(I.stampa, 13, 2, "display:flex;opacity:.8"));
+    ch.append(el("span", {}, nomeCollegato(id)));
+    if (!eProduzione(id) && !inUso(id)) ch.append(el("span", { style: "width:8px;height:8px;border-radius:4px;background:var(--ambra)", title: "nessun lotto in uso" }));
+    ch.append(el("span", { className: "x", style: "color:rgba(255,255,255,.7)", innerHTML: ico(I.via, 13, 2.4) }));
+    ch.onclick = () => { p.tracciati = p.tracciati.filter(x => x !== id); disegna(); };
+    chips.append(ch);
+  }
+  const agg = el("button", { className: "chip aggiungi" }, S.aggiungiIng ? "Fatto" : "+ Aggiungi");
+  agg.onclick = () => { S.aggiungiIng = !S.aggiungiIng; disegna(); };
+  chips.append(agg);
+  cc.append(chips);
+  if (S.aggiungiIng) {
+    const sc = el("div", { className: "chips" });
+    for (const i of S.ingredienti) {
+      if (p.tracciati.includes(i.id)) continue;
+      const ch = el("button", { className: "chip" }, i.nome);
+      ch.onclick = () => { p.tracciati.push(i.id); disegna(); };
+      sc.append(ch);
+    }
+    const nuovo = el("button", { className: "chip aggiungi" }, "+ Ingrediente nuovo…");
+    nuovo.onclick = () => { S.nuovoIng = { nome: "", fornitore: "", dopo: "etichetta" }; disegna(); };
+    sc.append(nuovo);
+    cc.append(sc);
+    // le produzioni proprie: un prodotto dentro un altro, con il lotto dell'ultima stampa
+    cc.append(el("div", { className: "etichettina", style: "margin-top:2px" }, "Le tue produzioni"));
+    const sp = el("div", { className: "chips" });
+    for (const x of S.prodotti) {
+      if (x.id === p.id || p.tracciati.includes("p:" + x.id)) continue;
+      const ch = el("button", { className: "chip" }); ch.append(svgSpan(I.stampa, 13, 2, "display:flex;color:var(--tenue)"), el("span", {}, x.nome));
+      ch.onclick = () => { p.tracciati.push("p:" + x.id); disegna(); };
+      sp.append(ch);
+    }
+    sp.append(el("div", { className: "tenue", style: "font-size:12.5px;flex-basis:100%" }, "Alla stampa si registra da sé l'ultima etichetta stampata di quel prodotto, se non è scaduta."));
+    cc.append(sp);
+  }
+  if (conTesto) {
+    const riga = el("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" });
+    riga.append(bottone("Proponi dal testo", { classe: "piccolo", icona: I.lente, iw: 16, onclick: () => proponiDalTesto(p) }),
+      el("div", { className: "tenue", style: "font-size:12.5px;line-height:1.4;flex:1;min-width:160px" }, "Cosa c'è scritto e cosa hai usato sono due cose diverse: l'acqua non ha un lotto, il sacco di farina sì."));
+    cc.append(riga);
+  }
+  return cc;
+}
+// spezza il testo stampato alle virgole (fuori dalle parentesi) e cerca gli ingredienti in anagrafica per parola
+function proponiDalTesto(p) {
+  const pezzi = p.ingredienti.replace(/\[[^\]]*\]/g, "").replace(/\([^)]*\)/g, "").split(/[,.]/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  const sin = { "impasto classico": ["p:classico"], "crema di zucca": ["p:zucca"], farina: ["farina0"], integrale: ["integrale"], mix: ["mix"], semola: ["semola"], lievito: ["lievito"], sale: ["sale"], olio: ["olio"], pomodoro: ["pelati"], basilico: ["basilico"], rosmarino: ["rosmarino"], latte: ["fiordilatte"], anacardi: ["anacardi"], manzo: ["manzo"], zucca: ["zucca"] };
+  const trovati = new Set(p.tracciati);
+  let n = 0;
+  for (const pz of pezzi) for (const [parola, ids] of Object.entries(sin)) if (pz.includes(parola)) {
+    if (pz.includes("integrale") && parola === "farina") continue;
+    if (parola === "zucca" && pz.includes("crema di zucca")) continue;
+    for (const id of ids) if (!trovati.has(id)) { trovati.add(id); n++; }
+  }
+  p.tracciati = [...trovati];
+  disegna();
+  avvisa(n ? `Collegati ${plurale(n, "ingrediente", "ingredienti")} trovati nel testo. Acqua e simili restano fuori.` : "Nessun ingrediente nuovo trovato nel testo.");
+}
+// il vassoio dei blocchi, come BlocchiEditor.tsx (PC) e BlocchiTelefono.tsx (telefono)
+function vassoioBlocchi(et, telefono) {
+  const v = el("div", { className: "vassoio" });
+  let zona = null;
+  et.blocchi.forEach((x, k) => {
+    if (!x.acceso) return;
+    const riga = rigaBlocco(et, x, k, telefono);
+    if (x.colonna === "piena") { zona = null; v.append(riga); return; }
+    if (!zona) {
+      zona = el("div", { className: "zonaGruppo" });
+      if (!telefono) {
+        const testa = el("div", { className: "zonaTesta" });
+        const destra = el("div", { className: "zonaDestra" });
+        const quote = el("div", { className: "quote" });
+        for (const q of ["1/4", "1/3", "1/2", "2/3"]) { const bq = el("button", { className: q === et.larghezzaDestra ? "on" : "" }, q); bq.onclick = () => { et.larghezzaDestra = q; disegna(); }; quote.append(bq); }
+        destra.append(el("span", {}, "destra"), quote);
+        testa.append(el("span", { className: "etichettina" }, "Due colonne"), destra);
+        zona.append(testa);
+      }
+      v.append(zona);
+    }
+    zona.append(riga);
+  });
+  const agg = bottone(S.tavolozza ? "Chiudi" : "Aggiungi un blocco", { classe: "btnTratto", icona: S.tavolozza ? I.via : I.piu, iw: 20, sw: 2.2, onclick: () => { S.tavolozza = !S.tavolozza; disegna(); } });
+  v.append(agg);
+  if (S.tavolozza) {
+    const pan = el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-top:6px" });
+    for (const [titolo, tipi, unici] of [["Dati dell'etichetta", TIPI_DATI, true], ["Blocchi liberi", TIPI_LIBERI, false]]) {
+      pan.append(el("div", { className: "etichettina", style: "margin-top:4px" }, titolo));
+      for (const tipo of tipi) {
+        const usato = unici && et.blocchi.some(x => x.tipo === tipo && x.acceso);
+        const bt = el("button", { className: "tavolozza" + (usato ? " usato" : ""), disabled: usato });
+        bt.append(el("span", {}, NOMIBLOCCO[tipo]), el("span", { className: "piu" }, usato ? "✓" : "+"));
+        bt.onclick = () => {
+          const spento = et.blocchi.find(x => x.tipo === tipo && !x.acceso);
+          if (spento && unici) spento.acceso = true;
+          else {
+            const nuovo = b(tipo, tipo === "logo" ? 10 : tipo === "qr" ? 12 : 8);
+            // un blocco dati entra nell'ordine consueto dell'etichetta (prima del primo blocco dati che lo segue); i liberi in fondo
+            const ordine = TIPI_DATI.indexOf(tipo);
+            const dopo = ordine < 0 ? -1 : et.blocchi.findIndex(x => x.acceso && TIPI_DATI.indexOf(x.tipo) > ordine);
+            if (dopo < 0) et.blocchi.push(nuovo); else et.blocchi.splice(dopo, 0, nuovo);
+          }
+          S.tavolozza = false; disegna(); };
+        pan.append(bt);
+      }
+    }
+    v.append(pan);
+  }
+  return v;
+}
+function rigaBlocco(et, x, k, telefono) {
+  const nome = NOMIBLOCCO[x.tipo];
+  const conAllineamento = !SENZA_ALLINEAMENTO.includes(x.tipo);
+  const r = el("div", { className: "blocco" + (x.acceso ? "" : " spento") + (telefono ? " telefono" + (conAllineamento ? " libero" : "") : ""), draggable: !telefono });
+  const testa = el("div", { className: "testa" });
+  const posto = et.blocchi.slice(0, k + 1).filter(x2 => x2.acceso).length;
+  if (!telefono) { const m = el("span", { className: "maniglia" }); m.append(el("span", { className: "posto" }, String(posto))); m.innerHTML += ico(I.maniglia, 14, 1.5); testa.append(m); }
+  testa.append(el("span", { className: "nome", title: nome }, nome));
+  const s = el("select", { className: "misura", title: x.tipo === "logo" ? "Altezza del logo, in millimetri" : `Corpo di ${nome}, in punti` });
+  const scala = x.tipo === "logo" ? Array.from({ length: 26 }, (_, i) => i + 5) : SCALETTA;
+  for (const c of scala) s.append(el("option", { value: c, selected: c === x.corpo }, String(c)));
+  s.onchange = e => { x.corpo = Number(e.target.value); disegna(); };
+  testa.append(s);
+  const azioni = () => {
+    const a = el("div", { className: "azioniBlocco" });
+    if (conAllineamento) {
+      for (const [v, d, t] of [["sinistra", I.alSx, "A sinistra"], ["centro", I.alCentro, "Al centro"], ["destra", I.alDx, "A destra"]]) {
+        const bt = el("button", { className: (x.allineamento || "sinistra") === v ? "on" : "", innerHTML: ico(d, 14, 2), title: t }); bt.onclick = () => { x.allineamento = v; disegna(); }; a.append(bt);
+      }
+      a.append(el("span", { className: "separatore" }));
+    }
+    for (const [v, t] of [["piena", "Piena larghezza"], ["sx", "Colonna sinistra"], ["dx", "Colonna destra"]]) {
+      const bt = el("button", { className: x.colonna === v ? "on" : "", innerHTML: icoLato(v), title: t }); bt.onclick = () => { x.colonna = v; disegna(); }; a.append(bt);
+    }
+    return a;
+  };
+  if (!telefono) testa.append(azioni());
+  const via = el("button", { className: "via", innerHTML: ico(I.via, 14, 2), title: `Togli ${nome}` });
+  via.onclick = () => { et.blocchi.splice(k, 1); disegna(); };
+  testa.append(via);
+  r.append(testa);
+  if (telefono && conAllineamento) {
+    const riga2 = el("div", { style: "display:flex;align-items:center;gap:8px" });
+    riga2.append(el("span", { className: "b", style: "font-size:11.5px;color:var(--spento)" }, "Allinea e posizione"), azioni());
+    r.append(riga2);
+  }
+  if (!telefono) {
+    r.ondragstart = e => { e.dataTransfer.setData("text/plain", String(k)); r.classList.add("trascina"); };
+    r.ondragend = () => r.classList.remove("trascina");
+    r.ondragover = e => e.preventDefault();
+    r.ondrop = e => { e.preventDefault(); const da = Number(e.dataTransfer.getData("text/plain")); if (Number.isNaN(da) || da === k) return; const [m] = et.blocchi.splice(da, 1); et.blocchi.splice(k, 0, m); disegna(); };
+  }
+  return r;
+}
+
+/* ============================ schermata: Ingredienti (nuova) ============================ */
+function vistaIngredienti() {
+  if (S.arrivo) return vistaArrivo();
+  const schermo = el("div", { className: "schermo vistaStampa" + (S.dettaglioIng ? " dettaglio" : "") });
+  const sx = el("div", { className: "colonnaElenco", style: "flex:1;min-width:0;gap:12px" });
+  const prima = el("div", { style: "display:flex;gap:12px" });
+  prima.append(casellaCerca("Cerca ingrediente…", S.cercaIng, "cercaIng", v => { S.cercaIng = v; disegna(); }));
+  sx.append(prima);
+  sx.append(gettoni([["tutti", "Tutti"], ["attenzione", "Da controllare"]], S.filtroIng, k => { S.filtroIng = k; disegna(); }));
+
+  const q = S.cercaIng.toLowerCase();
+  let lista = S.ingredienti.filter(i => i.nome.toLowerCase().includes(q) || i.fornitore.toLowerCase().includes(q));
+  const attenzione = i => { const l = inUso(i.id); return !l || !!statoScadenza(l) || !!lottoVecchio(l); };
+  if (S.filtroIng === "attenzione") lista = lista.filter(attenzione);
+  const griglia = el("div", { className: "griglia scorre", style: "flex:1;min-height:0" });
+  for (const i of lista) {
+    const l = inUso(i.id), sc = statoScadenza(l);
+    const b2 = el("button", { className: "prodotto" + (i.id === S.ingrediente ? " on" : "") });
+    b2.append(el("span", { className: "n" }, i.nome));
+    const tutti = inUsoTutti(i.id);
+    if (l) b2.append(el("span", { className: "d", style: "margin-top:0" }, tutti.length > 1 ? "Aperti " : "Aperto ", el("b", { className: "mono" }, tutti.map(v => v.lotto).join(" + ")), " · " + scadeIl(l)));
+    else b2.append(el("span", { className: "d", style: "margin-top:0" }, i.fornitore || "senza fornitore"));
+    const sr = el("span", { className: "statoRiga" });
+    if (!l) sr.append(stato("manca", "nessun lotto aperto"));
+    else if (sc) sr.append(stato(sc.classe, sc.testo));
+    else { const v = lottoVecchio(l); if (v && tutti.length === 1) sr.append(stato("manca", `aperto da ${v.giorni} giorni`)); if (tutti.length > 1) sr.append(stato("piu", `${tutti.length} aperti`)); }
+    if (sr.children.length) b2.append(sr);
+    b2.append(el("span", { className: "freccia soloTel", innerHTML: ico(I.destra, 20, 2) }));
+    b2.onclick = () => { S.ingrediente = i.id; S.dettaglioIng = true; disegna(); };
+    griglia.append(b2);
+  }
+  if (!lista.length) griglia.append(el("div", { className: "tenue", style: "padding:8px;line-height:1.5;grid-column:1 / -1" }, !S.ingredienti.length ? "Non c'è ancora nessun ingrediente. Alla prima consegna usa «Merce arrivata»: gli ingredienti si creano lì, con il loro primo lotto. Oppure «Nuovo ingrediente»." : S.filtroIng === "attenzione" ? "Tutto a posto: ogni ingrediente ha un lotto aperto non scaduto." : "Nessun ingrediente con questo nome."));
+  sx.append(griglia);
+
+  const dx = el("div", { className: "colonna scheda pannelloProdotto scorre", style: "width:100%;flex-shrink:0;min-width:0;gap:12px" + (tel() ? "" : ";width:440px") });
+  dx.append(...schedaIngrediente(ingr(S.ingrediente)));
+  schermo.append(sx, dx);
+  return schermo;
+}
+function nuovoIngrediente() {
+  const id = "n" + Date.now();
+  S.ingredienti.push({ id, nome: "Ingrediente nuovo", fornitore: "" });
+  S.ingrediente = id; S.dettaglioIng = true; disegna();
+  setTimeout(() => { const n = document.querySelector('[data-fuoco="nomeIng"]'); if (n) { n.focus(); n.select(); } }, 0);
+}
+function schedaIngrediente(i) {
+  if (!i) return [el("div", { className: "tenue", style: "padding:8px" }, "Scegli un ingrediente dall'elenco.")];
+  const out = [];
+  const titolo = el("div", { style: "display:flex;align-items:center;gap:8px;min-width:0" });
+  const indietro = el("button", { className: "indietro soloTel", innerHTML: ico(I.sinistra, 22, 2), title: "Torna agli ingredienti" });
+  indietro.onclick = () => { S.dettaglioIng = false; disegna(); };
+  titolo.append(indietro, el("div", { className: "h titoloScheda" }, i.nome));
+  out.push(titolo);
+  const griglia = el("div", { className: "dueCampi" });
+  const nomePrima = i.nome;  // per rimettere il nome di prima se la conferma lo rifiuta (vuoto o gia' usato)
+  const campoNome = campoTesto("Nome", i.nome, v => { i.nome = v; const t = document.querySelector(".pannelloProdotto .titoloScheda"); if (t) t.textContent = v; },
+    { chiave: "nomeIng", simili: v => nomiSimili(v, i.id), scegliSimile: ing => {
+      // il clic arriva senza passare dal blur (onmousedown lo impedisce): il nome lasciato a meta' va chiuso qui,
+      // non dall'onchange. Se i era ancora un ingrediente vuoto (appena creato, mai usato) lo si toglie invece di
+      // lasciarlo come doppione; se invece era un ingrediente vero che si stava rinominando, si rimette il nome di prima.
+      if (ingredienteAncoraVuoto(i)) S.ingredienti = S.ingredienti.filter(x => x !== i);
+      else i.nome = nomePrima;
+      S.ingrediente = ing.id; S.dettaglioIng = true; disegna();
+      avvisa(`${ing.nome} c'era già: uso quello invece di crearne un altro.`);
+    } });
+  // sulla conferma (si esce dal campo, come fa campoFornitore): nome vuoto o gia' di un altro ingrediente torna quello di prima
+  campoNome.querySelector("input").onchange = e => {
+    const nuovo = e.target.value.trim();
+    const doppio = S.ingredienti.find(altro => altro.id !== i.id && chiaveNome(altro.nome) === chiaveNome(nuovo));
+    if (nuovo && !doppio) { i.nome = nuovo; return; }
+    i.nome = nomePrima;
+    avvisa(doppio ? `C'è già ${doppio.nome}: rimesso il nome di prima.` : "Serve il nome: rimesso quello di prima.");
+    disegna();
+  };
+  griglia.append(campoNome,
+    ...campoFornitore(i.fornitore, S.altroFornitore === i.id, { chiave: "fornIng",
+      scegli: v => { i.fornitore = v; disegna(); },
+      entra: () => { S.altroFornitore = i.id; i.fornitore = ""; disegna(); setTimeout(() => { const f = document.querySelector('[data-fuoco="fornIng"]'); if (f) f.focus(); }, 0); },
+      scrivi: v => { i.fornitore = v; },
+      conferma: v => { const nome = v.trim(); if (nome && !S.fornitori.includes(nome)) S.fornitori.push(nome); S.altroFornitore = null; } }));
+  out.push(griglia);
+  out.push(el("div", { className: "etichettina", style: "margin-top:4px" }, "Lotti"));
+  const lotti = lottiDi(i.id).sort((a, c) => ({ aperto: 0, chiuso: 1 }[a.stato] - { aperto: 0, chiuso: 1 }[c.stato]) || (a.stato === "chiuso" ? (c.chiusoIl || 0) - (a.chiusoIl || 0) : (a.apertoDal || 0) - (c.apertoDal || 0)));
+  if (!lotti.length) out.push(el("div", { className: "tenue", style: "font-size:14px;line-height:1.45;padding:4px 0" }, "Nessun lotto registrato. Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto."));
+  for (const l of lotti) out.push(rigaLotto(l));
+  return out;
+}
+function rigaLotto(l) {
+  // una riga per lotto: codice e scadenza, sotto da dove viene; il resto si apre toccando la riga
+  const aperto = S.lottoAperto === l.id;
+  const r = el("div", { className: "lotto " + l.stato + (aperto ? " aperto2" : "") });
+  const sc = statoScadenza(l), vecchio = l.stato === "aperto" && aperti(l.ing).length === 1 ? lottoVecchio(l) : null;
+  const a = arrivo(l.arrivo), usi = usatoIn(l.id);
+  const capo = el("div", { className: "capoLotto", tabIndex: 0, role: "button" });
+  const riga1 = el("div", { className: "riga1" });
+  riga1.append(el("span", { className: "codice mono" }, l.lotto));
+  // il gesto che serve sta sulla riga, senza aprirla
+  if (l.stato === "aperto") riga1.append(bottone("Chiudi lotto", { classe: "piccolo chiudiRiga", onclick: e => { e.stopPropagation(); chiudiLotto(l, "mano"); disegna(); const resto = inUsoTutti(l.ing); avvisa(resto.length ? `Chiuso ${l.lotto}. Resta aperto ${resto.map(v => v.lotto).join(" + ")}.` : "Chiuso. Nessun lotto aperto: le stampe segnano «non registrato» finché non registri la merce."); } }));
+  if (l.stato === "chiuso") riga1.append(stato("chiuso", "Chiuso"));
+  if (sc && l.stato !== "chiuso") riga1.append(stato(sc.classe, sc.testo));
+  if (vecchio) riga1.append(stato("manca", `aperto da ${vecchio.giorni} giorni`));
+  riga1.append(l.scadenza ? el("span", { className: "scad" }, "scade ", el("b", { className: "num" }, fmt(l.scadenza))) : el("span", { className: "scad", style: "color:var(--ambra)" }, "scadenza da inserire"));
+  const riga2 = el("div", { className: "riga2" });
+  const pezzi = [];
+  if (a) pezzi.push((a.documento || a.fornitore) + " · " + fmt(a.data)); else pezzi.push("scritto a mano alla stampa");
+  if (l.quantita) pezzi.push(l.quantita);
+  if (l.stato === "chiuso" && l.chiusoIl) pezzi.push(l.chiusoDa === "scadenza" ? `chiuso da solo alla scadenza il ${fmt(l.chiusoIl)}` : l.chiusoDa === "mano" ? `chiuso a mano il ${fmt(l.chiusoIl)}` : `chiuso il ${fmt(l.chiusoIl)}`);
+  if (usi.length) pezzi.push(`usato in ${plurale(usi.length, "stampa", "stampe")}`);
+  riga2.append(el("span", { className: "testo" }, pezzi.join(" · ")));
+  const icone = el("span", { className: "icone" });
+  if (l.foto) icone.append(svgSpan(I.etichette, 15, 1.8, "display:flex;color:var(--spento)"));
+  if (a?.foto) icone.append(svgSpan(I.immagine, 15, 1.8, "display:flex;color:var(--spento)"));
+  icone.append(svgSpan(I.giu, 16, 2, "display:flex;color:var(--spento);transition:transform .16s" + (aperto ? ";transform:rotate(180deg)" : "")));
+  riga2.append(icone);
+  capo.append(riga1, riga2);
+  capo.onclick = () => { S.lottoAperto = aperto ? null : l.id; disegna(); };
+  capo.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); capo.onclick(); } };
+  r.append(capo);
+  if (!aperto) return r;
+
+  const d = el("div", { className: "dettagli" });
+  if (a) d.append(el("div", { className: "tenue", style: "font-size:13px" }, `${a.fornitore} · ${a.documento || "senza documento"} · arrivato il ${fmt(a.data)}` + (l.apertoDal ? ` · aperto dal ${fmt(l.apertoDal)}` : "")));
+  if (!l.scadenza) d.append(campoTesto("Scadenza", "", v => { if (v) { l.scadenza = daIso(v); disegna(); } }, { tipo: "date", chiave: "scadLotto" + l.id }));
+  const fr = el("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" });
+  fr.append(l.foto ? foto("etichetta", "Etichetta", `Etichetta del sacco · ${ingr(l.ing).nome} · ${l.lotto}`) : fotoVuota("Foto etichetta", () => { l.foto = true; disegna(); avvisa("Nella demo la fotocamera non si apre: la foto è finta."); }));
+  if (a) fr.append(a.foto ? foto("fattura", (a.documento.startsWith("DDT") ? "DDT" : "Fattura") + (a.foto > 1 ? ` ×${a.foto}` : ""), `${a.documento} · ${a.fornitore} · ${fmt(a.data)}` + (a.foto > 1 ? ` · ${a.foto} pagine` : "")) : fotoVuota("Foto documento", () => { a.foto = 1; disegna(); avvisa("Nella demo la fotocamera non si apre: la foto è finta."); }));
+  const az = el("div", { style: "margin-left:auto;display:flex;gap:8px" });
+  if (l.stato === "chiuso") az.append(bottone("Riapri", { classe: "piccolo", onclick: e => { e.stopPropagation(); l.stato = "aperto"; delete l.chiusoIl; delete l.chiusoDa; disegna(); avvisa("Riaperto: le stampe lo registrano di nuovo."); } }));
+  fr.append(az);
+  d.append(fr);
+  // dove e' finito: il bottone porta allo storico filtrato su questo lotto (la ricerca trova anche i lotti degli ingredienti)
+  if (usi.length) az.prepend(bottone(`Usato in ${plurale(usi.length, "stampa", "stampe")}`, { classe: "piccolo", icona: I.storico, iw: 16, onclick: e => { e.stopPropagation(); S.vista = "storico"; S.storicoFiltro = "tutto"; S.storicoCerca = l.lotto; S.aperta = null; disegna(); } }));
+  else d.append(el("div", { className: "usato" }, "Non ancora usato in nessuna stampa."));
+  r.append(d);
+  return r;
+}
+
+/* ============================ merce arrivata (nuova) ============================ */
+function apriArrivo(ingId) {
+  const i = ingId ? ingr(ingId) : null;
+  S.arrivo = { fornitore: i?.fornitore || "", nuovoFornitore: false, data: iso(OGGI), documento: "", foto: 0, righe: i ? [nuovaRiga(i.id)] : [], proposta: false, scegli: false };
+  if (i?.fornitore) righeDelFornitore(S.arrivo);
+  disegna();
+}
+// scelto un fornitore, le righe si precompilano con gli ingredienti che porta di solito: si tolgono quelle non arrivate.
+// Le righe vuote del fornitore precedente spariscono, quelle gia' compilate restano.
+const rigaVuota = r => !r.lotto && !r.quantita && !r.foto && !r.letto && !r.tocca;
+function righeDelFornitore(A) {
+  A.righe = A.righe.filter(r => !rigaVuota(r) || ingr(r.ing)?.fornitore === A.fornitore);
+  const gia = new Set(A.righe.map(r => r.ing));
+  for (const i of S.ingredienti) if (i.fornitore === A.fornitore && !gia.has(i.id)) A.righe.push(nuovaRiga(i.id, true));
+}
+// il lotto puo' restare vuoto (diventa data o documento); la scadenza si scrive se c'e', altrimenti resta da inserire
+const nuovaRiga = (ingId, proposta = false) => ({ ing: ingId, lotto: "", quantita: "", scadenza: "", foto: false, letto: null, proposta, tocca: false });
+// una riga proposta dal fornitore e mai toccata non si registra: cosi' "lotto vuoto = data di arrivo" vale solo per le righe volute
+const rigaDaRegistrare = r => !r.proposta || r.tocca;
+const ordinatiFornitore = A => [...S.ingredienti].sort((x, y) => (x.fornitore === A.fornitore ? 0 : 1) - (y.fornitore === A.fornitore ? 0 : 1) || x.nome.localeCompare(y.nome)).filter(x => A.fornitore ? true : true);
+const piuGiorniData = (s, n) => piuGiorni(daIso(s), n);
+const lottoDaArrivo = A => (A.documento.trim() ? A.documento.trim() + " · " : "arrivo ") + fmt(daIso(A.data));
+function vistaArrivo() {
+  const A = S.arrivo;
+  const schermo = el("div", { className: "schermo" });
+
+  // sinistra: il documento della consegna
+  const sx = el("div", { className: "colonna scheda scorre", style: "flex:none;width:100%;min-width:0;gap:12px" + (tel() ? "" : ";width:400px") });
+  sx.append(el("div", { className: "h titoloScheda" }, "Consegna"));
+  const fornitori = [...S.fornitori];
+  if (!fornitori.length && !A.nuovoFornitore) A.nuovoFornitore = true;
+  const selF = campoSelezione("Fornitore", A.nuovoFornitore ? "__nuovo" : (A.fornitore || ""), [["", "Scegli…"], ...fornitori.map(f => [f, f]), ["__nuovo", "Altro fornitore…"]], v => { if (v === "__nuovo") { A.nuovoFornitore = true; A.fornitore = ""; } else { A.nuovoFornitore = false; A.fornitore = v; if (v) righeDelFornitore(A); } disegna(); });
+  sx.append(selF);
+  if (A.nuovoFornitore) sx.append(campoTesto("Nome del fornitore", A.fornitore, v => { A.fornitore = v; }, { chiave: "fornNuovo", placeholder: "come sulla fattura" }));
+  const g = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  g.append(campoTesto("Data di arrivo", A.data, v => { A.data = v; }, { tipo: "date", chiave: "dataArr" }),
+    campoTesto("Fattura o DDT", A.documento, v => { A.documento = v; }, { chiave: "docArr", placeholder: "es. DDT 4512" }));
+  sx.append(g);
+  const cf = el("div", { className: "campo" });
+  cf.append(el("div", { className: "etichettina" }, "Foto del documento"));
+  const fr = el("div", { className: "fotoDoc" });
+  for (let k = 1; k <= A.foto; k++) fr.append(foto("fattura", `Pag. ${k}`, `Foto del documento, pagina ${k}`));
+  fr.append(fotoVuota(A.foto ? "Altra pagina" : (tel() ? "Fotografa" : "Carica"), () => { A.foto++; if (A.foto === 1) A.proposta = true; disegna(); avvisa(tel() ? "Nella demo la fotocamera non si apre: la foto è finta." : "Nella demo non si carica nulla: la foto è finta."); }));
+  cf.append(fr);
+  sx.append(cf);
+  if (A.proposta) {
+    const pr = el("div", { className: "proposta2" });
+    const capo = el("div", { className: "capo" }); capo.append(el("span", { className: "tag" }, "Fase 2"), "Letto dalla foto");
+    pr.append(capo, el("div", {}, "Con internet sul PC, il servizio legge la foto e propone fornitore, numero e righe con lotto e scadenza, da confermare."));
+    pr.append(bottone("Nella demo: aggiungi le righe lette", { classe: "piccolo", stile: "align-self:flex-start", onclick: () => {
+      if (!A.documento) A.documento = "Fattura 118804";
+      if (!A.fornitore) A.fornitore = "Metro Padova";
+      for (const [ing, lotto, sc, q] of [["lievito", "0926-21", iso(piuGiorniData(A.data, 9)), "10 panetti"], ["olio", "OL 2611", "2027-12-31", "1 latta"]])
+        if (!A.righe.some(r => r.ing === ing)) A.righe.push({ ing, lotto, scadenza: sc, quantita: q, foto: false, letto: "foto" });
+      A.proposta = false; disegna(); avvisa("Aggiunte 2 righe lette dalla fattura: controllale e conferma.");
+    } }));
+    sx.append(pr);
+  }
+  schermo.append(sx);
+
+  // destra: cosa e' arrivato, una scheda per ingrediente
+  const dx = el("div", { className: "colonna scorre", style: "flex:1;min-width:0;gap:10px" });
+  dx.append(el("div", { className: "capoArrivo" },
+    el("div", { className: "h titoloScheda" }, "Cosa è arrivato")));
+  if (!A.righe.length) dx.append(el("div", { className: "tenue", style: "font-size:14px;line-height:1.45;padding:6px 2px" }, !S.ingredienti.length ? "Aggiungi gli ingredienti arrivati: il primo lo crei da «Aggiungi ingrediente»." : A.fornitore ? "Nessun ingrediente ha questo fornitore come abituale: aggiungili qui sotto." : "Scegli il fornitore: le righe si compilano con gli ingredienti che porta di solito."));
+  else if (A.righe.some(r => r.proposta && !r.tocca)) dx.append(el("div", { className: "tenue", style: "font-size:13px;line-height:1.45;padding:0 2px" }, `Gli ingredienti che porta di solito ${A.fornitore}: compila quelli arrivati, gli altri si ignorano.`));
+  A.righe.forEach((r, k) => dx.append(rigaArrivo(r, k)));
+  const liberi = S.ingredienti.filter(i => !A.righe.some(r => r.ing === i.id));
+  dx.append(bottone(A.scegli ? "Chiudi" : "Aggiungi ingrediente", { classe: "btnTratto", icona: A.scegli ? I.via : I.piu, iw: 20, sw: 2.2, onclick: () => { if (!liberi.length) { S.nuovoIng = { nome: "", fornitore: A.fornitore, dopo: "arrivo" }; disegna(); return; } A.scegli = !A.scegli; disegna(); } }));
+  if (A.scegli) {
+    const box = el("div", { className: "vassoio", style: "gap:8px" });
+    if (ordinatiFornitore(A).length) box.append(el("div", { className: "tenue", style: "font-size:12.5px;padding:0 6px" }, `Prima quelli che porta di solito ${A.fornitore}.`));
+    const chips2 = el("div", { className: "chips", style: "padding:0 4px" });
+    const gia = new Set(A.righe.map(r => r.ing));
+    const ordinati = ordinatiFornitore(A);
+    for (const i of ordinati) {
+      if (gia.has(i.id)) continue;
+      const ch = el("button", { className: "chip grande" }, i.nome);
+      ch.onclick = () => { A.righe.push(nuovaRiga(i.id)); A.scegli = false; disegna(); };
+      chips2.append(ch);
+    }
+    const nuovo = el("button", { className: "chip grande aggiungi" }, "+ Ingrediente nuovo…");
+    nuovo.onclick = () => { S.nuovoIng = { nome: "", fornitore: A.fornitore, dopo: "arrivo" }; disegna(); };
+    chips2.append(nuovo);
+    box.append(chips2);
+    dx.append(box);
+  }
+  schermo.append(dx);
+  return schermo;
+}
+function rigaArrivo(r, k) {
+  const A = S.arrivo, i = ingr(r.ing);
+  const inAttesa = r.proposta && !r.tocca;
+  const w = el("div", { className: "rigaArrivo" + (r.letto === "foto" ? " proposta" : "") + (inAttesa ? " attesa" : "") });
+  const capo = el("div", { className: "capo" });
+  capo.append(el("div", { className: "nome", title: i.nome }, i.nome));
+  if (r.letto === "foto") capo.append(stato("scade", "dalla foto: da confermare"));
+  if (inAttesa) capo.append(stato("piu", "proposta: compila se è arrivato"));
+  const tocca = () => { r.tocca = true; if (inAttesa) disegna(); };
+  capo.append(el("button", { className: "via", innerHTML: ico(I.via, 16, 2), title: "Togli la riga", onclick: () => { A.righe.splice(k, 1); disegna(); } }));
+  w.append(capo);
+  const campi = el("div", { className: "campi" });
+  campi.append(campoTesto("Lotto", r.lotto, v => { r.lotto = v; r.letto = null; tocca(); }, { chiave: "lotto" + k, mono: true, placeholder: "vuoto: " + lottoDaArrivo(A) }),
+    campoTesto("Scadenza", r.scadenza, v => { r.scadenza = v; tocca(); }, { chiave: "scad" + k, tipo: "date" }),
+    campoTesto("Quantità", r.quantita, v => { r.quantita = v; tocca(); }, { chiave: "qta" + k, placeholder: "es. 10 sacchi", grassetto: false }));
+  w.append(campi);
+  const piede = el("div", { className: "piede" });
+  const ft = bottone(r.foto ? "Foto dell'etichetta fatta" : "Foto dell'etichetta", { classe: "piccolo", icona: r.foto ? I.spunta : I.camera, iw: 18, sw: 2.2, onclick: () => { r.foto = true; r.tocca = true; disegna(); avvisa("Nella demo la fotocamera non si apre: la foto è finta."); } });
+  if (r.foto) ft.style.cssText = "background:var(--verdechiaro);border-color:var(--verdebordo);color:var(--verdescuro)";
+  piede.append(ft);
+  w.append(piede);
+  return w;
+}
+function registraArrivo() {
+  const A = S.arrivo;
+  const id = "a" + Date.now();
+  if (A.fornitore && !S.fornitori.includes(A.fornitore)) S.fornitori.push(A.fornitore);
+  S.arrivi.push({ id, fornitore: A.fornitore || "Fornitore non indicato", data: daIso(A.data), documento: A.documento.trim(), foto: A.foto });
+  const messi = [];
+  let n = 0;
+  for (const r of A.righe) {
+    if (!rigaDaRegistrare(r)) continue;
+    const i = ingr(r.ing);
+    const l = { id: "l" + Date.now() + n, ing: r.ing, lotto: r.lotto.trim() || lottoDaArrivo(A), quantita: r.quantita.trim(),
+      scadenza: r.scadenza ? daIso(r.scadenza) : null, stato: "aperto", arrivo: id, foto: r.foto, apertoDal: daIso(A.data) };
+    S.lotti.push(l); n++;
+    if (apertiValidi(r.ing).length > 1) messi.push(i.nome);
+  }
+  S.arrivo = null; S.dettaglioIng = false;
+  if (S.tornaAStampa) { S.vista = "stampa"; S.prodotto = S.tornaAStampa.prodotto; S.dettaglio = true; S.tornaAStampa = null; }
+  disegna();
+  avvisa(`Registrati ${plurale(n, "lotto", "lotti")}, già aperti.` + (messi.length ? ` ${messi.join(", ")}: ora ${messi.length === 1 ? "ha" : "hanno"} più lotti aperti; chiudi il vecchio quando finisce.` : ""));
+}
+
+/* ============================ schermata: Storico stampe ============================ */
+function vistaStorico() {
+  const schermo = el("div", { className: "schermo storicoTel" });
+  const c = el("div", { className: "colonna", style: "flex:1;gap:12px" });
+  const prima = el("div", { className: "prima", style: "display:flex;gap:12px;flex-wrap:wrap" });
+  // con una ricerca in corso il periodo non conta: il gettone acceso e' «Tutto», e torna quello scelto quando si svuota la ricerca
+  prima.append(gettoni([["oggi", "Oggi"], ["7", "7 giorni"], ["30", "30 giorni"], ["tutto", "Tutto"]], S.storicoCerca.trim() ? "tutto" : S.storicoFiltro, k => { S.storicoFiltro = k; S.storicoCerca = ""; disegna(); }));
+  prima.append(casellaCerca("Cerca per etichetta o lotto…", S.storicoCerca, "storico", v => { S.storicoCerca = v; disegna(); }, "flex:1;min-width:220px;height:44px;font-size:15px"));
+  c.append(prima);
+  const capo = el("div", { className: "tabella grigliaStorico soloPC" });
+  for (const t of ["Ora", "Etichetta", "Lotto", "Quantità", "Scadenza", "Da", ""]) capo.append(el("div", { className: "etichettina" }, t));
+  c.append(capo);
+
+  const q = S.storicoCerca.toLowerCase().trim();
+  const giorni = { oggi: 0, 7: 7, 30: 30, tutto: 100000 }[S.storicoFiltro];
+  const codici = x => Object.values(x.lotti).flat().map(k => (k.startsWith("s:") ? S.storico.find(y => y.id === k.slice(2))?.lotto : lot(k)?.lotto)?.toLowerCase() || "");
+  const righe = S.storico.filter(x => (q || -giorniA(x.data) <= giorni) && (!q || x.prodotto.toLowerCase().includes(q) || x.lotto.toLowerCase().includes(q) || codici(x).some(cd => cd.includes(q))));
+  const lista = el("div", { className: "scorre", style: "display:flex;flex-direction:column;flex:1;min-height:0" });
+  if (!righe.length) lista.append(el("div", { className: "tenue", style: "padding:16px 2px;line-height:1.5" }, q ? "Nessuna stampa con questo nome o lotto." : S.storicoFiltro === "oggi" ? "Nessuna stampa oggi. Guarda gli altri giorni." : "Ancora nessuna stampa."));
+  let giorno = null;
+  for (const x of righe) {
+    const g = etichettaGiorno(x.data);
+    if (g !== giorno) { giorno = g; lista.append(el("div", { className: "etichettina giornoStorico" }, g)); }
+    const aperta = S.aperta === x.id;
+    const nLotti = Object.values(x.lotti).filter(a => a.length).length, nManca = Object.values(x.lotti).filter(a => !a.length).length;
+    const conLotti = Object.keys(x.lotti).length > 0;
+    const catenaLink = el("span", { className: "catenaLink" }); catenaLink.innerHTML = ico(I.catena, 12, 2.2) + `<span>${conLotti ? plurale(nLotti, "lotto ingrediente", "lotti ingrediente") + (nManca ? `, ${nManca} non registrato` : "") : "senza ingredienti collegati"}</span>` + ico(aperta ? I.su : I.giu, 12, 2.4);
+    if (nManca) catenaLink.style.color = "var(--ambra)";
+    const rist = bottone("Ristampa", { icona: I.giro, iw: 15, stile: "height:36px;padding:0 12px;font-size:13px;gap:6px", onclick: e => { e.stopPropagation(); S.prodotto = x.pid; S.copie = x.copie; S.vista = "stampa"; avviaStampa(); } });
+    // PC: la griglia dell'app; toccando la riga si apre la catena sotto
+    const r = el("div", { className: "vocestorico grigliaStorico soloPC apribile" + (aperta ? " aperta" : ""), style: "display:grid" });
+    r.onclick = () => { S.aperta = aperta ? null : x.id; disegna(); };
+    r.append(el("div", { className: "tenue", style: "font-size:14px" }, x.ora),
+      el("div", { style: "min-width:0" }, el("div", { className: "b", style: "font-size:15px" }, x.prodotto), el("div", { className: "tenue", style: "font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, plurale(x.copie, "copia", "copie"), " · ", catenaLink)),
+      el("div", { className: "mono tenue", style: "font-size:12.5px" }, x.lotto),
+      el("div", { style: "font-size:14px" }, x.quantita),
+      el("div", { style: "font-size:14px" }, x.scadenza),
+      el("div", { className: "tenue", style: "display:flex;align-items:center;gap:6px;font-size:13px;min-width:0", innerHTML: ico(x.da === "PC" ? I.monitor : I.telefono, 15, 1.8) + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.da}</span>` }),
+      rist);
+    if (aperta) r.append(catena(x));
+    lista.append(r);
+    // telefono: la riga piena dell'app, con la catena sotto quando e' aperta
+    const rt = el("div", { className: "vocestorico tel soloTel apribile" + (aperta ? " aperta" : "") });
+    rt.onclick = () => { S.aperta = aperta ? null : x.id; disegna(); };
+    const ristampino = el("button", { className: "ristampino" }); ristampino.innerHTML = ico(I.giro, 15, 2) + "<span>Ristampa</span>";
+    ristampino.onclick = e => { e.stopPropagation(); S.prodotto = x.pid; S.copie = x.copie; S.vista = "stampa"; avviaStampa(); };
+    rt.append(el("div", { className: "n" }, x.prodotto),
+      el("div", { className: "d" }, `${x.ora} · ${plurale(x.copie, "copia", "copie")} · ${x.da === "PC" ? "da PC" : "da telefono"}`),
+      el("div", { className: "d" }, el("span", { className: "mono" }, x.lotto), ` · ${x.quantita} · scade ${x.scadenza}`),
+      el("div", { className: "d" }, catenaLink.cloneNode(true)), ristampino);
+    if (aperta) rt.append(catena(x));
+    lista.append(rt);
+  }
+  c.append(lista);
+  const tot = S.storico.filter(x => giorniA(x.data) === 0).reduce((n, x) => n + x.copie, 0);
+  c.append(el("div", { className: "tenue", style: "font-size:13px;border-top:1px solid var(--riga);padding-top:10px" }, el("b", { style: "color:var(--testo)" }, plurale(tot, "etichetta", "etichette")), " stampate oggi"));
+  schermo.append(c);
+  return schermo;
+}
+function descriviChiave(k) {
+  if (k.startsWith("s:")) { const y = S.storico.find(z => z.id === k.slice(2)); return y ? { codice: y.lotto, sotto: `Tua produzione: ${y.prodotto} · stampata il ${fmt(y.data)} alle ${y.ora} · scade ${y.scadenza}`, stampa: y } : null; }
+  const l = lot(k); if (!l) return null;
+  const ar = arrivo(l.arrivo);
+  return { codice: l.lotto, scadenza: l.scadenza ? fmt(l.scadenza) : "da inserire", sotto: ar ? `${ar.fornitore} · ${ar.documento || "senza documento"} · arrivato il ${fmt(ar.data)}` : "Scritto a mano alla stampa, senza documento", l, ar };
+}
+function catena(x) {
+  const c = el("div", { className: "catena" });
+  c.onclick = e => e.stopPropagation();
+  const capo = el("div", { className: "capoCatena" });
+  capo.append(svgSpan(I.stampa, 20, 2), el("div", {}, el("b", { className: "mono" }, x.lotto), ` · ${x.prodotto} · ${plurale(x.copie, "etichetta", "etichette")} · ${dataBreve(x.data)} alle ${x.ora} · scade ${x.scadenza}`));
+  c.append(capo);
+  const voci = Object.entries(x.lotti);
+  if (!voci.length) { c.append(el("div", { className: "tenue", style: "font-size:13.5px;padding:0 4px" }, "Questa etichetta non aveva ingredienti collegati quando è stata stampata.")); return c; }
+  const testa = el("div", { style: "display:flex;align-items:center;gap:10px" });
+  testa.append(svgSpan(I.giu, 16, 2.2), el("span", { className: "etichettina" }, "Fatta con"));
+  if (x.corretto) testa.append(el("span", { className: "nota-corretto" }, `Lotti corretti a mano il ${fmt(x.corretto)}`));
+  c.append(testa);
+  for (const [id, chiavi] of voci) {
+    const a = el("div", { className: "anello" + (chiavi.length ? "" : " manca") });
+    a.append(el("div", { className: "ing" }, nomeCollegato(id) + (eProduzione(id) ? " (tua produzione)" : "")));
+    const dati = el("div", { className: "dati" });
+    if (!chiavi.length) dati.append("Lotto non registrato al momento della stampa.");
+    for (const k of chiavi) {
+      const d = descriviChiave(k); if (!d) continue;
+      dati.append(el("div", {}, "Lotto ", el("b", { className: "mono" }, d.codice), d.scadenza ? [" · scade il ", el("b", { className: "num" }, d.scadenza)] : ""), el("div", {}, d.sotto));
+      if (d.stampa) { const ap = el("button", { className: "catenaLink" }, "apri la sua catena"); ap.onclick = () => { S.aperta = d.stampa.id; S.storicoFiltro = "tutto"; S.storicoCerca = d.stampa.lotto; disegna(); }; dati.append(ap); }
+    }
+    a.append(dati);
+    const fs = el("div", { className: "fotos" });
+    for (const k of chiavi) {
+      const d = descriviChiave(k); if (!d || !d.l) continue;
+      if (d.l.foto) fs.append(foto("etichetta", "Etichetta", `Etichetta del sacco · ${nomeCollegato(id)} · ${d.l.lotto}`));
+      if (d.ar?.foto) fs.append(foto("fattura", (d.ar.documento.startsWith("DDT") ? "DDT" : "Fattura") + (d.ar.foto > 1 ? ` ×${d.ar.foto}` : ""), `${d.ar.documento} · ${d.ar.fornitore} · ${fmt(d.ar.data)}`));
+    }
+    // «Correggi» solo se c'e' qualcosa fra cui scegliere: un ingrediente senza lotti registrati (sfuso, o non serve) non lo mostra
+    const alternative = eProduzione(id) ? S.storico.filter(y => y.pid === id.slice(2) && y.id !== x.id).length : lottiDi(id).length;
+    if (alternative) {
+      const corr = el("button", { className: "catenaLink" }, S.correggi === x.id + "|" + id ? "Chiudi" : "Correggi");
+      corr.onclick = () => { S.correggi = S.correggi === x.id + "|" + id ? null : x.id + "|" + id; disegna(); };
+      fs.append(corr);
+    }
+    a.append(fs);
+    if (S.correggi === x.id + "|" + id) {
+      // la correzione dopo il fatto: l'etichetta e' gia' uscita, si sistema solo il dato, e resta la nota
+      const w = el("div", { className: "correggi" });
+      w.append(el("div", { className: "tenue", style: "font-size:12.5px" }, "Tocca i lotti davvero usati per questa stampa. Resta scritto che è stato corretto a mano."));
+      const scelti = new Set(chiavi);
+      const opzioni = eProduzione(id) ? S.storico.filter(y => y.pid === id.slice(2) && y.id !== x.id).slice(0, 6).map(y => ["s:" + y.id, y.lotto, `${fmt(y.data)} alle ${y.ora} · scade ${y.scadenza}`])
+        : lottiDi(id).sort((p1, p2) => (p2.scadenza || 0) - (p1.scadenza || 0)).map(l => [l.id, l.lotto, `${nomeStato[l.stato]} · ${scadeIl(l)} · ${origine(l)}`]);
+      const chips = el("div", { className: "chips" });
+      for (const [k, codice, sotto] of opzioni) {
+        const on = scelti.has(k);
+        const o = el("button", { className: "chip mono" + (on ? " on" : ""), title: sotto }, codice);
+        o.onclick = () => { if (on) scelti.delete(k); else scelti.add(k); x.lotti[id] = [...scelti]; x.corretto = OGGI; disegna(); };
+        chips.append(o);
+      }
+      w.append(chips);
+      a.append(w);
+    }
+    c.append(a);
+  }
+  const f = bottone("Foglio della catena", { classe: "piccolo", icona: I.stampa, iw: 16, stile: "align-self:flex-start", onclick: () => { S.foglio = { tipo: "catena", stampaId: x.id }; disegna(); } });
+  c.append(f);
+  return c;
+}
+// il foglio stampabile: per l'ASL (una stampa e i suoi lotti) o per un richiamo (un lotto ingrediente e le etichette fatte con quello)
+function finestraFoglio() {
+  const velo = el("div", { className: "velo stampa" });
+  velo.onclick = e => { if (e.target === velo) { S.foglio = null; disegna(); } };
+  const f = el("div", { className: "finestra foglio2" });
+  const foglio = el("div", { className: "foglioStampa" });
+  const tab = (colonne, righe) => { const t = el("table"); const tr = el("tr"); for (const c of colonne) tr.append(el("th", {}, c)); t.append(tr); for (const r of righe) { const tr2 = el("tr"); for (const c of r) tr2.append(el("td", {}, c)); t.append(tr2); } return t; };
+  if (S.foglio.tipo === "catena") {
+    const x = S.storico.find(y => y.id === S.foglio.stampaId);
+    foglio.append(el("h2", { className: "h" }, `Catena del lotto ${x.lotto}`),
+      el("div", {}, `${x.prodotto} · ${plurale(x.copie, "etichetta", "etichette")} stampate il ${fmt(x.data)} alle ${x.ora} · scadenza ${x.scadenza} · da ${x.da}`),
+      el("div", { style: "color:#666;font-size:12.5px" }, `Michi s.n.c. · foglio generato il ${fmt(OGGI)}` + (x.corretto ? ` · lotti corretti a mano il ${fmt(x.corretto)}` : "")));
+    foglio.append(tab(["Ingrediente", "Lotto", "Scadenza", "Fornitore e documento", "Foto"], Object.entries(x.lotti).map(([id, chiavi]) => {
+      const d = chiavi.map(descriviChiave).filter(Boolean);
+      return [nomeCollegato(id) + (eProduzione(id) ? " (produzione propria)" : ""), d.map(z => z.codice).join(" + ") || "non registrato", d.map(z => z.scadenza || "").join(" / "), d.map(z => z.sotto).join(" / "),
+        d.map(z => (z.l?.foto ? "etichetta" : "") + (z.ar?.foto ? (z.l?.foto ? ", " : "") + "documento" : "")).join(" / ") || "—"];
+    })));
+  } else {
+    const l = lot(S.foglio.lotId), usi = usatoIn(l.id), ar = arrivo(l.arrivo);
+    foglio.append(el("h2", { className: "h" }, `Richiamo del lotto ${l.lotto} · ${ingr(l.ing).nome}`),
+      el("div", {}, (ar ? `${ar.fornitore} · ${ar.documento || "senza documento"} · arrivato il ${fmt(ar.data)}` : "scritto a mano") + ` · ${scadeIl(l)}` + (l.quantita ? ` · ${l.quantita}` : "")),
+      el("div", { style: "color:#666;font-size:12.5px" }, `Michi s.n.c. · foglio generato il ${fmt(OGGI)}`));
+    foglio.append(tab(["Etichetta", "Lotto", "Stampata", "Copie", "Scadenza", "Stato"], usi.map(x => [x.prodotto, x.lotto, `${fmt(x.data)} ${x.ora}`, String(x.copie), x.scadenza, giorniA(scadenzaStampa(x)) >= 0 ? "ancora in giro: ritirare" : "scaduta"])));
+    if (!usi.length) foglio.append(el("div", { style: "margin-top:12px" }, "Nessuna etichetta stampata con questo lotto."));
+  }
+  const piede = el("div", { className: "piedeFinestra piedeFoglio" });
+  piede.append(bottone("Chiudi", { onclick: () => { S.foglio = null; disegna(); } }), bottone("Stampa dal browser", { classe: "primario", icona: I.stampa, iw: 18, onclick: () => window.print() }));
+  f.append(foglio, piede);
+  velo.append(f);
+  return velo;
+}
+
+/* ============================ schermata: Impostazioni ============================ */
+function sezione(titolo, destra, ...dentro) {
+  const s = el("div", { className: "scheda sezione", style: "padding:18px 22px" });
+  const capo = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px" });
+  capo.append(el("div", { className: "h", style: "font-size:19px" }, titolo));
+  if (destra) capo.append(destra);
+  s.append(capo, ...dentro.filter(Boolean));
+  return s;
+}
+function rigaImp(titolo, sotto, valore, opz = {}) {
+  const r = el(opz.bottone ? "button" : "div", { className: "riga" + (opz.classe ? " " + opz.classe : ""), style: opz.bottone ? "width:100%" : "" });
+  r.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, titolo), sotto ? el("div", { className: "s" }, sotto) : null));
+  if (valore != null) r.append(typeof valore === "string" ? el("span", { className: "v" + (opz.forte ? " b" : ""), style: opz.forte ? "color:var(--testo)" : "" }, valore) : valore);
+  if (opz.onclick) r.onclick = opz.onclick;
+  return r;
+}
+function vistaImpostazioni() {
+  // proposta A del 15/9: tre schede, la stampante, i telefoni, il programma; niente personalizzazioni dell'etichetta
+  const schermo = el("div", { className: "schermo grigliaImpostazioni scorre", style: "gap:16px" });
+  const st = el("div", { className: "pastiglia pronta" }); st.append(el("span", { className: "punto" }), "Pronta");
+  const sw = el("span", { className: "interruttore" + (S.impostazioni.taglia ? "" : " off") });
+  const margine = el("div", { style: "display:flex;align-items:center;gap:8px;flex-shrink:0" });
+  margine.append(el("div", { className: "casella", style: "min-height:44px;padding:0 10px;width:58px" }, el("input", { value: String(S.impostazioni.margine), style: "font-weight:700;text-align:center", oninput: e => { S.impostazioni.margine = e.target.value; } })), el("span", { className: "v" }, "mm"));
+  const bott = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;padding-top:14px" });
+  bott.append(bottone("Stampa di prova", { icona: I.stampa, iw: 18, onclick: () => avvisa("Nella demo la stampa di prova non parte.") }), bottone("Cerca di nuovo", { icona: I.giro, iw: 18, onclick: () => avvisa("Stampante trovata: Brother QL-1100c (USB).") }));
+  schermo.append(sezione("Stampante", st,
+    rigaImp("Modello", null, "Brother QL-1100c (USB)"),
+    rigaImp("Rotolo caricato", "Lo legge la stampante: se lo cambi, si aggiorna da solo", "62 mm continuo", { forte: true }),
+    rigaImp("Ultimo controllo", null, "adesso"),
+    rigaImp("Taglia ogni etichetta", "Se spento, taglia solo alla fine della serie", sw, { bottone: true, onclick: () => { S.impostazioni.taglia = !S.impostazioni.taglia; disegna(); } }),
+    rigaImp("Margine iniziale e finale", "Minimo consentito dalla stampante: 3 mm", margine), bott));
+
+  // telefoni e tablet: il QR li collega, l'elenco li scollega
+  const qr = el("div", { style: "display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 0 12px;border-bottom:1px solid var(--riga);margin-bottom:4px" });
+  qr.append(el("div", { className: "b", style: "font-size:15px" }, "Inquadra il QR col telefono"),
+    el("div", { style: "width:130px;height:130px;background:repeating-conic-gradient(#2B241D 0 25%, #fff 0 50%) 0 0/16px 16px;border:6px solid #fff;outline:1px solid var(--bordo2)" }),
+    el("div", { className: "mono", style: "font-size:15px;font-weight:700" }, "http://192.168.1.23:8765"), el("div", { className: "nota12" }, "Stessa rete Wi-Fi del PC."));
+  const disp = S.dispositivi.map(d => {
+    const r = el("div", { className: "riga telefonoRiga" });
+    r.append(svgSpan(I.telefono, 18, 1.8, "display:flex;color:var(--tenue)"), el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, d.nome), el("div", { className: "s" }, `${d.sistema} · ${d.quando}`)),
+      bottone("Scollega", { stile: "height:44px;padding:0 16px;font-size:14px", onclick: () => avvisa("Nella demo non si scollega nulla.") }));
+    return r;
+  });
+  schermo.append(sezione("Telefoni e tablet", el("span", { className: "tenue", style: "font-size:13px" }, plurale(S.dispositivi.length, "collegato", "collegati")), qr, ...disp));
+
+  // il programma: versione, dove stanno i dati e le foto, la copia di sicurezza
+  const programma = sezione("Programma", el("span", { className: "tenue", style: "font-size:13px" }, "Servizio «Etichette» su questo PC"),
+    rigaImp("Versione", "Aggiornamenti: si installa il nuovo MSI", "0.1.24"),
+    rigaImp("Cartella dei dati e delle foto", "Etichette, ingredienti, lotti, storico e le foto di fatture ed etichette", "C:\ProgramData\Etichette", { forte: true }),
+    rigaImp("Copia di sicurezza", "Ogni notte alle 3, su un'altra cartella o una chiavetta", "D:\Backup Etichette", { forte: true }),
+    rigaImp("Ultima copia", null, "Stanotte · 41 MB, 138 foto"),
+    el("div", { style: "padding-top:14px;display:flex;gap:10px;flex-wrap:wrap" }, bottone("Fai una copia adesso", { icona: I.scarica, iw: 18, onclick: () => avvisa("Nella demo la copia non parte.") }), bottone("Apri la cartella", { icona: I.immagine, iw: 18, onclick: () => avvisa("Nella demo la cartella non si apre.") })));
+  programma.classList.add("larga");
+  schermo.append(programma);
+
+  // solo per il prototipo
+  const demo = sezione("Demo", el("span", { className: "tenue", style: "font-size:13px" }, "Solo nel prototipo"),
+    el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;padding-top:6px" },
+      bottone("Ricomincia la demo", { icona: I.giro, iw: 18, onclick: () => { S = partenza(); S.vista = "impostazioni"; disegna(); avvisa("Dati di partenza ripristinati."); } }),
+      bottone("Svuota tutto", { classe: "elimina", icona: I.cestino, iw: 18, onclick: () => { S = vuota(); S.vista = "stampa"; disegna(); avvisa("Come alla prima installazione: niente etichette, ingredienti, lotti, storico."); } })));
+  demo.classList.add("larga"); demo.style.background = "var(--crema)";
+  schermo.append(demo);
+  return schermo;
+}
+
+/* ============================ impianto (Guscio.tsx) ============================ */
+const VOCI = [["stampa", "Stampa", I.stampa], ["etichette", "Etichette", I.etichette], ["ingredienti", "Ingredienti", I.ingredienti], ["storico", "Storico", I.storico], ["impostazioni", "Impostazioni", I.impostazioni]];
+const TITOLI = { stampa: "Stampa etichetta", etichette: "Etichette", ingredienti: "Ingredienti", storico: "Storico stampe", impostazioni: "Impostazioni" };
+let ultimoDove = null;
+function finestraFoto() {
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) { S.foto = null; disegna(); } };
+  const f = el("div", { className: "finestra foto2" });
+  f.append(el("div", { className: "h", style: "font-size:18px" }, S.foto.titolo));
+  f.append(el("div", { className: "fotoGrande" }));
+  f.append(el("div", { className: "tenue", style: "font-size:13px;line-height:1.45" }, "Nella demo la foto è un segnaposto. Nell'app è la foto scattata dal telefono, ridotta dal servizio a circa 1600 px e salvata nella cartella dati."));
+  f.append(bottone("Chiudi", { onclick: () => { S.foto = null; disegna(); } }));
+  velo.append(f);
+  return velo;
+}
+// scelto dalla tendina dei simili, si riusa l'ingrediente invece di crearne un doppione: stessi due percorsi del bottone Crea
+function scegliIngredienteEsistente(ing) {
+  const N = S.nuovoIng;
+  if (N.dopo === "etichetta") { const p = prod(S.prodottoEt); if (!p.tracciati.includes(ing.id)) p.tracciati.push(ing.id); S.aggiungiIng = false; }
+  else if (N.dopo === "arrivo" && S.arrivo) { S.arrivo.righe.push(nuovaRiga(ing.id)); S.arrivo.scegli = false; }
+  else { S.vista = "ingredienti"; S.ingrediente = ing.id; S.dettaglioIng = true; }
+  S.nuovoIng = null; disegna(); avvisa(`${ing.nome} c'era già: uso quello invece di crearne un altro.`);
+}
+// la finestra "Nuovo ingrediente": nome e fornitore abituale; da Etichette lo collega, da Merce arrivata aggiunge la riga
+function finestraNuovoIngrediente() {
+  const N = S.nuovoIng;
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) { S.nuovoIng = null; disegna(); } };
+  const f = el("div", { className: "finestra piccola" });
+  f.append(el("div", { className: "h", style: "font-size:20px" }, "Nuovo ingrediente"));
+  f.append(campoTesto("Nome", N.nome, v => { N.nome = v; }, { chiave: "nuovoNome", placeholder: "es. Farina di farro",
+    simili: v => nomiSimili(v, null), scegliSimile: scegliIngredienteEsistente }));
+  f.append(...campoFornitore(N.fornitore, !!N.nuovoFornitore, { chiave: "nuovoForn",
+    scegli: v => { N.fornitore = v; disegna(); },
+    entra: () => { N.nuovoFornitore = true; N.fornitore = ""; disegna(); setTimeout(() => { const f2 = document.querySelector('[data-fuoco="nuovoForn"]'); if (f2) f2.focus(); }, 0); },
+    scrivi: v => { N.fornitore = v; },
+    conferma: v => { const nome = v.trim(); if (nome && !S.fornitori.includes(nome)) S.fornitori.push(nome); N.nuovoFornitore = false; } }));
+  const piede = el("div", { className: "piedeFinestra" });
+  piede.append(bottone("Annulla", { onclick: () => { S.nuovoIng = null; disegna(); } }),
+    bottone("Crea", { classe: "primario", onclick: () => {
+      const nome = N.nome.trim(); if (!nome) { avvisa("Serve il nome."); return; }
+      const doppio = S.ingredienti.find(x => chiaveNome(x.nome) === chiaveNome(nome));
+      if (doppio) { avvisa(`C'è già ${doppio.nome}${doppio.fornitore ? ", di " + doppio.fornitore : ""}: scegli quello dalla tendina qui sopra.`); return; }
+      const id = "n" + Date.now();
+      const forn = (N.fornitore || "").trim(); if (forn && !S.fornitori.includes(forn)) S.fornitori.push(forn);
+      S.ingredienti.push({ id, nome, fornitore: forn });
+      if (N.dopo === "etichetta") { prod(S.prodottoEt).tracciati.push(id); S.aggiungiIng = false; }
+      if (N.dopo === "arrivo" && S.arrivo) { S.arrivo.righe.push(nuovaRiga(id)); S.arrivo.scegli = false; }
+      S.nuovoIng = null; disegna(); avvisa(`${nome} creato` + (N.dopo === "etichetta" ? " e collegato all'etichetta." : " e aggiunto alla consegna."));
+    } }));
+  f.append(piede);
+  velo.append(f);
+  // il fuoco iniziale sul Nome solo alla prima apertura: dopo, la finestra si ridisegna anche scegliendo il
+  // fornitore (campoFornitore), e non deve portarsi via il fuoco (e sul telefono la tastiera) dal campo giusto
+  if (!N.aperta) { N.aperta = true; setTimeout(() => velo.querySelector('[data-fuoco="nuovoNome"]')?.focus(), 0); }
+  return velo;
+}
+function disegna() {
+  chiudiScaduti();
+  const attivo = document.activeElement, chiave = attivo?.dataset?.fuoco, pos = attivo?.selectionStart;
+  const dove = `${S.vista}|${S.dettaglio}|${S.dettaglioIng}|${S.fase}|${!!S.arrivo}|${S.prodottoEt}|${S.ingrediente}`;
+  const scorsi = dove === ultimoDove ? [...document.querySelectorAll(".schermo, .scorre")].map(e => e.scrollTop) : null;
+  ultimoDove = dove;
+  const app = $("#app");
+  app.textContent = "";
+  const cont = el("div", { className: "app" });
+
+  const rail = el("nav", { className: "rail" });
+  rail.append(el("div", { className: "marchio", innerHTML: ico(I.marchio, 24, 2) }));
+  for (const [k, t, d] of VOCI) {
+    const v = el("button", { className: "voce" + (S.vista === k ? " on" : "") });
+    v.innerHTML = ico(d) + `<span>${t}</span>`;
+    v.onclick = () => vai(k);
+    rail.append(v);
+  }
+
+  const corpo = el("div", { className: "corpo" });
+  const testata = el("header", { className: "testata" });
+  const sinistra = el("div", { style: "display:flex;align-items:center;gap:10px;min-width:0" });
+  let titolo = TITOLI[S.vista];
+  if (S.vista === "ingredienti" && S.arrivo) {
+    titolo = "Merce arrivata";
+    const b2 = el("button", { className: "indietro", style: "display:flex", innerHTML: ico(I.sinistra, 22, 2), title: S.tornaAStampa ? "Torna alla stampa" : "Torna agli ingredienti" });
+    b2.onclick = () => { S.arrivo = null; if (S.tornaAStampa) { S.vista = "stampa"; S.prodotto = S.tornaAStampa.prodotto; S.dettaglio = true; S.tornaAStampa = null; } disegna(); };
+    sinistra.append(b2);
+  }
+  sinistra.append(el("h1", { className: "h titolo" }, titolo));
+  const strumenti = el("div", { className: "strumentiEt testataStrumenti" });
+  const azioni = el("div", { className: "testataAzioni", style: "display:flex;align-items:center;gap:10px;flex-wrap:wrap" });
+  if (S.vista === "stampa" && !(tel() && S.dettaglio)) azioni.append(statoStampante());
+  if (S.vista === "etichette" && prod(S.prodottoEt)) {
+    strumenti.append(bottone("", { classe: "tondo", icona: I.annulla, iw: 18, title: "Annulla (Ctrl+Z)", disabilitato: true }), bottone("", { classe: "tondo", icona: I.ripristina, iw: 18, title: "Ripristina (Ctrl+Y)", disabilitato: true }), el("div", { className: "sep" }),
+      bottone("Duplica", { classe: "conTesto", icona: I.duplica, iw: 17, onclick: () => avvisa("Nella demo: come oggi, copia l'etichetta con la sua etichetta e gli ingredienti collegati.") }),
+      bottone("Elimina", { classe: "conTesto elimina", icona: I.cestino, iw: 17, onclick: () => avvisa("Nella demo non si elimina nulla.") }));
+    azioni.append(bottone("Stampa di prova", { classe: "soloPC", icona: I.stampa, iw: 18, onclick: () => avvisa("Nella demo la stampa di prova non parte.") }), bottone("Salva etichetta", { classe: "primario", onclick: () => avvisa("Salvata: ingredienti collegati compresi.") }));
+  }
+  if (S.vista === "ingredienti" && !S.arrivo && !(tel() && S.dettaglioIng)) {
+    azioni.append(tel() ? bottone("", { icona: I.piu, iw: 20, sw: 2.2, title: "Nuovo ingrediente", stile: "width:48px;padding:0", onclick: () => nuovoIngrediente() }) : bottone("Nuovo ingrediente", { icona: I.piu, iw: 18, sw: 2.2, onclick: () => nuovoIngrediente() }),
+      bottone("Merce arrivata", { classe: "primario", icona: I.camion, iw: 18, onclick: () => apriArrivo() }));
+  }
+  if (S.vista === "storico") azioni.append(bottone("Esporta l'elenco", { classe: "soloPC", icona: I.scarica, iw: 18, onclick: () => avvisa("Elenco copiato: incollalo in un foglio di calcolo. Con la catena, una colonna per ogni lotto ingrediente.") }));
+  if (S.vista === "ingredienti" && S.arrivo) {
+    const n = S.arrivo.righe.filter(rigaDaRegistrare).length;
+    azioni.append(bottone("Annulla", { onclick: () => { S.arrivo = null; if (S.tornaAStampa) { S.vista = "stampa"; S.prodotto = S.tornaAStampa.prodotto; S.dettaglio = true; S.tornaAStampa = null; } disegna(); } }), bottone(n ? `Registra ${plurale(n, "lotto", "lotti")}` : "Registra", { classe: "primario", disabilitato: !n, onclick: registraArrivo }));
+  }
+  testata.append(sinistra, strumenti, azioni);
+  corpo.append(testata);
+
+  corpo.append(S.vista === "stampa" ? vistaStampa() : S.vista === "etichette" ? vistaEtichette() : S.vista === "ingredienti" ? vistaIngredienti()
+    : S.vista === "storico" ? vistaStorico() : vistaImpostazioni());
+
+  const barra = el("nav", { className: "barrasotto" });
+  for (const [k, t, d] of VOCI) {
+    const v = el("button", { className: "tab" + (S.vista === k ? " on" : "") });
+    v.innerHTML = ico(d) + `<span>${t}</span>`;
+    v.onclick = () => vai(k, true);
+    barra.append(v);
+  }
+  corpo.append(barra);
+  cont.append(rail, corpo);
+  app.append(cont);
+  if (S.foto) app.append(finestraFoto());
+  if (S.nuovoIng) app.append(finestraNuovoIngrediente());
+  if (S.foglio) app.append(finestraFoglio());
+  if (S.lenteAperta) app.append(lente());
+  if (scorsi) app.querySelectorAll(".schermo, .scorre").forEach((e, i) => { if (scorsi[i]) e.scrollTop = scorsi[i]; });
+  if (chiave) { const n = document.querySelector(`[data-fuoco="${chiave}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }
+}
+function vai(k, daBarra) {
+  if (S.fase === "fatta") S.fase = null;
+  if (S.fase === "stampa") return;
+  // toccare di nuovo la voce riporta all'elenco, come si aspetta chi usa un telefono
+  if (daBarra && S.vista === k) { S.dettaglio = false; S.dettaglioIng = false; S.arrivo = null; }
+  S.vista = k; disegna();
+}
+addEventListener("resize", () => { clearTimeout(window._r); window._r = setTimeout(disegna, 120); });
+addEventListener("keydown", e => { if (e.key === "Escape") { if (S.nuovoIng) { S.nuovoIng = null; disegna(); } else if (S.foto) { S.foto = null; disegna(); } else if (S.foglio) { S.foglio = null; disegna(); } else if (S.lenteAperta) { S.lenteAperta = false; disegna(); } } });
+// #stampa, #etichette, #ingredienti, #storico, #impostazioni aprono la schermata direttamente;
+// con un argomento dopo i due punti si apre anche l'elemento: #stampa:salsa, #ingredienti:olio, #storico:s5, #etichette:teglia
+{
+  const [v, arg] = location.hash.slice(1).split(":");
+  if (v === "vuoto") S = vuota();
+  if (TITOLI[v]) S.vista = v;
+  if (arg) {
+    if (v === "stampa" && prod(arg)) { S.prodotto = arg; S.dettaglio = true; }
+    if (v === "etichette" && prod(arg)) S.prodottoEt = arg;
+    if (v === "ingredienti" && ingr(arg)) { S.ingrediente = arg; S.dettaglioIng = true; }
+    if (v === "storico") { S.aperta = arg; S.storicoFiltro = "tutto"; }
+  }
+}
+disegna();
+</script>

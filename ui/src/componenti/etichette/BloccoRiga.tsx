@@ -2,7 +2,7 @@ import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "reac
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
-import { IconaManiglia, IconaVia } from "../Icone";
+import { IconaCestino, IconaManiglia } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { BottoniAllineamento } from "./ControlloAllineamento";
 import { BottoniPosizione } from "./ControlloPosizione";
@@ -25,14 +25,25 @@ interface ProprietaBloccoRiga {
 // l'allineamento era tornato su una seconda riga, ora torna sulla stessa
 // insieme alla posizione, anche lei diventata tre bottoni sempre visibili
 // invece del bottone unico ◧/◨ che ciclava): maniglia, numero, interruttore,
-// nome, corpo, i tre bottoni dell'allineamento e i tre della posizione in un
-// riquadro solo, la X. Se lo spazio non basta a cedere e' il nome (troncato
+// nome, corpo, i tre bottoni dell'allineamento e i tre della posizione e il
+// cestino, tutti insieme in un unico gruppo allineato al bordo destro della
+// riga (richiesta del cliente, 24 settembre 2026: prima il cestino era una X
+// per conto suo). Se lo spazio non basta a cedere e' il nome (troncato
 // coi puntini, il nome intero resta nel title) - il contrario della regola
 // di prima, quando erano i bottoni a nascondersi: le azioni restano sempre
 // tutte in linea e cliccabili. Il testo dei blocchi liberi e il caricamento
 // del logo non stanno piu' qui (deciso da Gianluca, funzionalita-
 // prima-versione.md 9 settembre sera): ogni blocco che ha qualcosa da
 // impostare ha il suo gruppo nella colonna dei valori.
+//
+// Trascinamento (deciso da Gianluca, 24/09/2026: "si deve poter prendere la
+// riga anche fuori dalla maniglia"): "listeners" (gli ascoltatori del
+// puntatore di dnd-kit) stanno sulla riga INTERA, non solo sulla maniglia -
+// la soglia di distanza del sensore (BlocchiEditor.tsx) e' quello che lascia
+// funzionare al clic i controlli dentro la riga, non serve escluderli uno
+// per uno. "attributes" (ruolo/tabIndex/aria-describedby per l'accessibilita'
+// e il trascinamento da tastiera) restano invece SOLO sulla maniglia: e'
+// lei il punto della riga che riceve il focus, non tutta la riga.
 export default function BloccoRiga({
   blocco,
   indice,
@@ -72,43 +83,52 @@ export default function BloccoRiga({
       ref={setNodeRef}
       style={stile}
       className={"blocco" + (blocco.acceso ? "" : " spento") + (isDragging ? " trascina" : "")}
+      {...listeners}
     >
       <div className="testa">
-        <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${nome}`}>
+        <span className="maniglia" {...attributes} aria-label={`Trascina per riordinare ${nome}`}>
           <span className="posto">{indice + 1}</span>
           <IconaManiglia larghezza={14} spessoreTratto={1.5} />
         </span>
         <button type="button" className={"sw" + (blocco.acceso ? "" : " off")} onClick={clicSw} aria-pressed={blocco.acceso} aria-label={blocco.acceso ? `Spegni ${nome}` : `Accendi ${nome}`} />
         <span className="nome" title={nome}>{nome}</span>
-        {eLogo ? (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title="Altezza del logo, in millimetri" aria-label="Altezza del logo, in millimetri">
-            {ALTEZZE_LOGO_MM.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title={`Corpo di ${nome}, in punti`} aria-label={`Corpo di ${nome}, in punti`}>
-            {SCALETTA_CORPO.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="azioniBlocco" role="group" aria-label={`Allineamento e larghezza di ${nome}`}>
-          {mostraAllineamento && (
-            <>
-              <BottoniAllineamento valore={blocco.allineamento} nomeBlocco={nome} onCambia={cambiaAllineamento} />
-              <span className="separatore" aria-hidden="true" />
-            </>
+        {/* Il corpo, il gruppo allineamento/posizione e il cestino, insieme
+            (index.css, ".gruppoValori"): quando la riga ci sta tutta in una,
+            e' solo un raggruppamento invisibile (display:contents) e i tre
+            seguono il nome (flex:1) fino al bordo destro della riga; quando
+            la riga e' troppo stretta per il nome, vanno tutti insieme sotto
+            di lui, come gruppo allineato anche loro al bordo destro. */}
+        <div className="gruppoValori">
+          {eLogo ? (
+            <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title="Altezza del logo, in millimetri" aria-label="Altezza del logo, in millimetri">
+              {ALTEZZE_LOGO_MM.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select className="misura" value={blocco.corpo} onChange={cambiaCorpo} title={`Corpo di ${nome}, in punti`} aria-label={`Corpo di ${nome}, in punti`}>
+              {SCALETTA_CORPO.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
           )}
-          <BottoniPosizione valore={blocco.colonna} nomeBlocco={nome} onCambia={cambiaColonna} />
+          <div className="azioniBlocco" role="group" aria-label={`Allineamento e larghezza di ${nome}`}>
+            {mostraAllineamento && (
+              <>
+                <BottoniAllineamento valore={blocco.allineamento} nomeBlocco={nome} onCambia={cambiaAllineamento} />
+                <span className="separatore" aria-hidden="true" />
+              </>
+            )}
+            <BottoniPosizione valore={blocco.colonna} nomeBlocco={nome} onCambia={cambiaColonna} />
+          </div>
+          <button type="button" className="cestino" onClick={clicVia} title={`Togli il blocco ${nome}`} aria-label={`Togli il blocco ${nome}`}>
+            <IconaCestino larghezza={14} spessoreTratto={2} />
+          </button>
         </div>
-        <button type="button" className="via" onClick={clicVia} aria-label={`Togli ${nome}`}>
-          <IconaVia larghezza={14} spessoreTratto={2} />
-        </button>
       </div>
     </div>
   );

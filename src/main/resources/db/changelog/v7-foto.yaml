@@ -1,0 +1,54 @@
+databaseChangeLog:
+  # Foto dei lotti e dei documenti (docs/api.md, "Foto, proposte dal testo e correzione dei
+  # semilavorati" -> "Foto dei lotti e dei documenti", deciso il 22 settembre 2026 sera): l'etichetta
+  # del sacco (tipo "lotto") o una pagina del documento di una consegna (tipo "arrivo"). File
+  # salvato accanto al database, in <dati>/foto/<id>.jpg (come il logo: vedi LogoService), non in
+  # questa tabella - qui solo il riferimento. Indice su (tipo, riferimento_id): e' il filtro di
+  # ogni lettura (le foto di UN lotto o di UN arrivo).
+
+  - changeSet:
+      id: 50-foto
+      author: etichette
+      comment: >
+        Una foto e' o l'etichetta di un sacco (tipo "lotto", riferimento_id = lotti_ingrediente.id)
+        o una pagina del documento di una consegna (tipo "arrivo", riferimento_id = arrivi.id):
+        nessuna foreign key unica possibile, quindi nessun vincolo referenziale sulla colonna
+        (coerente con le altre coppie tipo+id di questo schema). nome_file e' il nome originale del
+        file caricato (solo informativo: il file salvato e' sempre <id>.jpg).
+      changes:
+        - createTable:
+            tableName: foto
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tipo
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: riferimento_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nome_file
+                  type: TEXT
+              - column:
+                  name: creato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_foto_tipo_riferimento
+            tableName: foto
+            columns:
+              - column:
+                  name: tipo
+              - column:
+                  name: riferimento_id

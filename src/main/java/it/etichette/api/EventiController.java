@@ -7,6 +7,8 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -66,7 +68,18 @@ public class EventiController {
         trasmetti("stampante", stato);
     }
 
+    /**
+     * {@code @Order(LOWEST_PRECEDENCE)}, non a caso: {@code StampeService#onEvento} ascolta lo
+     * stesso {@link EventoStampa} per scrivere la riga di storico (dal 23/09/2026: per chiuderla
+     * con esito e copie, la riga e i lotti registrati esistono gia' dall'avvio del lavoro). Prova sul
+     * campo (22/09/2026 sera, 0.1.24 installata, stampa vera): senza un ordine dichiarato Spring
+     * poteva consegnare l'evento "completata" QUI prima che quella scrittura finisse - il browser,
+     * avvisato, rileggeva subito la catena e vedeva "non registrato" anche col database gia'
+     * corretto. Questo listener deve quindi arrivare DOPO la scrittura - vedi il gemello
+     * {@code @Order(HIGHEST_PRECEDENCE)} su {@code StampeService#onEvento}.
+     */
     @EventListener
+    @Order(Ordered.LOWEST_PRECEDENCE)
     public void onAvanzamentoStampa(EventoStampa evento) {
         trasmetti("stampa", evento);
     }

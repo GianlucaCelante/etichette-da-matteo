@@ -1,0 +1,30 @@
+Artefatti scaricati da claude.ai l'8 settembre 2026, cosi' come sono online.
+
+banco-etichette-2026-09-08.html
+    "Banco etichette" (https://claude.ai/code/artifact/fa873b74-be38-44ff-8245-7ab18598acfa), ripubblicato l'8/9/2026
+    con il master locale (correzione per Safari su iPhone compresa): questo file e' il master, identico a quello online.
+
+etichette-da-matteo-canvas-2026-09-03.html
+    "Etichette da Matteo" (https://claude.ai/code/artifact/cc8ac916-9882-434b-955a-bd521db09cac), aggiornato il 3/9/2026.
+    Canvas di design con 7 tavole: Main, Prodotti, Modello, Impostazioni, StampaMobile, DirezioneB, DirezioneC.
+    E' PIU' VECCHIO di design/ nel repo (5/9/2026, 18 tavole, modifiche non ancora committate):
+    non sostituisce ne' design/*.dc.html ne' design/canvas-pubblicato.html.
+
+etichette-da-matteo-canvas-2026-09-03-artboard/
+    Le 7 tavole e il canvas.json estratti da quel canvas.
+
+Il link nel README (artifact e8537537...) non esiste piu' su claude.ai.
+
+banco-lotti-2026-09-14.html
+    "Banco lotti" (https://claude.ai/code/artifact/53d98743-7e82-4c00-bc49-3088338ebcfb), prototipo del 14/9/2026
+    per ingredienti, merce arrivata, lotti in uso alla stampa e catena nello storico. Questo file e' il master.
+    NON si modifica a mano: si genera con `python artefatti-claude/banco-lotti-sorgente/costruisci.py`, che innesta
+    il CSS vero dell'app (ui/src/index.css, @layer components) nel modello banco-lotti-sorgente/banco-lotti.template.html.
+    Apre una schermata diretta con #stampa, #etichette, #ingredienti, #storico, #impostazioni; #vuoto = prima installazione.
+    Prova a secco degli scenari (175 controlli, 22/9, modello dei lotti aperti, proposta D con spunta, Impostazioni A,
+    tendina fornitore con "Altro fornitore...", nomi degli ingredienti): banco-lotti-sorgente/prova.mjs (serve jsdom: vedi la prima riga del file).
+    Dal 22/9 il nome dell'ingrediente non puo' restare vuoto ne' ripetere quello di un altro (ne' dalla scheda ne' dalla finestra),
+    e mentre si scrive una tendina mostra i nomi simili gia' in elenco: sceglierne uno usa quell'ingrediente invece di crearne un doppione.
+    Sempre dal 22/9, nella striscia dei lotti della stampa la × e' diventata il bottone "Chiudi lotto" e sotto i lotti aperti
+    c'e' la lista collassata dei lotti chiusi, con "Riapri" (bloccato sui lotti scaduti finche' ce n'e' un altro valido aperto).
+    Con piu' sacchi aperti, di serie si registra solo quello aperto per primo (S.scelti, scelta positiva): gli altri si spuntano a mano.

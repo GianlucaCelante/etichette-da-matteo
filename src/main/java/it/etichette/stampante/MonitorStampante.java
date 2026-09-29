@@ -17,6 +17,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Possiede l'UNICO thread che parla con la stampante (docs/mappatura-brother-ql-1100c.md, §8;
@@ -122,6 +128,21 @@ public class MonitorStampante {
     private Thread thread;
 
     /**
+     * {@code POST /api/stampante/cerca} (docs/api.md, "Cercare di nuovo la stampante"): SOLO un
+     * segnale di sveglia (il contenuto non conta), capacita' 1 - se il monitor non ha ancora
+     * consumato l'ultimo non serve accodarne un altro. Usata al posto di {@link Thread#interrupt()}
+     * apposta: la porta la possiede solo il thread del monitor, e un interrupt "a freddo" potrebbe
+     * colpire una {@link Porta#leggiPoll} in corso durante un lavoro vero (rischio di uno stato
+     * d'interruzione residuo che sveglia un {@code dormi()} successivo senza motivo). Con questa
+     * coda separata il monitor si sveglia SOLO nel punto sicuro in cui gia' aspetta apposta
+     * ({@link #aspettaOSveglia}, raggiunto solo a porta chiusa - mai durante un lavoro).
+     */
+    private final BlockingQueue<Object> sveglia = new LinkedBlockingQueue<>(1);
+
+    /** Chi sta aspettando lo stato aggiornato da {@link #cercaOra}: risposta in {@link #rispondiRichiesteCercaOra}. */
+    private final BlockingQueue<CompletableFuture<StatoStampante>> richiesteCercaOra = new LinkedBlockingQueue<>();
+
+    /**
      * Mancate risposte consecutive (letto e scritto SOLO dal thread del monitor, mai da fuori:
      * niente volatile). Azzerato in {@link #richiediStato} appena arriva una risposta valida;
      * usato da {@link #incrementaEVerificaScollegata} per decidere quando pubblicare "non
@@ -165,6 +186,33 @@ public class MonitorStampante {
         return statoCorrente;
     }
 
+    /**
+     * {@code POST /api/stampante/cerca} (docs/api.md, "Cercare di nuovo la stampante"): chiede al
+     * monitor - non a un thread separato, la porta e' sua - di tentare SUBITO una nuova
+     * connessione invece di aspettare fino a un secondo per il prossimo giro automatico del ciclo,
+     * e blocca il chiamante finche' quel tentativo non e' finito. Se la stampante risulta gia'
+     * connessa non c'e' nulla da cercare (lo stato e' gia' aggiornato al massimo entro l'ultimo
+     * secondo): torna subito {@link #statoCorrente} senza svegliare nessuno.
+     */
+    public StatoStampante cercaOra() {
+        if (porta.isAperta()) {
+            return statoCorrente;
+        }
+        CompletableFuture<StatoStampante> richiesta = new CompletableFuture<>();
+        richiesteCercaOra.add(richiesta);
+        sveglia.offer(new Object());
+        try {
+            return richiesta.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return statoCorrente;
+        } catch (ExecutionException | TimeoutException e) {
+            // Non dovrebbe mai succedere (rispondiRichiesteCercaOra non fallisce mai): per
+            // sicurezza torna comunque lo stato che si ha, invece di lasciare il chiamante appeso.
+            return statoCorrente;
+        }
+    }
+
     /** SOLO per i test: attese di 10 s / 60 s vere non sono testabili, qui si accorciano. */
     void impostaAttesaRistampaPerTest(long baseMs, long massimaMs) {
         this.attesaRistampaBaseMs = baseMs;
@@ -180,7 +228,12 @@ public class MonitorStampante {
         while (attivo) {
             try {
                 if (!porta.isAperta() && !tentaConnessione()) {
-                    dormi(ATTESA_CICLO_MS);
+                    // Il tentativo appena fatto (spontaneo o forzato da cercaOra()) e' quello che
+                    // chi aspetta su /api/stampante/cerca voleva: rispondi PRIMA di aspettare di
+                    // nuovo, cosi' un "ancora non trovata" torna subito invece di aspettare un
+                    // secondo giro a vuoto.
+                    rispondiRichiesteCercaOra();
+                    aspettaOSveglia(ATTESA_CICLO_MS);
                     continue;
                 }
                 // prossimo(..) e' bloccante fino a ATTESA_CICLO_MS: un lavoro accodato durante
@@ -193,10 +246,29 @@ public class MonitorStampante {
                 } else {
                     aggiornaStato();
                 }
+                rispondiRichiesteCercaOra();
             } catch (RuntimeException e) {
                 log.error("errore inatteso nel ciclo del monitor stampante", e);
+                rispondiRichiesteCercaOra(); // non lasciare chi aspetta appeso fino al timeout per un errore imprevisto
                 dormi(ATTESA_CICLO_MS);
             }
+        }
+    }
+
+    /** Come {@link #dormi}, ma si sveglia SUBITO se arriva una richiesta da {@link #cercaOra} invece di aspettare fino in fondo a {@code ms}. */
+    private void aspettaOSveglia(long ms) {
+        try {
+            sveglia.poll(ms, TimeUnit.MILLISECONDS); // il contenuto non conta: serve solo a svegliarsi prima del tempo
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Risponde a chi sta aspettando in {@link #cercaOra} con lo stato appena aggiornato da questo giro del ciclo. */
+    private void rispondiRichiesteCercaOra() {
+        CompletableFuture<StatoStampante> richiesta;
+        while ((richiesta = richiesteCercaOra.poll()) != null) {
+            richiesta.complete(statoCorrente);
         }
     }
 

@@ -26,8 +26,18 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/impostazioni")
 public class ImpostazioniController {
 
-    private static final Set<String> SCHEMI_LOTTO = Set.of("data", "giorno", "continuo", "mano");
     private static final Set<String> TIPI_LOGO_AMMESSI = Set.of("image/png", "image/jpeg");
+
+    /**
+     * Prefisso delle chiavi interne che vivono nella stessa tabella {@code impostazioni} ma non
+     * sono impostazioni vere e proprie (docs/api.md): oggi solo quelle di {@code BackupService}
+     * ({@code backup.cartella}, {@code backup.ultima*}, {@code backup.ultimaRiuscita*}). {@link
+     * #tutte()} le esclude sia in GET sia nella risposta della PUT, altrimenti l'interfaccia le
+     * rimanda indietro cosi' come le ha ricevute e la PUT cade in {@link #valida} con "impostazione
+     * non riconosciuta" (difetto trovato il 23/09/2026: bastava aver gia' fatto una copia di
+     * sicurezza per non poter piu' salvare nessuna impostazione).
+     */
+    private static final String PREFISSO_CHIAVE_INTERNA = "backup.";
 
     private final ImpostazioneRepository repository;
     private final LogoService logo;
@@ -71,6 +81,7 @@ public class ImpostazioniController {
     @GetMapping
     public Map<String, String> tutte() {
         return repository.findAll().stream()
+                .filter(i -> !i.getChiave().startsWith(PREFISSO_CHIAVE_INTERNA))
                 .collect(Collectors.toMap(Impostazione::getChiave, Impostazione::getValore));
     }
 
@@ -82,13 +93,14 @@ public class ImpostazioniController {
         return tutte();
     }
 
+    /**
+     * {@code schema_lotto} non compare piu' qui apposta (docs/api.md, 22/09/2026 sera): e' passato
+     * all'etichetta del prodotto ({@code prodotto.etichetta.schemaLotto}, vedi {@code
+     * ProdottiConversioni}). Una PUT con quella chiave cade nel {@code default} sotto e risponde
+     * "impostazione non riconosciuta" - corretto, non e' piu' un'impostazione globale.
+     */
     private static void valida(String chiave, String valore) {
         switch (chiave) {
-            case "schema_lotto" -> {
-                if (!SCHEMI_LOTTO.contains(valore)) {
-                    throw new ErroreApi(HttpStatus.BAD_REQUEST, "schema_lotto: valore non ammesso: " + valore);
-                }
-            }
             case "progressivo_continuo" -> validaNumero(chiave, valore, Integer.MIN_VALUE);
             case "taglio_ogni_etichetta" -> {
                 if (!"true".equals(valore) && !"false".equals(valore)) {

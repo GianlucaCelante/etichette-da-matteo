@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useAnnullaStampa,
   useAnteprimaProdottoSrc,
+  useCatenaStorico,
   useCreaStampa,
   useLavoroStampa,
   useLotto,
@@ -12,18 +14,19 @@ import {
   useProseguiStampa,
   useRistampaStampa,
   useStampante,
-  useStorico,
+  useStoricoDelLavoro,
 } from "../api/hooks";
 import { ErroreRichiesta } from "../api/client";
 import { useScalaAnteprima } from "../api/resa";
 import type { Prodotto } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni } from "../hooks/useTestata";
-import { IconaCerca, IconaDestra, IconaMatita, IconaMeno, IconaPiu, IconaSinistra, IconaStampa } from "../componenti/Icone";
+import { IconaAllarme, IconaCerca, IconaDestra, IconaGiu, IconaMatita, IconaMeno, IconaPiu, IconaSinistra, IconaStampa } from "../componenti/Icone";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
 import StatoStampante from "../componenti/StatoStampante";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
-import { formattaOra, oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
+import StrisciaLotti, { type ScelteLotti } from "../componenti/stampa/StrisciaLotti";
+import { formattaOra, GIORNI_SCADENZA_PROPOSTI, oggiPiuGiorni } from "../componenti/stampa/formattazione";
 
 type Filtro = "usati" | "tutti";
 
@@ -32,9 +35,16 @@ interface Riepilogo {
   prodottoId: number;
   prodottoNome: string;
   quantita: string;
-  scadenza: string;
+  scadenza: string | null;
   lotto: string;
   copieTotali: number;
+  // La scelta dei lotti RISOLTA usata per la stampa che ha prodotto questo
+  // riepilogo (StrisciaLotti.tsx, onCambiaRisolte): "Ripeti" (PannelloFatta)
+  // la riusa cosi' com'e', non ne calcola una nuova - la striscia non e' piu'
+  // in vista per rileggerla, e lasciar decidere di nuovo al servizio
+  // potrebbe silenziosamente registrare un sacco diverso da quello appena
+  // usato per questa stessa preparazione.
+  lottiRisolti: ScelteLotti;
 }
 
 function RigaProdotto({
@@ -49,10 +59,11 @@ function RigaProdotto({
   const clic = useCallback(() => onScegli(prodotto.id), [onScegli, prodotto.id]);
   return (
     <button type="button" className={"prodotto" + (selezionato ? " on" : "")} onClick={clic}>
-      <span className="n">{prodotto.nome}</span>
-      <span className="d">
-        Scade dopo <b>{plurale(prodotto.giorniScadenza, "giorno", "giorni")}</b> · {prodotto.quantita}
-      </span>
+      <span className="n" title={prodotto.nome}>{prodotto.nome}</span>
+      {/* Niente piu' "Scade dopo N giorni" (deciso da Gianluca il 24/09/2026: la
+          scadenza si sceglie solo alla stampa, non e' piu' una proprieta' fissa
+          del prodotto) - resta solo la quantita'. */}
+      <span className="d">{prodotto.quantita}</span>
       <span className="freccia soloTel">
         <IconaDestra larghezza={20} spessoreTratto={2} />
       </span>
@@ -64,16 +75,51 @@ function RigaProdotto({
 // 1/3/Altro del giro scorso.
 function ContatoreCopie({ copie, onMeno, onPiu }: { copie: number; onMeno: () => void; onPiu: () => void }) {
   return (
-    <div className="campo">
-      <div className="etichettina">Copie</div>
-      <div className="flex gap-1.5 h-[52px]">
-        <button type="button" className="casella w-[52px] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
-          <IconaMeno larghezza={20} spessoreTratto={2.4} />
-        </button>
-        <div className="casella flex-1 justify-center font-bold">{copie}</div>
-        <button type="button" className="casella w-[52px] justify-center" onClick={onPiu} disabled={copie >= 99} aria-label="Una copia in più">
-          <IconaPiu larghezza={20} spessoreTratto={2.4} />
-        </button>
+    // "campoCopieStampa": stessa riga intera di ".campoLottoStampa" sotto gli
+    // 860px (index.css) - a meta' della griglia 2x2 i tre tasti non ci
+    // stavano piu' dopo aver stretto il gutter a 10px (difetto trovato da
+    // 320px, 25 settembre 2026). Copie era gia' sola sulla sua riga (Lotto
+    // occupa tutta quella sopra), quindi prendersi tutta la riga non costa
+    // spazio verticale in piu'.
+    <div className="campo campoCopieStampa">
+      {/* PC/tablet: invariato, etichetta sopra e contatore sotto a tutta
+          larghezza della cella (meta' scheda, non tutto lo schermo come sul
+          telefono) - la casella centrale si restringe con flex-1, qualunque
+          sia la larghezza della cella. */}
+      <div className="soloPC">
+        <div className="etichettina">Copie</div>
+        <div className="flex gap-1.5 h-[52px]">
+          <button type="button" className="casella w-[52px] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
+            <IconaMeno larghezza={20} spessoreTratto={2.4} />
+          </button>
+          <div className="casella flex-1 justify-center font-bold">{copie}</div>
+          <button type="button" className="casella w-[52px] justify-center" onClick={onPiu} disabled={copie >= 99} aria-label="Una copia in più">
+            <IconaPiu larghezza={20} spessoreTratto={2.4} />
+          </button>
+        </div>
+      </div>
+      {/* Telefono (S2, deciso da Gianluca, 25/09/2026): etichetta a
+          sinistra e contatore compatto a destra, sulla STESSA riga - prima
+          "Copie" stava sopra e il contatore sotto, steso a tutta larghezza
+          con la casella del numero larga quanto tutto lo spazio avanzato
+          (un numero di due cifre non ha bisogno di piu' di una manciata di
+          pixel, e la riga cosi' era piu' alta del necessario). Larghezze
+          fisse (48/56/48px) invece di flex-1: qui la riga e' sempre a
+          tutta larghezza dello schermo (".campoCopieStampa" sotto gli
+          860px), c'e' sempre spazio per loro - a differenza della cella
+          stretta di PC/tablet qui sopra, dove le stesse larghezze fisse
+          avrebbero sforato. */}
+      <div className="soloTel flex items-center justify-between gap-3 h-[52px]">
+        <div className="etichettina">Copie</div>
+        <div className="flex gap-1.5">
+          <button type="button" className="casella w-12 h-[52px] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
+            <IconaMeno larghezza={20} spessoreTratto={2.4} />
+          </button>
+          <div className="casella w-14 h-[52px] justify-center font-bold">{copie}</div>
+          <button type="button" className="casella w-12 h-[52px] justify-center" onClick={onPiu} disabled={copie >= 99} aria-label="Una copia in più">
+            <IconaPiu larghezza={20} spessoreTratto={2.4} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -87,7 +133,6 @@ function PannelloProdotto({
   lottoObbligatorio,
   lottoMancante,
   copie,
-  notaScadenza,
   inStampaPending,
   mostraIndietro,
   onIndietro,
@@ -98,6 +143,9 @@ function PannelloProdotto({
   onCopiePiu,
   onModifica,
   onStampa,
+  scelteLotti,
+  onCambiaScelteLotti,
+  onCambiaRisolte,
 }: {
   prodotto: Prodotto;
   quantita: string;
@@ -106,7 +154,6 @@ function PannelloProdotto({
   lottoObbligatorio: boolean;
   lottoMancante: boolean;
   copie: number;
-  notaScadenza: string;
   inStampaPending: boolean;
   mostraIndietro: boolean;
   onIndietro: () => void;
@@ -117,6 +164,9 @@ function PannelloProdotto({
   onCopiePiu: () => void;
   onModifica: () => void;
   onStampa: () => void;
+  scelteLotti: ScelteLotti | null;
+  onCambiaScelteLotti: (nuove: ScelteLotti) => void;
+  onCambiaRisolte: (risolte: ScelteLotti) => void;
 }) {
   const { data: stampante } = useStampante();
   const rotolo = stampante?.rotolo ?? 62;
@@ -124,72 +174,198 @@ function PannelloProdotto({
   const srcAnteprima = useAnteprimaProdottoSrc(prodotto.id, { rotolo, scala, quantita, scadenza, lotto });
   const { data: misure } = useMisureProdotto(prodotto.id, rotolo);
 
+  // Il piede (matita/Stampa) puo' nascondere la striscia "Lotti degli
+  // ingredienti" quando ha un avviso: sul telefono perche' e' sticky sopra
+  // la scheda che scorre (index.css, ".schermo.dettaglio .azioni"), su PC e
+  // tablet perche' la scheda scorre dentro ".schedaCorpo" e un'anteprima
+  // alta puo' spingere la striscia fuori dalla parte visibile (difetto
+  // rapporto-stampa 1.1, esteso al PC). Una riga ambra nel piede lo segnala
+  // e porta la striscia in vista con un tocco - solo quando davvero serve,
+  // a qualunque larghezza.
+  const stripRif = useRef<HTMLDivElement | null>(null);
+  const azioniRif = useRef<HTMLDivElement | null>(null);
+  const [avvisoLotti, setAvvisoLotti] = useState<string | null>(null);
+  const [stripFuoriVista, setStripFuoriVista] = useState(false);
+  // Quanto e' alto il piede quando e' sticky (0 su PC, dove non lo e'):
+  // serve sia al margine dell'IntersectionObserver sotto sia come
+  // padding-bottom della scheda (vedi schedaCorpo piu' sotto), cosi' anche
+  // l'ultimo pezzo della striscia si puo' scorrere sopra al piede invece di
+  // restarci per forza sotto.
+  const [altezzaPiede, setAltezzaPiede] = useState(0);
+  const vaiAiLotti = useCallback(() => {
+    stripRif.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, []);
+  // eslint (react-perf) vuole che un oggetto passato come prop non nasca
+  // dentro il JSX a ogni resa.
+  const stilePiedeSchedaCorpo = useMemo(() => (altezzaPiede ? { paddingBottom: altezzaPiede } : undefined), [altezzaPiede]);
+
+  useEffect(() => {
+    const striscia = stripRif.current;
+    const piede = azioniRif.current;
+    if (!striscia || !piede) return;
+    // Il contenitore che scorre DAVVERO cambia con la larghezza: sul
+    // telefono ".schedaCorpo" e' neutralizzato (index.css, ".schermo .scorre
+    // { overflow: visible; flex: none !important; }") e lo scorrimento passa
+    // a ".schermo"; su PC e tablet scorre lui. Si legge dal CSS vero
+    // (overflow-y calcolato), non da una soglia scritta qui - vale
+    // automaticamente alla stessa fascia che il CSS gia' usa, senza
+    // duplicare il numero "860" in JS.
+    const schermo = striscia.closest(".schermo");
+    const schedaCorpo = striscia.closest(".schedaCorpo");
+    let osservatore: IntersectionObserver | undefined;
+    // Il piede puo' cambiare altezza (testo del prodotto che va a capo, la
+    // comparsa stessa della riga d'avviso, o il passaggio sticky/statico fra
+    // telefono e PC): l'osservatore si ricrea con la radice e il margine
+    // giusti ogni volta, invece di calcolarli una sola volta all'avvio.
+    const ricrea = () => {
+      osservatore?.disconnect();
+      const sticky = getComputedStyle(piede).position === "sticky";
+      const altezza = sticky ? piede.offsetHeight : 0;
+      setAltezzaPiede(altezza);
+      const scorreDavvero = schedaCorpo && getComputedStyle(schedaCorpo).overflowY !== "visible";
+      const root = scorreDavvero ? schedaCorpo : schermo;
+      osservatore = new IntersectionObserver(
+        ([voce]) => {
+          if (voce) setStripFuoriVista(voce.intersectionRatio < 0.999);
+        },
+        { root, rootMargin: `0px 0px -${altezza}px 0px`, threshold: [0, 0.999, 1] },
+      );
+      osservatore.observe(striscia);
+    };
+    ricrea();
+    const ridimensionaPiede = new ResizeObserver(ricrea);
+    ridimensionaPiede.observe(piede);
+    return () => {
+      osservatore?.disconnect();
+      ridimensionaPiede.disconnect();
+    };
+  }, []);
+
   return (
     <div className="flex flex-col gap-3 min-h-0 flex-1">
-      <div className="flex items-center gap-2 min-w-0">
-        {mostraIndietro && (
-          <button type="button" className="indietro soloTel" onClick={onIndietro} aria-label="Torna alle etichette">
-            <IconaSinistra larghezza={22} spessoreTratto={2} />
+      {/* Il corpo scorrevole della scheda (schedaCorpo, index.css): a
+          differenza del vecchio spaziatore flex-1 dentro un'unica colonna
+          (che stringeva tutto, striscia dei lotti compresa, quando non
+          c'entrava), qui i blocchi sopra il piede non si stringono mai - se
+          non ci stanno scorre questo riquadro, il piede con Stampa/matita
+          resta fuori, sempre raggiungibile. */}
+      <div className="schedaCorpo scorre flex flex-col gap-3 min-h-0 flex-1" style={stilePiedeSchedaCorpo}>
+        <div className="flex items-center gap-2 min-w-0">
+          {mostraIndietro && (
+            <button type="button" className="indietro soloTel" onClick={onIndietro} aria-label="Torna alle etichette">
+              <IconaSinistra larghezza={22} spessoreTratto={2} />
+            </button>
+          )}
+          <div className="h text-[19px] font-semibold min-w-0 truncate flex-1">{prodotto.nome}</div>
+          {/* La pastiglia della stampante, sul telefono, qui accanto al nome
+              (deciso da Gianluca, 25/09/2026: via i titoli di schermata, la
+              pastiglia in testata condivisa non ha piu' un titolo a cui stare
+              vicina) - la versione di testata (Stampa.tsx sotto, soloPC)
+              resta l'unica sul PC. */}
+          {/* min-w-0 (non flex-shrink-0): la pastiglia si accorcia lei
+              stessa nei suoi stati corti (StatoStampante.tsx) se il nome e'
+              lunghissimo, invece di rifiutarsi di restringersi e spingere il
+              nome fuori vista - senza min-w-0 un elemento flex non si
+              restringe mai sotto la sua misura naturale, a prescindere da
+              flex-shrink (difetto trovato dal cliente da 390px, 25 settembre
+              2026). */}
+          <span className="soloTel min-w-0 flex-shrink">
+            <StatoStampante />
+          </span>
+        </div>
+        <div ref={rif} className="min-w-0">
+          <RiquadroAnteprima src={srcAnteprima} titolo={prodotto.nome} rotolo={rotolo} misure={misure} maxH={232} />
+        </div>
+
+        {/* "grid-cols-2" non e' piu' qui (R4, 25/09/2026): era un'utility di
+            Tailwind, che nel cascade di questo file vince sempre su
+            ".grigliaCampiStampa" (index.css, @layer components - stesso
+            motivo per cui "resize-y" non si spegneva da li', vedi il
+            commento in CampiComuni.tsx) - impediva di tornare a una sola
+            colonna sotto i 360px da CSS. Le colonne vivono tutte in
+            index.css adesso. */}
+        <div className="grid gap-3 grigliaCampiStampa">
+          <div className="campo">
+            {/* "Peso" (deciso da Gianluca, 25/09/2026: il blocco dell'etichetta
+                che genera questo valore si chiama cosi' adesso) - il campo
+                resta quello di sempre, cambia solo l'etichetta. */}
+            <div className="etichettina">Peso</div>
+            <div className="casella">
+              <input value={quantita} onChange={onCambiaQuantita} aria-label="Peso" className="font-bold" />
+            </div>
+          </div>
+          <div className="campo">
+            <div className="etichettina">Scadenza</div>
+            <div className="casella">
+              <input type="date" value={scadenza} onChange={onCambiaScadenza} aria-label="Scadenza" className="font-bold" />
+            </div>
+          </div>
+          <div className="campo campoLottoStampa">
+            <div className="etichettina">Lotto</div>
+            <div className="casella mono">
+              <input
+                value={lotto}
+                onChange={onCambiaLotto}
+                placeholder={lottoObbligatorio ? "es. 20260908-A" : ""}
+                aria-label="Lotto"
+                className="font-bold"
+              />
+            </div>
+          </div>
+          <ContatoreCopie copie={copie} onMeno={onCopieMeno} onPiu={onCopiePiu} />
+        </div>
+        {lottoMancante && (
+          <div className="text-[13px] text-[var(--ambra)] font-bold">Scrivi il lotto prima di stampare.</div>
+        )}
+        <StrisciaLotti
+          ref={stripRif}
+          prodottoId={prodotto.id}
+          tracciati={prodotto.tracciati}
+          scelte={scelteLotti}
+          onCambiaScelte={onCambiaScelteLotti}
+          onCambiaRisolte={onCambiaRisolte}
+          onRiepilogoAvvisi={setAvvisoLotti}
+          occupato={inStampaPending}
+        />
+      </div>
+      <div className="azioni flex flex-col gap-2" ref={azioniRif}>
+        {avvisoLotti && stripFuoriVista && (
+          <button type="button" className="avvisoLottiPiede" onClick={vaiAiLotti}>
+            <IconaAllarme larghezza={16} spessoreTratto={2.2} />
+            <span>Lotti: {avvisoLotti}</span>
+            <span className="punta">
+              <IconaGiu larghezza={16} spessoreTratto={2.4} />
+            </span>
           </button>
         )}
-        <div className="h text-[19px] font-semibold min-w-0 truncate">{prodotto.nome}</div>
-      </div>
-      <div ref={rif} className="min-w-0">
-        <RiquadroAnteprima src={srcAnteprima} titolo={prodotto.nome} rotolo={rotolo} misure={misure} maxH={232} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="campo">
-          <div className="etichettina">Quantità</div>
-          <div className="casella">
-            <input value={quantita} onChange={onCambiaQuantita} aria-label="Quantità" className="font-bold" />
-          </div>
+        <div className="flex gap-2.5">
+          {/* "Modifica" occupa meno spazio di "Stampa" (S3, deciso da
+              Gianluca, 25/09/2026 - sostituisce la scelta precedente di
+              tenerli identici): un terzo contro due terzi (flex-1/flex-[2]),
+              stessa altezza (grande, 60px). A 320px "Modifica" perde anche
+              il testo, resta la sola icona (regola qui sotto in index.css) -
+              aria-label la tiene comunque leggibile a chi usa uno schermo. */}
+          {/* "flex-1" non e' piu' qui (correzione della correzione, seconda
+              review 25/09/2026): era un'utility di Tailwind, che vince
+              sempre su ".azioneModifica" (index.css, @layer components) -
+              impediva alla regola sotto i 359px di spegnerlo per lasciare
+              il bottone stretto sull'icona (stesso motivo di "resize-y" e
+              "grid-cols-2" altrove in questo giro). Il rapporto 1/3 con
+              "Stampa" vive tutto in ".azioneModifica" adesso. */}
+          <button type="button" className="btn grande azioneModifica" onClick={onModifica} aria-label="Modifica">
+            <IconaMatita larghezza={20} spessoreTratto={2} />
+            <span>Modifica</span>
+          </button>
+          <button
+            type="button"
+            className="btn primario grande flex-[2]"
+            disabled={lottoMancante || inStampaPending}
+            onClick={onStampa}
+          >
+            <IconaStampa larghezza={20} />
+            <span>{copie > 1 ? `Stampa ${copie} copie` : "Stampa"}</span>
+          </button>
         </div>
-        <div className="campo">
-          <div className="etichettina">Scadenza</div>
-          <div className="casella">
-            <input type="date" value={scadenza} onChange={onCambiaScadenza} aria-label="Scadenza" className="font-bold" />
-          </div>
-          <div className="text-[12px] text-[var(--spento)]">{notaScadenza}</div>
-        </div>
-        <div className="campo campoLottoStampa">
-          <div className="etichettina">Lotto</div>
-          <div className="casella mono">
-            <input
-              value={lotto}
-              onChange={onCambiaLotto}
-              placeholder={lottoObbligatorio ? "es. 20260908-A" : ""}
-              aria-label="Lotto"
-              className="font-bold"
-            />
-            {!lottoObbligatorio && <span className="auto">AUTO</span>}
-          </div>
-        </div>
-        <ContatoreCopie copie={copie} onMeno={onCopieMeno} onPiu={onCopiePiu} />
-      </div>
-      {lottoMancante && (
-        <div className="text-[13px] text-[var(--ambra)] font-bold">Scrivi il lotto prima di stampare.</div>
-      )}
-      <div className="flex-1" />
-      <div className="azioni flex gap-2.5">
-        <button
-          type="button"
-          className="btn w-[52px] p-0 justify-center flex-shrink-0"
-          onClick={onModifica}
-          title="Modifica l'etichetta"
-          aria-label="Modifica l'etichetta"
-        >
-          <IconaMatita larghezza={20} spessoreTratto={2} />
-        </button>
-        <button
-          type="button"
-          className="btn primario grande flex-1"
-          disabled={lottoMancante || inStampaPending}
-          onClick={onStampa}
-        >
-          <IconaStampa larghezza={20} />
-          <span>{copie > 1 ? `Stampa ${copie} copie` : "Stampa"}</span>
-        </button>
       </div>
     </div>
   );
@@ -202,6 +378,7 @@ function PannelloProdotto({
 export default function Stampa() {
   const navigate = useNavigate();
   const avvisa = useAvviso();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [cerca, setCerca] = useState("");
@@ -220,6 +397,21 @@ export default function Stampa() {
   const [quantita, setQuantita] = useState("");
   const [scadenza, setScadenza] = useState("");
   const [lotto, setLotto] = useState("");
+  // La scelta a mano dei lotti nella striscia (StrisciaLotti.tsx): null =
+  // nessuno ha toccato le spunte, non si manda il campo "lotti" (decide il
+  // servizio, il sacco aperto per primo). Si azzera a ogni cambio di
+  // prodotto, come quantita/scadenza/lotto.
+  const [scelteLotti, setScelteLotti] = useState<ScelteLotti | null>(null);
+  // Lo specchio di quello che la striscia sta MOSTRANDO come scelto
+  // (StrisciaLotti.tsx, onCambiaRisolte), aggiornato a ogni suo ricalcolo: e'
+  // quello che si manda alla stampa, mai scelteLotti grezzo, che puo'
+  // contenere l'id di un lotto chiuso nel frattempo (docs/api.md, "Stampa:
+  // quali lotti si registrano"). Un ref e non uno stato: serve solo al
+  // momento di stampare, non deve far ridisegnare niente.
+  const risolteLottiRef = useRef<ScelteLotti>({});
+  const aggiornaRisolte = useCallback((risolte: ScelteLotti) => {
+    risolteLottiRef.current = risolte;
+  }, []);
   const [riepilogo, setRiepilogo] = useState<Riepilogo | null>(null);
   // La domanda "nastro" (docs/api.md, "Errore di nastro a meta' copia"):
   // tenute per "lavoroId:copiaCorrente" cosi' i bottoni restano disabilitati
@@ -231,14 +423,18 @@ export default function Stampa() {
   const { data: prodottiOrdinati } = useProdotti({ ordine: filtro === "usati" ? "usati" : "nome" });
   const lista = (prodottiOrdinati ?? []).filter((p) => p.nome.toLowerCase().includes(cerca.toLowerCase()));
   const { data: prodotto } = useProdotto(prodottoId ?? undefined);
-  const { data: lottoInfo } = useLotto();
-  const { data: storicoTutto } = useStorico({ periodo: "tutto" });
+  // Lo schema del lotto e' dell'etichetta ora, non del locale (docs/api.md,
+  // "Impostazioni come il prototipo"): serve lo schema di QUESTO prodotto,
+  // non quello globale che non esiste piu'.
+  const { data: lottoInfo } = useLotto(prodotto?.id);
 
   const creaStampa = useCreaStampa();
   const annullaStampa = useAnnullaStampa();
   const proseguiStampa = useProseguiStampa();
   const ristampaStampa = useRistampaStampa();
-  const { data: lavoro } = useLavoroStampa();
+  // dataUpdatedAt: quando e' arrivato l'ultimo evento "stampa" (eventi.ts lo
+  // scrive nella cache con setQueryData), vedi esitoNonSalvato sotto.
+  const { data: lavoro, dataUpdatedAt: eventoArrivatoIl } = useLavoroStampa();
 
   useEffect(() => {
     if (prodottoId === null && lista[0]) setProdottoId(lista[0].id);
@@ -256,7 +452,14 @@ export default function Stampa() {
   useEffect(() => {
     if (!prodotto) return;
     setQuantita(prodotto.quantita);
-    setScadenza(oggiPiuGiorni(prodotto.giorniScadenza));
+    setScadenza(oggiPiuGiorni(GIORNI_SCADENZA_PROPOSTI));
+    setScelteLotti(null);
+    // NIENTE reset di risolteLottiRef qui: gli effetti dei figli (StrisciaLotti,
+    // onCambiaRisolte) girano PRIMA di quello del genitore, quindi azzerarlo
+    // qui cancellerebbe il valore fresco che la striscia ha appena rimandato
+    // su per il prodotto nuovo. La striscia lo ricalcola e lo ripubblica da
+    // sola a ogni cambio di "tracciati" (compreso {} per zero ingredienti
+    // tracciati), quindi non serve azzerarlo a mano.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- si ripropone solo quando cambia il prodotto scelto
   }, [prodotto?.id]);
 
@@ -276,16 +479,35 @@ export default function Stampa() {
   const rispostaBloccata = (chiaveDomanda !== null && rispostaInviata === chiaveDomanda) || proseguiStampa.isPending || ristampaStampa.isPending;
   const nastroGiaRipartito = !!evento && evento.lavoroId === nastroRipartitoLavoro;
   const lottoMancante = schemaAttuale === "mano" && !lotto.trim();
-  // Sotto Scadenza, come nel prototipo ("Oggi + N giorni"): se la data e'
-  // ancora quella proposta per il prodotto si dice quanti giorni sono, se
-  // l'ha cambiata a mano si dice solo che l'ha cambiata (non ha piu' senso
-  // contare "+N giorni" da una data che l'operatore ha scelto lui).
-  const notaScadenza =
-    prodotto && scadenza === oggiPiuGiorni(prodotto.giorniScadenza) ? `Oggi + ${plurale(prodotto.giorniScadenza, "giorno", "giorni")}` : "Modificata";
-  // La riga "Registrata nello storico..." del pannello "Stampata/e": la
-  // stampa appena finita e' quella in cima allo storico, che si rilegge da
-  // solo a lavoro completato (invalidateQueries in eventi.ts).
-  const registrata = stampaTerminata && storicoTutto?.[0] ? { ora: formattaOra(storicoTutto[0].stampatoIl), dispositivo: storicoTutto[0].dispositivoNome } : undefined;
+  // La riga "Registrata nello storico..." del pannello "Stampata/e": MAI la
+  // prima dello storico (poteva essere una stampa annullata prima, o quella
+  // di un altro dispositivo arrivata nel frattempo) - quella con lo STESSO
+  // lavoroId di questa stampa (docs/api.md), chiesta al servizio solo a
+  // lavoro terminato (GET /api/storico?lavoroId=, non tutto lo storico: il
+  // servizio le scrive l'esito prima di mandare l'evento finale). undefined finche'
+  // quella riga non e' arrivata: meglio non mostrare nulla che mostrare la
+  // stampa sbagliata - per questo si cerca comunque il lavoroId fra le righe
+  // tornate, invece di prendere la prima.
+  const lavoroFinito = stampaTerminata && riepilogo ? riepilogo.lavoroId : undefined;
+  const { data: righeLavoroFinito, dataUpdatedAt: rigaLettaIl } = useStoricoDelLavoro(lavoroFinito);
+  const rigaAppenaStampata = lavoroFinito !== undefined ? righeLavoroFinito?.find((r) => r.lavoroId === lavoroFinito) : undefined;
+  // La riga nasce "in_stampa" quando il servizio accetta la stampa e passa
+  // all'esito vero PRIMA che parta l'evento finale: se dopo l'evento finale
+  // e' ancora "in_stampa", l'aggiornamento non e' riuscito (il servizio
+  // riprova da solo). Vale solo per una riga letta DOPO quell'evento: una
+  // "in_stampa" rimasta in cache da una lettura precedente (un evento finale
+  // arrivato due volte, e intanto la rilettura non e' ancora tornata) e'
+  // solo vecchia, non un esito perso - in quel caso non si mostra niente
+  // finche' la rilettura non torna.
+  const rigaDopoLEvento = rigaLettaIl >= eventoArrivatoIl;
+  const esitoNonSalvato = rigaAppenaStampata?.esito === "in_stampa" && rigaDopoLEvento;
+  const registrata =
+    rigaAppenaStampata && rigaAppenaStampata.esito !== "in_stampa"
+      ? { ora: formattaOra(rigaAppenaStampata.stampatoIl), dispositivo: rigaAppenaStampata.dispositivoNome }
+      : undefined;
+  // "Lotti degli ingredienti registrati" (prototipo, pannelloStampa): la
+  // catena di quella riga, letta solo a stampa finita.
+  const { data: catenaAppenaStampata } = useCatenaStorico(rigaAppenaStampata?.id);
 
   const scegliFiltro = useCallback((f: Filtro) => setFiltro(f), []);
   const scegliUsati = useCallback(() => scegliFiltro("usati"), [scegliFiltro]);
@@ -330,8 +552,12 @@ export default function Stampa() {
     // progressivo (docs/api.md, "Lotto" e "Stampe").
     const lottoModificato = lotto.trim() !== (lottoProposto ?? "").trim();
     const lottoDaInviare = schemaAttuale === "mano" ? lotto.trim() : lottoModificato && lotto.trim() ? lotto.trim() : undefined;
+    // Esattamente cio' che la striscia mostra come scelto in questo istante
+    // (onCambiaRisolte), non scelteLotti grezzo: vedi il commento su
+    // risolteLottiRef sopra.
+    const lottiRisolti = risolteLottiRef.current;
     creaStampa.mutate(
-      { prodottoId: prodotto.id, copie, quantita, scadenza, lotto: lottoDaInviare },
+      { prodottoId: prodotto.id, copie, quantita, scadenza, lotto: lottoDaInviare, lotti: lottiRisolti },
       {
         onSuccess: (dati) =>
           setRiepilogo({
@@ -342,11 +568,19 @@ export default function Stampa() {
             scadenza: dati.scadenza,
             lotto: dati.lotto,
             copieTotali: copie,
+            lottiRisolti,
           }),
-        onError: () => avvisa("Non sono riuscito ad avviare la stampa."),
+        onError: (errore) => {
+          avvisa((errore instanceof ErroreRichiesta && errore.corpo?.errore) || "Non sono riuscito ad avviare la stampa.");
+          // Un 400 qui e' spesso un lotto scelto che non e' piu' aperto (chiuso
+          // da un altro dispositivo, RisolutoreLottiTracciati.java): si rilegge
+          // l'ingrediente, cosi' la striscia mostra subito la situazione vera
+          // invece di restare ferma su una spunta che non e' piu' valida.
+          void queryClient.invalidateQueries({ queryKey: ["ingredienti"] });
+        },
       },
     );
-  }, [prodotto, schemaAttuale, lotto, lottoProposto, copie, quantita, scadenza, creaStampa, avvisa]);
+  }, [prodotto, schemaAttuale, lotto, lottoProposto, copie, quantita, scadenza, creaStampa, avvisa, queryClient]);
 
   // "Nuova etichetta" (deciso da Gianluca, al posto di "Ristampa ultima"):
   // va diretto alla creazione di un prodotto nuovo in Etichette, la stessa
@@ -398,15 +632,20 @@ export default function Stampa() {
           prodottoId: riepilogo.prodottoId,
           copie: copieRichieste,
           quantita: riepilogo.quantita,
-          scadenza: riepilogo.scadenza,
+          scadenza: riepilogo.scadenza ?? undefined,
           lotto: schemaAttuale === "mano" ? riepilogo.lotto : undefined,
+          // La stessa preparazione, quindi gli stessi lotti gia' registrati
+          // per la stampa originale (la striscia non e' piu' in vista qui:
+          // non c'e' modo di ricalcolarli, e lasciar decidere di nuovo al
+          // servizio potrebbe silenziosamente cambiare sacco a meta' serie).
+          lotti: riepilogo.lottiRisolti,
         },
         {
           onSuccess: (dati) =>
             setRiepilogo((precedente) =>
               precedente ? { ...precedente, lavoroId: dati.lavoroId, lotto: dati.lotto, scadenza: dati.scadenza, copieTotali: copieRichieste } : precedente,
             ),
-          onError: () => avvisa("Non sono riuscito ad avviare la stampa."),
+          onError: (errore) => avvisa((errore instanceof ErroreRichiesta && errore.corpo?.errore) || "Non sono riuscito ad avviare la stampa."),
         },
       );
     },
@@ -419,8 +658,15 @@ export default function Stampa() {
   }, []);
 
   // La pastiglia della stampante sta nella testata condivisa, come nel
-  // prototipo (accanto al titolo "Stampa etichetta"), non dentro la vista.
-  const portaleStato = usePortaleAzioni(<StatoStampante />);
+  // prototipo (accanto al titolo "Stampa etichetta"), non dentro la vista -
+  // ma solo su PC: sul telefono il titolo di schermata e' sparito (deciso da
+  // Gianluca, 25/09/2026) e la pastiglia si sposta dentro la vista stessa
+  // (soloTel qui sotto, sulla riga del nome o su quella dei filtri).
+  const portaleStato = usePortaleAzioni(
+    <span className="soloPC">
+      <StatoStampante />
+    </span>,
+  );
 
   return (
     <div className={"schermo vistaStampa" + (dettaglio ? " dettaglio" : "")}>
@@ -432,19 +678,38 @@ export default function Stampa() {
             <input value={cerca} onChange={cambiaCerca} placeholder="Cerca etichetta…" aria-label="Cerca etichetta" />
           </div>
           {!riepilogo && (
-            <button type="button" className="btn soloPC h-[52px] px-4" onClick={vaiANuovaEtichetta}>
+            // Fra 861 e 1150px il testo schiacciava il campo di ricerca a
+            // "Cerca et…" (index.css, ".btnNuovaEtichetta": stessa fascia
+            // gia' usata per .strumentiEt .btn.conTesto): in quella fascia
+            // resta solo l'icona, quadrata come gli altri bottoni-icona,
+            // col title/aria-label a fare da etichetta.
+            <button
+              type="button"
+              className="btn btnNuovaEtichetta soloPC h-[52px] px-4"
+              onClick={vaiANuovaEtichetta}
+              title="Nuova etichetta"
+              aria-label="Nuova etichetta"
+            >
               <IconaPiu larghezza={18} spessoreTratto={2.2} />
               <span>Nuova etichetta</span>
             </button>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button type="button" className={"gettone" + (filtro === "usati" ? " on" : "")} onClick={scegliUsati}>
             Più usati
           </button>
           <button type="button" className={"gettone" + (filtro === "tutti" ? " on" : "")} onClick={scegliTutti}>
             Tutti
           </button>
+          {/* La pastiglia della stampante, sul telefono, qui nell'elenco
+              (deciso da Gianluca, 25/09/2026): la riga sparisce insieme al
+              resto di ".colonnaElenco" quando si apre la scheda di un
+              prodotto (".vistaStampa.dettaglio > .colonnaElenco", index.css),
+              quindi non serve nascondere questa a mano in quel caso. */}
+          <span className="soloTel ml-auto min-w-0 flex-shrink">
+            <StatoStampante />
+          </span>
         </div>
         {!riepilogo && (
           <button type="button" className="ristampaTel soloTel justify-center" onClick={vaiANuovaEtichetta}>
@@ -452,11 +717,19 @@ export default function Stampa() {
             <span className="font-bold text-[15px]">Nuova etichetta</span>
           </button>
         )}
-        <div className={"griglia scorre flex-1 min-h-0" + (stampaBloccante ? " opacity-45 pointer-events-none" : "")}>
-          {lista.map((p) => (
-            <RigaProdotto key={p.id} prodotto={p} selezionato={p.id === prodottoId} onScegli={scegliProdotto} />
-          ))}
-          {lista.length === 0 && <div className="text-[var(--tenue)] p-2">Nessuna etichetta con questo nome.</div>}
+        {/* Lo scorrimento e il vincolo di altezza (flex-1 min-h-0) stanno sul
+            contenitore FUORI dalla grid, non su ".griglia" stessa: con
+            entrambi sullo stesso elemento Chromium comprime le righe "auto"
+            della grid dentro l'altezza fissata dal flex invece di lasciarle
+            crescere quanto serve e scorrere (index.css, ".griglia"/".prodotto",
+            stesso difetto e stessa correzione di Ingredienti.tsx). */}
+        <div className={"scorre flex-1 min-h-0" + (stampaBloccante ? " opacity-45 pointer-events-none" : "")}>
+          <div className="griglia">
+            {lista.map((p) => (
+              <RigaProdotto key={p.id} prodotto={p} selezionato={p.id === prodottoId} onScegli={scegliProdotto} />
+            ))}
+            {lista.length === 0 && <div className="text-[var(--tenue)] p-2">Nessuna etichetta con questo nome.</div>}
+          </div>
         </div>
       </div>
 
@@ -483,9 +756,12 @@ export default function Stampa() {
               scadenza={riepilogo.scadenza}
               lotto={riepilogo.lotto}
               registrata={registrata}
+              esitoNonSalvato={esitoNonSalvato}
+              anelli={catenaAppenaStampata?.anelli}
               onRipeti={ripetiStampa}
               onChiudi={chiudiRiepilogo}
               ripetendo={creaStampa.isPending}
+              contatoreRistampa
             />
           ) : (
             <PannelloInCorso
@@ -505,7 +781,6 @@ export default function Stampa() {
             lottoObbligatorio={schemaAttuale === "mano"}
             lottoMancante={lottoMancante}
             copie={copie}
-            notaScadenza={notaScadenza}
             inStampaPending={creaStampa.isPending}
             mostraIndietro={dettaglio}
             onIndietro={indietroAiProdotti}
@@ -516,6 +791,9 @@ export default function Stampa() {
             onCopiePiu={copiePiu}
             onModifica={vaiAModifica}
             onStampa={avviaStampa}
+            scelteLotti={scelteLotti}
+            onCambiaScelteLotti={setScelteLotti}
+            onCambiaRisolte={aggiornaRisolte}
           />
         ) : (
           <div className="text-[var(--tenue)] p-2">Scegli un&apos;etichetta dall&apos;elenco.</div>

@@ -1,6 +1,12 @@
-import { useCallback, useMemo, type CSSProperties } from "react";
-import { IconaAllarme, IconaCercaDiNuovo, IconaPiu, IconaSinistra, IconaSpunta, IconaStampa, IconaVia } from "../Icone";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import type { AnelloCatena } from "../../api/tipi";
+import { IconaAllarme, IconaCercaDiNuovo, IconaCerchioVuoto, IconaMeno, IconaOrologio, IconaPiu, IconaSinistra, IconaSpunta, IconaStampa, IconaVia } from "../Icone";
 import { elencaCopie, formattaDataItaliana } from "./formattazione";
+
+// Stesso massimo del contatore "Copie" della scheda del prodotto
+// (Stampa.tsx, ContatoreCopie): il contatore di "Ristampa" qui sotto non ha
+// un suo limite diverso.
+const COPIE_MASSIME = 99;
 
 // I tre pannelli dell'avanzamento di una stampa, guidati dagli eventi SSE
 // "stampa": in corso (con la barra e l'elenco delle copie), errore (coperchio
@@ -47,12 +53,23 @@ export function PannelloInCorso({
           .filter((s) => s.a >= s.da && s.da >= 1 && s.da <= copieTotali)
           .map((s) => (
             <div key={s.testo} className="flex items-center gap-2.5">
+              {/* Un segno diverso per stato, come nel disegno (design/StampaInCorso.dc.html):
+                  spunta verde per "tagliate", orologio ambra per "in stampa", cerchio
+                  vuoto per "in attesa" - non piu' lo stesso pallino ricolorato. */}
               <span
                 className={
-                  "w-2 h-2 rounded-full flex-shrink-0 " +
-                  (s.testo === "tagliate" ? "bg-[var(--verde)]" : s.testo === "in stampa" ? "bg-[var(--ambra)]" : "bg-[#C6B7A3]")
+                  "flex-shrink-0 flex " +
+                  (s.testo === "tagliate" ? "text-[var(--verde)]" : s.testo === "in stampa" ? "text-[var(--ambra)]" : "text-[#C6B7A3]")
                 }
-              />
+              >
+                {s.testo === "tagliate" ? (
+                  <IconaSpunta larghezza={16} spessoreTratto={2.4} />
+                ) : s.testo === "in stampa" ? (
+                  <IconaOrologio larghezza={16} spessoreTratto={2.2} />
+                ) : (
+                  <IconaCerchioVuoto larghezza={16} spessoreTratto={2.2} />
+                )}
+              </span>
               <span className="font-bold">{elencaCopie(s.da, s.a)}</span>
               <span className="ml-auto text-[var(--tenue)]">{s.da === s.a && s.testo === "tagliate" ? "tagliata" : s.testo}</span>
             </div>
@@ -161,6 +178,31 @@ export function PannelloErrore({
   );
 }
 
+// La scheda "Lotti degli ingredienti registrati" (pannelloStampa, righe
+// 1013-1022 del prototipo): per ogni tracciato, i codici usati uniti da
+// " + ", o "non registrato" in ambra. Assente (non solo vuota) se la stampa
+// non aveva ingredienti collegati.
+function RiepilogoLottiRegistrati({ anelli }: { anelli: AnelloCatena[] }) {
+  if (!anelli.length) return null;
+  return (
+    <div className="scheda px-4 py-3 bg-[var(--crema)]">
+      <div className="etichettina mb-1">Lotti degli ingredienti registrati</div>
+      {anelli.map((anello, indice) => {
+        // La discriminazione e' collegato.tipo, non "quale campo c'e'": il
+        // servizio vero manda sempre sia "lotti" che "stampa" (l'altro a
+        // [] o null), mai uno dei due del tutto assente.
+        const codici = anello.collegato.tipo === "prodotto" ? (anello.stampa?.lotto ?? "") : anello.lotti.map((l) => l.codice).join(" + ");
+        return (
+          <div key={indice} className="kv">
+            <span>{anello.collegato.nome}</span>
+            {codici ? <b className="mono">{codici}</b> : <b className="text-[var(--ambra)]">non registrato</b>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PannelloFatta({
   prodottoNome,
   fatte,
@@ -169,24 +211,43 @@ export function PannelloFatta({
   scadenza,
   lotto,
   registrata,
+  esitoNonSalvato,
+  anelli,
   onRipeti,
   onChiudi,
   ripetendo,
   testoChiudi,
+  contatoreRistampa,
 }: {
   prodottoNome: string;
   fatte: number;
   volute: number;
   quantita: string;
-  scadenza: string;
+  scadenza: string | null;
   lotto: string;
   // La riga "Registrata nello storico...", con l'ora e da dove: solo quando
   // la riga fresca dello storico e' gia' arrivata (docs/api.md, "Stampe").
   registrata?: { ora: string; dispositivo: string };
+  // La riga di questa stampa e' ancora "in_stampa" a lavoro finito:
+  // l'aggiornamento finale non e' riuscito (il servizio riprova da solo). Al
+  // posto di "Registrata nello storico..." si avvisa in ambra; i lotti sotto
+  // restano, perche' sono registrati gia' alla partenza della stampa.
+  esitoNonSalvato?: boolean;
+  // La catena di quella riga (GET /api/storico/{id}/catena), per "Lotti
+  // degli ingredienti registrati": assente finche' non e' arrivata.
+  anelli?: AnelloCatena[];
   onRipeti: (copie: number) => void;
   onChiudi: () => void;
   ripetendo: boolean;
   testoChiudi?: string;
+  // "Ristampa" con un contatore delle copie a fianco, invece di "Stampane
+  // un'altra"/"Stampane altre N" (deciso da Gianluca, 25/09/2026) - solo
+  // nella vista Stampa vera (Stampa.tsx). La "Stampa di prova" di
+  // Etichette.tsx stampa sempre e solo 1 copia di prova: non passa questa
+  // prop, resta col bottone di sempre (un contatore li' sarebbe fuorviante,
+  // dato che onRipeti in quel caso ignora comunque quante copie gli si
+  // chiedono e ristampa una prova sola).
+  contatoreRistampa?: boolean;
 }) {
   const fermata = fatte < volute;
   const sotto = fermata
@@ -196,6 +257,14 @@ export function PannelloFatta({
       : fatte + " copie: prendile dalla stampante";
   const ripetiUnaAltra = useCallback(() => onRipeti(fatte), [onRipeti, fatte]);
   const ripetiMancanti = useCallback(() => onRipeti(volute - fatte), [onRipeti, volute, fatte]);
+  // Il contatore di "Ristampa": riparte da 1 ogni volta che questo pannello
+  // torna a mostrarsi dopo una nuova stampa finita (PannelloInCorso si
+  // rimonta in mezzo, quindi anche questo componente - niente da resettare a
+  // mano). Minimo 1, massimo COPIE_MASSIME, come "Copie" nella scheda.
+  const [copieRistampa, setCopieRistampa] = useState(1);
+  const copieRistampaMeno = useCallback(() => setCopieRistampa((c) => Math.max(1, c - 1)), []);
+  const copieRistampaPiu = useCallback(() => setCopieRistampa((c) => Math.min(COPIE_MASSIME, c + 1)), []);
+  const ripetiConContatore = useCallback(() => onRipeti(copieRistampa), [onRipeti, copieRistampa]);
 
   return (
     <div className="flex flex-col gap-3 min-h-0 flex-1">
@@ -208,10 +277,17 @@ export function PannelloFatta({
           <div className="text-[16px] text-[var(--tenue)] mt-1">{sotto}</div>
         </div>
       </div>
-      {registrata && (
-        <div className="text-[13px] text-[var(--tenue)] text-center leading-snug -mt-1.5">
-          Registrata nello storico alle {registrata.ora}, {registrata.dispositivo === "PC" ? "da questo PC" : `da ${registrata.dispositivo}`}.
+      {esitoNonSalvato ? (
+        <div className="text-center leading-snug -mt-1.5 text-[var(--ambra)]">
+          <div className="text-[13.5px] font-bold">Stampata, ma l&apos;esito non è stato salvato.</div>
+          <div className="text-[12.5px] mt-0.5">Lotto e ingredienti sono registrati; il programma riprova da solo.</div>
         </div>
+      ) : (
+        registrata && (
+          <div className="text-[13px] text-[var(--tenue)] text-center leading-snug -mt-1.5">
+            Registrata nello storico alle {registrata.ora}, {registrata.dispositivo === "PC" ? "da questo PC" : `da ${registrata.dispositivo}`}.
+          </div>
+        )
       )}
       <div className="scheda px-4 py-3">
         <div className="kv">
@@ -219,18 +295,21 @@ export function PannelloFatta({
           <b>{prodottoNome}</b>
         </div>
         <div className="kv">
-          <span>Quantità</span>
+          {/* "Peso" (deciso da Gianluca, 25/09/2026): stesso nome del campo
+              nella scheda, il blocco dell'etichetta si chiama cosi' adesso. */}
+          <span>Peso</span>
           <b>{quantita}</b>
         </div>
         <div className="kv">
           <span>Scadenza</span>
-          <b>{formattaDataItaliana(scadenza)}</b>
+          <b>{scadenza ? formattaDataItaliana(scadenza) : "—"}</b>
         </div>
         <div className="kv">
           <span>Lotto</span>
           <b className="mono">{lotto}</b>
         </div>
       </div>
+      {anelli && <RiepilogoLottiRegistrati anelli={anelli} />}
       <div className="flex-1" />
       <div className="flex flex-col gap-2.5">
         {fermata ? (
@@ -238,6 +317,34 @@ export function PannelloFatta({
             <IconaStampa larghezza={20} />
             <span>{volute - fatte === 1 ? "Stampa la copia che manca" : `Stampa le ${volute - fatte} che mancano`}</span>
           </button>
+        ) : contatoreRistampa ? (
+          <div className="flex gap-2.5">
+            <button type="button" className="btn primario grande flex-1" onClick={ripetiConContatore} disabled={ripetendo}>
+              <IconaCercaDiNuovo larghezza={20} spessoreTratto={2} />
+              <span>Ristampa</span>
+            </button>
+            <div className="flex gap-1.5 h-[60px] flex-shrink-0">
+              <button
+                type="button"
+                className="casella w-[48px] justify-center"
+                onClick={copieRistampaMeno}
+                disabled={copieRistampa <= 1 || ripetendo}
+                aria-label="Una copia di ristampa in meno"
+              >
+                <IconaMeno larghezza={20} spessoreTratto={2.4} />
+              </button>
+              <div className="casella w-[46px] justify-center font-bold">{copieRistampa}</div>
+              <button
+                type="button"
+                className="casella w-[48px] justify-center"
+                onClick={copieRistampaPiu}
+                disabled={copieRistampa >= COPIE_MASSIME || ripetendo}
+                aria-label="Una copia di ristampa in più"
+              >
+                <IconaPiu larghezza={20} spessoreTratto={2.4} />
+              </button>
+            </div>
+          </div>
         ) : (
           <button type="button" className="btn primario grande" onClick={ripetiUnaAltra} disabled={ripetendo}>
             <IconaPiu larghezza={20} spessoreTratto={2.4} />

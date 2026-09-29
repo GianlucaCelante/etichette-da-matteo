@@ -1,0 +1,37 @@
+databaseChangeLog:
+  # Lo schema del lotto diventa dell'etichetta, non del locale (docs/api.md, "Impostazioni come il
+  # prototipo", deciso il 22 settembre 2026 sera): nel prototipo sta sul prodotto
+  # (et.schemaLotto), non nell'impostazione globale schema_lotto. I CONTATORI restano del locale
+  # (tabella lotti, impostazione progressivo_continuo): questa migrazione non li tocca.
+
+  - changeSet:
+      id: 60-schema-lotto-nel-prodotto
+      author: etichette
+      comment: >
+        Copia il valore ATTUALE dell'impostazione globale schema_lotto (default "data" se non era
+        mai stata impostata) dentro prodotto.etichetta.schemaLotto di OGNI prodotto esistente, con
+        json_set (stesse funzioni JSON native di SQLite gia' usate in
+        21-migra-etichetta-nel-prodotto): cosi' nessuno si ritrova domani un lotto diverso da
+        quello che aveva ieri. Un prodotto NUOVO nasce con "data" - lo fa gia' il servizio
+        (ProdottiConversioni), non serve una regola qui.
+      changes:
+        - sql:
+            sql: |
+              UPDATE prodotti
+              SET etichetta = json_set(etichetta, '$.schemaLotto',
+                COALESCE((SELECT valore FROM impostazioni WHERE chiave = 'schema_lotto'), 'data'))
+              WHERE etichetta IS NOT NULL;
+
+  - changeSet:
+      id: 61-via-schema-lotto-dalle-impostazioni
+      author: etichette
+      comment: >
+        L'impostazione globale schema_lotto non serve piu' (e' ormai per-etichetta, copiata sopra):
+        tolta invece di lasciarla morta nella tabella. Lasciarla sarebbe stato incoerente con
+        ImpostazioniController, che da questa stessa consegna rifiuta un PUT su questa chiave come
+        "impostazione non riconosciuta" - con la riga ancora li', GET /api/impostazioni avrebbe
+        continuato a mostrarla come se contasse ancora qualcosa.
+      changes:
+        - delete:
+            tableName: impostazioni
+            where: "chiave = 'schema_lotto'"

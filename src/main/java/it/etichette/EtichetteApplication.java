@@ -23,6 +23,7 @@ public class EtichetteApplication {
     private static final Logger log = LoggerFactory.getLogger(EtichetteApplication.class);
 
     public static void main(String[] args) {
+        SorvegliaProcessoPadre.avviaSeRichiesta();
         String dataDir = System.getenv().getOrDefault("ETICHETTE_DATA_DIR", "./data");
         try {
             Files.createDirectories(Path.of(dataDir));

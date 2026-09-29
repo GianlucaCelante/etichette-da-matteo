@@ -158,12 +158,14 @@ class AnnullamentoDopoUltimaCopiaTest {
         long scadenza = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < scadenza) {
             List<StoricoStampa> righe = storico.findAllByOrderByStampatoIlDesc();
-            if (!righe.isEmpty()) {
+            // Dal 23/09/2026 la riga nasce "in_stampa" all'avvio del lavoro (docs/api.md,
+            // "Storico"): il lavoro e' terminato quando la riga ha il suo esito, non quando compare.
+            if (!righe.isEmpty() && !"in_stampa".equals(righe.get(0).getEsito())) {
                 return righe.get(0);
             }
             Thread.sleep(20);
         }
-        throw new AssertionError("nessuna riga di storico scritta entro 5 s");
+        throw new AssertionError("nessuna riga di storico chiusa entro 5 s");
     }
 
     private boolean aspettaStampantePronta() throws Exception {

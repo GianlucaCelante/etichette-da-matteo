@@ -1,0 +1,123 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le Impostazioni dopo il trasloco</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  :root {
+    --fondo: #EADECE; --testo: #58443C; --tenue: #7A6A5E; --spento: #9C8C7C; --carta: #ffffff; --crema: #FBF5EC; --sabbia: #F7F0E4; --riga: #EDE3D5; --bordo: #DCCFBB; --bordo2: #CFC0AA; --tratteggio: #C0AF9B;
+    --verde: #5E7B18; --verdescuro: #4B6313; --verdechiaro: #E3EAD1; --verdebordo: #B9C89A; --ambra: #A97514; --ambrachiaro: #F7EBD3; --rosso: #a3301a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--testo); font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; font-size: 15px; line-height: 1.5; padding: 32px 20px 56px; }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-weight: 600; margin: 0; text-wrap: balance; }
+  .pagina { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  .intro { max-width: 660px; }
+  .intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .intro p { margin: 0; color: var(--tenue); }
+  .oggi { background: var(--crema); border: 1px dashed var(--bordo2); border-radius: 14px; padding: 14px 18px; display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+  .oggi p { margin: 0; font-size: 14px; color: var(--tenue); flex: 1; min-width: 260px; }
+  .oggi b { color: var(--testo); }
+  .griglia { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .carta { background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .carta.consigliata { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); }
+  .capo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .lettera { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 30px; font-weight: 700; color: var(--verde); line-height: 1; }
+  .capo h2 { font-size: 19px; flex: 1; min-width: 0; }
+  .tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; background: var(--verde); color: #fff; border-radius: 8px; padding: 3px 8px; }
+  .carta p { margin: 0; font-size: 14px; }
+  .prorio { display: grid; grid-template-columns: 1fr; gap: 10px; font-size: 13.5px; }
+  .prorio > div { background: var(--sabbia); border-radius: 12px; padding: 10px 12px; }
+  .prorio .k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--tenue); margin-bottom: 4px; }
+  .prorio ul { margin: 0; padding-left: 16px; }
+  .conclusione { background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 20px 22px; }
+  .conclusione h2 { font-size: 20px; margin-bottom: 8px; }
+  .conclusione p { margin: 0 0 8px; font-size: 14.5px; }
+  /* ---- schizzi: la pagina Impostazioni in miniatura ---- */
+  .mini { background: var(--fondo); border: 1px solid var(--bordo2); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+  .mini.due { grid-template-columns: 1fr 1fr; }
+  .mini.uno { grid-template-columns: 1fr; }
+  .sez { background: var(--carta); border: 1px solid var(--bordo); border-radius: 10px; padding: 8px 10px; font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; min-height: 54px; }
+  .sez.larga { grid-column: 1 / -1; }
+  .sez .t { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .sez .r { color: var(--tenue); display: flex; justify-content: space-between; gap: 8px; }
+  .sez .r b { color: var(--testo); font-weight: 700; }
+  .sez.nuova { border-style: dashed; border-color: var(--verdebordo); }
+  .sez.via { opacity: .45; text-decoration: line-through; }
+  .pill { font-size: 9px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; background: var(--verdechiaro); color: var(--verdescuro); border-radius: 6px; padding: 1px 5px; text-decoration: none; }
+  .pill.gialla { background: var(--ambrachiaro); color: var(--ambra); }
+  .sw { width: 22px; height: 12px; border-radius: 6px; background: var(--verde); display: inline-block; vertical-align: middle; }
+  .oggiMini { flex: 0 0 380px; }
+  @media (max-width: 860px) { .griglia { grid-template-columns: 1fr; } .oggiMini { flex-basis: 100%; } }
+</style>
+
+<div class="pagina">
+  <div class="intro">
+    <h1>Le Impostazioni dopo il trasloco</h1>
+    <p>Logo e lotto sono passati nell'editor delle etichette e la regola è che dalle Impostazioni non si personalizza niente. Restano il PC, la stampante e i telefoni. Tre modi di comporre quello che rimane.</p>
+  </div>
+
+  <div class="oggi">
+    <p><b>Com'è oggi nell'app.</b> Sei schede su due colonne: Stampante, Stampa (taglio e margine), Logo sull'etichetta, Lotto, Telefoni e tablet, Dispositivi collegati. Le due barrate sono quelle uscite. «Stampa» è rimasta sola con due righe, e Telefoni e Dispositivi sono due schede per la stessa cosa.</p>
+    <div class="mini due oggiMini">
+      <div class="sez"><div class="t">Stampante</div><div class="r"><span>Modello</span><b>QL-1100c</b></div><div class="r"><span>Rotolo</span><b>62 mm</b></div></div>
+      <div class="sez"><div class="t">Stampa</div><div class="r"><span>Taglia ogni etichetta</span><span class="sw"></span></div><div class="r"><span>Margine</span><b>3 mm</b></div></div>
+      <div class="sez via"><div class="t">Logo sull'etichetta</div><div class="r"><span>Carica</span></div></div>
+      <div class="sez via"><div class="t">Lotto</div><div class="r"><span>Data e progressivo</span></div></div>
+      <div class="sez"><div class="t">Telefoni e tablet</div><div class="r"><span>QR con l'indirizzo</span></div></div>
+      <div class="sez"><div class="t">Dispositivi collegati</div><div class="r"><span>Telefono della cucina</span><b>Scollega</b></div></div>
+    </div>
+  </div>
+
+  <div class="griglia">
+    <div class="carta consigliata">
+      <div class="capo"><span class="lettera">A</span><h2>Tre schede: stampante, telefoni, programma</h2><span class="tag">consigliata</span></div>
+      <div class="mini due">
+        <div class="sez"><div class="t">Stampante <span class="pill">Pronta</span></div><div class="r"><span>Modello</span><b>QL-1100c (USB)</b></div><div class="r"><span>Rotolo caricato</span><b>62 mm continuo</b></div><div class="r"><span>Taglia ogni etichetta</span><span class="sw"></span></div><div class="r"><span>Margine iniziale e finale</span><b>3 mm</b></div><div class="r"><span>Stampa di prova · Cerca di nuovo</span></div></div>
+        <div class="sez"><div class="t">Telefoni e tablet</div><div class="r"><span>QR con l'indirizzo</span></div><div class="r"><span>Telefono della cucina</span><b>Scollega</b></div><div class="r"><span>Tablet del banco</span><b>Scollega</b></div><div class="r"><span>Togli quelli senza nome</span></div></div>
+        <div class="sez larga nuova"><div class="t">Programma <span class="pill gialla">nuova</span></div><div class="r"><span>Versione</span><b>0.1.24</b></div><div class="r"><span>Cartella dei dati e delle foto</span><b>C:\ProgramData\Etichette</b></div><div class="r"><span>Copia di sicurezza</span><b>ogni notte · D:\Backup Etichette</b></div><div class="r"><span>Ultima copia</span><b>stanotte, 41 MB</b></div></div>
+      </div>
+      <p>«Stampa» entra dentro «Stampante»: taglio e margine sono comportamenti della stampante. Il QR e l'elenco dei dispositivi diventano una scheda sola, «Telefoni e tablet», perché il QR serve a collegarli e l'elenco a scollegarli. In fondo «Programma»: versione, cartella dei dati e copia di sicurezza, che con le foto diventa importante.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Tre cose, tre schede: la stampante, i telefoni, il PC</li><li>Niente schede da due righe</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>La scheda Stampante si allunga</li></ul></div>
+      </div>
+    </div>
+
+    <div class="carta">
+      <div class="capo"><span class="lettera">B</span><h2>Come oggi, con le due schede tolte</h2></div>
+      <div class="mini due">
+        <div class="sez"><div class="t">Stampante</div><div class="r"><span>Modello</span><b>QL-1100c</b></div><div class="r"><span>Rotolo</span><b>62 mm</b></div></div>
+        <div class="sez"><div class="t">Stampa</div><div class="r"><span>Taglia ogni etichetta</span><span class="sw"></span></div><div class="r"><span>Margine</span><b>3 mm</b></div></div>
+        <div class="sez"><div class="t">Telefoni e tablet</div><div class="r"><span>QR con l'indirizzo</span></div></div>
+        <div class="sez"><div class="t">Dispositivi collegati</div><div class="r"><span>Telefono della cucina</span><b>Scollega</b></div></div>
+        <div class="sez larga nuova"><div class="t">Copia di sicurezza <span class="pill gialla">nuova</span></div><div class="r"><span>Ogni notte</span><b>D:\Backup Etichette</b></div></div>
+      </div>
+      <p>Il minimo: si tolgono Logo e Lotto e si aggiunge la copia di sicurezza. Tutto il resto resta dov'è, così chi ha già visto le Impostazioni non deve reimparare.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Nessun lavoro in più nell'app</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>«Stampa» resta una scheda da due righe</li><li>Telefoni e Dispositivi separati senza motivo</li></ul></div>
+      </div>
+    </div>
+
+    <div class="carta">
+      <div class="capo"><span class="lettera">C</span><h2>Una colonna, in ordine di frequenza</h2></div>
+      <div class="mini uno">
+        <div class="sez"><div class="t">Collega un telefono</div><div class="r"><span>QR con l'indirizzo, grande</span></div><div class="r"><span>Telefono della cucina · Tablet del banco</span><b>Scollega</b></div></div>
+        <div class="sez"><div class="t">Stampante <span class="pill">Pronta</span></div><div class="r"><span>QL-1100c · 62 mm · taglio · margine 3 mm</span></div></div>
+        <div class="sez nuova"><div class="t">Copia di sicurezza <span class="pill gialla">nuova</span></div><div class="r"><span>Ogni notte</span><b>D:\Backup Etichette</b></div></div>
+        <div class="sez"><div class="t">Programma</div><div class="r"><span>Versione 0.1.24 · cartella dati</span></div></div>
+      </div>
+      <p>Le schede si impilano nell'ordine in cui servono: collegare un telefono nuovo è la cosa che Matteo fa davvero, la stampante si guarda quando c'è un problema, il resto quasi mai. La stessa impaginazione su PC e telefono.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Il QR in cima, dove serve</li><li>Una sola impaginazione da mantenere</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>Su PC metà schermo resta vuoto</li><li>Si scorre per arrivare alla stampante</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conclusione">
+    <h2>Cosa consiglio</h2>
+    <p>La <b>A</b>. Dopo il trasloco le Impostazioni parlano di tre cose fisiche, la stampante, i telefoni e il PC, e tre schede lo dicono da sole. Taglio e margine stanno con la stampante perché è lei a tagliare. La scheda «Programma» nasce ora perché con le foto delle fatture il PC custodisce documenti veri: la cartella dei dati e la copia di sicurezza vanno viste, non nascoste.</p>
+    <p>Da decidere a parte: se «Svuota tutto» e «Esporta» debbano stare qui o restare dove sono, nello Storico e nel prototipo.</p>
+  </div>
+</div>

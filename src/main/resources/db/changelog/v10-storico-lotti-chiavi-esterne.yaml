@@ -1,0 +1,41 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: 80-storico-lotti-chiavi-esterne-corrette
+      author: etichette
+      comment: >
+        Le due chiavi esterne di storico_lotti verso storico_stampe (storico_id, stampa_storico_id)
+        puntavano a "storico_stampe_temporary", una tabella che non esiste (trovato in verifica il
+        23/09/2026 sui dati veri, presente gia' nella 0.1.30). Causa: l'addColumn di Liquibase su
+        SQLite ricostruisce la tabella (rinomina in *_temporary, ricrea, copia, cancella) e SQLite,
+        alla rinomina, riscrive anche le chiavi esterne delle ALTRE tabelle che la citano - cosi'
+        e' successo con 42-storico-corretto-il (v6) e di nuovo con 71-storico-stampe-lavoro-id
+        (v9). Oggi non si vede perche' le chiavi esterne non sono attive (nessun PRAGMA
+        foreign_keys), ma se lo diventassero nessuna stampa potrebbe piu' registrare i suoi lotti.
+        Qui si ricostruisce storico_lotti con le chiavi giuste, stessi id, stesso contatore
+        AUTOINCREMENT e stessi indici. D'ora in poi: una colonna nuova su storico_stampe (o su
+        qualunque tabella citata da altre) si aggiunge con SQL diretto (ALTER TABLE ... ADD
+        COLUMN), non con addColumn - vedi SchemaChiaviEsterneTest.
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE storico_lotti_nuova (
+                id INTEGER CONSTRAINT PK_STORICO_LOTTI PRIMARY KEY AUTOINCREMENT NOT NULL,
+                storico_id INTEGER NOT NULL,
+                ingrediente_id INTEGER,
+                prodotto_tracciato_id INTEGER,
+                lotto_id INTEGER,
+                stampa_storico_id INTEGER,
+                CONSTRAINT fk_storico_lotti_ingrediente FOREIGN KEY (ingrediente_id) REFERENCES ingredienti(id),
+                CONSTRAINT fk_storico_lotti_stampa_storico FOREIGN KEY (stampa_storico_id) REFERENCES storico_stampe(id),
+                CONSTRAINT fk_storico_lotti_lotto FOREIGN KEY (lotto_id) REFERENCES lotti_ingrediente(id),
+                CONSTRAINT fk_storico_lotti_storico FOREIGN KEY (storico_id) REFERENCES storico_stampe(id),
+                CONSTRAINT fk_storico_lotti_prodotto_tracciato FOREIGN KEY (prodotto_tracciato_id) REFERENCES prodotti(id));
+              INSERT INTO storico_lotti_nuova (id, storico_id, ingrediente_id, prodotto_tracciato_id, lotto_id, stampa_storico_id)
+                SELECT id, storico_id, ingrediente_id, prodotto_tracciato_id, lotto_id, stampa_storico_id FROM storico_lotti;
+              DELETE FROM sqlite_sequence WHERE name = 'storico_lotti_nuova';
+              INSERT INTO sqlite_sequence (name, seq) SELECT 'storico_lotti_nuova', seq FROM sqlite_sequence WHERE name = 'storico_lotti';
+              DROP TABLE storico_lotti;
+              ALTER TABLE storico_lotti_nuova RENAME TO storico_lotti;
+              CREATE INDEX idx_storico_lotti_storico ON storico_lotti(storico_id);
+              CREATE INDEX idx_storico_lotti_lotto ON storico_lotti(lotto_id);

@@ -2,10 +2,6 @@ package it.etichette;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
@@ -18,31 +14,33 @@ import java.util.Optional;
  * il servizio falliva ogni due minuti da 290 tentativi e l'aggiornamento alla 0.1.22 si
  * bloccava sui file in uso.
  *
+ * <p>Parte dalla prima riga di {@code main()}, non a Spring pronto. Il 25 settembre 2026, all'avvio
+ * del PC, la JVM ha impiegato 74 s ad arrivare a {@code ApplicationReadyEvent} mentre WinSW era
+ * gia' morto dopo 60 s: la sorveglianza trovava il padre gia' sparito, rinunciava, e la JVM della
+ * 0.1.41 e' rimasta orfana sulla porta (363 avvii falliti del servizio in 13 ore). Un padre gia'
+ * sparito vuol dire JVM gia' orfana: si chiude subito.
+ *
  * <p>Attiva solo con {@code -Detichette.sorveglia-padre=true} (lo passa {@code Etichette.xml}
  * del servizio): lanciata a mano da un terminale o dall'IDE l'app non deve chiudersi quando
  * chi l'ha avviata se ne va.
  */
-@Component
-public class SorvegliaProcessoPadre {
+final class SorvegliaProcessoPadre {
 
     private static final Logger log = LoggerFactory.getLogger(SorvegliaProcessoPadre.class);
+    private static final String PROPRIETA = "etichette.sorveglia-padre";
     private static final long INTERVALLO_MS = 5_000L;
 
-    private final boolean attiva;
-
-    public SorvegliaProcessoPadre(@Value("${etichette.sorveglia-padre:false}") boolean attiva) {
-        this.attiva = attiva;
+    private SorvegliaProcessoPadre() {
     }
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void avvia() {
-        if (!attiva) {
+    static void avviaSeRichiesta() {
+        if (!Boolean.getBoolean(PROPRIETA)) {
             return;
         }
         Optional<ProcessHandle> padre = ProcessHandle.current().parent();
         if (padre.isEmpty()) {
-            log.warn("Sorveglianza del processo padre richiesta, ma il padre non e' gia' piu' visibile: non sorveglio nulla.");
-            return;
+            log.warn("Il processo padre (il servizio) non c'e' gia' piu' all'avvio: chiudo questa JVM per non restare orfana sulla porta.");
+            System.exit(0);
         }
         ProcessHandle handle = padre.get();
         log.info("Sorveglio il processo padre {} ({}): se sparisce, questa JVM si chiude.",
@@ -52,7 +50,7 @@ public class SorvegliaProcessoPadre {
         t.start();
     }
 
-    private void sorveglia(ProcessHandle padre) {
+    private static void sorveglia(ProcessHandle padre) {
         while (true) {
             try {
                 Thread.sleep(INTERVALLO_MS);

@@ -1,34 +1,195 @@
 {
-  "pages": [
-    { "id": "page-1", "name": "Schermate" },
-    { "id": "page-2", "name": "Direzioni alternative" }
-  ],
   "artboards": [
-    { "file": "Main.dc.html", "title": "Stampa", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "StampaInCorso.dc.html", "title": "Stampa in corso · si può fermare", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "StampaErrore.dc.html", "title": "Errore · coperchio aperto", "x": 2720, "y": 0, "w": 1280, "h": 800, "page": "page-1" },
-
-    { "file": "Prodotti.dc.html", "title": "Prodotti", "x": 0, "y": 980, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "Modello.dc.html", "title": "Modelli di etichetta", "x": 1360, "y": 980, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "ModelloLibero.dc.html", "title": "Modello libero · nuovo tipo", "x": 2720, "y": 980, "w": 1280, "h": 800, "page": "page-1" },
-
-    { "file": "Storico.dc.html", "title": "Storico stampe", "x": 0, "y": 1960, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "Impostazioni.dc.html", "title": "Impostazioni", "x": 1360, "y": 1960, "w": 1280, "h": 800, "page": "page-1" },
-    { "file": "Telefoni.dc.html", "title": "Telefoni e tablet · aggancio", "x": 2720, "y": 1960, "w": 1280, "h": 800, "page": "page-1" },
-
-    { "file": "StampaMobile.dc.html", "title": "Telefono · stampa", "x": 0, "y": 2940, "w": 390, "h": 844, "page": "page-1" },
-    { "file": "StampaFatta.dc.html", "title": "Telefono · stampata", "x": 520, "y": 2940, "w": 390, "h": 844, "page": "page-1" },
-
-    { "file": "DirezioneB.dc.html", "title": "Direzione B · Schermo cucina", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-2" },
-    { "file": "DirezioneC.dc.html", "title": "Direzione C · Elenco compatto", "x": 1360, "y": 0, "w": 1280, "h": 800, "page": "page-2" }
+    {
+      "file": "Main.dc.html",
+      "title": "Stampa",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "StampaInCorso.dc.html",
+      "title": "Stampa in corso · si può fermare",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "StampaErrore.dc.html",
+      "title": "Errore · coperchio aperto",
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "Etichette.dc.html",
+      "title": "Etichette · la scheda segue l'ordine dell'etichetta",
+      "x": 0,
+      "y": 980,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "SceltaEtichetta.dc.html",
+      "title": "Scelta dell'etichetta · galleria",
+      "x": 1360,
+      "y": 980,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "NuovaEtichetta.dc.html",
+      "title": "Etichetta nuova · a blocchi",
+      "x": 2720,
+      "y": 980,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "Storico.dc.html",
+      "title": "Storico stampe",
+      "x": 0,
+      "y": 1960,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "Impostazioni.dc.html",
+      "title": "Impostazioni",
+      "x": 1360,
+      "y": 1960,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "Telefoni.dc.html",
+      "title": "Telefoni e tablet · aggancio",
+      "x": 2720,
+      "y": 1960,
+      "w": 1280,
+      "h": 800
+    },
+    {
+      "file": "StampaMobile.dc.html",
+      "title": "Telefono · stampa",
+      "x": 0,
+      "y": 2940,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "StampaFatta.dc.html",
+      "title": "Telefono · stampata",
+      "x": 1560,
+      "y": 2940,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "StampaInCorsoMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · in stampa",
+      "x": 520,
+      "y": 2940
+    },
+    {
+      "file": "StampaErroreMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · errore",
+      "x": 1040,
+      "y": 2940
+    },
+    {
+      "file": "EtichetteMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · scheda del prodotto",
+      "x": 2080,
+      "y": 2940
+    },
+    {
+      "file": "SceltaEtichettaMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · scelta dell'etichetta",
+      "x": 0,
+      "y": 3944
+    },
+    {
+      "file": "NuovaEtichettaMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · etichetta nuova",
+      "x": 520,
+      "y": 3944
+    },
+    {
+      "file": "StoricoMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · storico",
+      "x": 1040,
+      "y": 3944
+    },
+    {
+      "file": "ImpostazioniMobile.dc.html",
+      "w": 390,
+      "h": 844,
+      "title": "Telefono · impostazioni",
+      "x": 1560,
+      "y": 3944
+    }
   ],
   "annotations": [
-    { "id": "nota-direzione", "x": 0, "y": -260, "w": 660, "page": "page-1", "text": "Direzione: \"Banco da cucina\" — pochi passi, testo grande, bersagli da 52-64 px, un solo colore d'azione, stato stampante sempre visibile in linguaggio umano.\n\nFunzioni della prima versione: ristampa dell'ultima etichetta, prodotti più usati in cima, storico con esportazione, quattro tipi di etichetta con duplicazione, stampa in corso con annullamento, conferma e ripresa dopo un errore.\n\nFuori: dizionario allergeni con sinonimi, stima del rotolo residuo, import/export prodotti e backup automatico." },
-    { "id": "nota-stati", "x": 1360, "y": -260, "w": 900, "page": "page-1", "text": "I tre momenti che contano, tutti verificati sulla stampante vera.\n\nStampa in corso: le copie partono una alla volta, perciò \"Ferma la serie\" funziona davvero — su un lavoro mandato tutto insieme non fermerebbe nulla.\n\nErrore: il coperchio aperto durante la stampa arriva come stato spontaneo dopo circa un secondo e mezzo, e rientra da solo alla chiusura. Il messaggio dice a che copia si è fermata e che riprende senza rifare tutto. La fascia sopra il contenuto è il posto dove compaiono gli avvisi, uno sotto l'altro se sono più di uno.\n\nLo stesso avviso compare identico sul telefono." },
-    { "id": "nota-libero", "x": 4080, "y": 980, "w": 400, "page": "page-1", "text": "Il quarto tipo di etichetta è libero: si scelgono i blocchi, si ordinano trascinando, si salva con un nome e da quel momento è un tipo come gli altri.\n\nA blocchi e non a mano libera: un editor grafico darebbe più libertà ma sposterebbe il lavoro sull'utente, contro la richiesta di facilità d'uso.\n\nPer fare prima si parte da una copia: \"Parti da\" qui, oppure il tasto Duplica nella schermata dei modelli." },
-    { "id": "nota-aggancio", "x": 4080, "y": 1960, "w": 400, "page": "page-1", "text": "Come un telefono si aggancia: si apre dal pulsante in alto a destra delle Impostazioni.\n\nIl codice QR è reale e punta a http://etichette.local, con l'indirizzo scritto in chiaro e l'IP di riserva per i telefoni che non risolvono i nomi .local. Sotto: i tre passi, lo stato della rete e chi ha stampato di recente." },
-    { "id": "nota-mobile", "x": 1040, "y": 2940, "w": 400, "page": "page-1", "text": "Stessi contenuti sul telefono. Il PC collegato alla stampante pubblica l'interfaccia sulla rete locale: i telefoni la aprono dal browser, senza installare nulla e senza PIN.\n\nLa conferma dopo la stampa conta soprattutto qui: chi stampa dalla sala non vede la stampante e deve sapere che l'etichetta è uscita." },
-    { "id": "nota-alternative", "x": 0, "y": -180, "w": 640, "page": "page-2", "text": "Due direzioni alternative a bassa fedeltà per la sola schermata di stampa, da confrontare con la direzione scelta. Le altre schermate resterebbero uguali in tutti i casi." }
+    {
+      "id": "nota-direzione",
+      "x": 0,
+      "y": -260,
+      "w": 660,
+      "text": "Direzione: \"Banco da cucina\" — pochi passi, testo grande, bersagli da 52-64 px, un solo colore d'azione, stato stampante sempre visibile in linguaggio umano.\n\nFunzioni della prima versione: ristampa dell'ultima etichetta, prodotti più usati in cima, storico con esportazione, etichette componibili con duplicazione, stampa in corso con annullamento, conferma e ripresa dopo un errore.\n\nFuori: dizionario allergeni con sinonimi, stima del rotolo residuo, import/export prodotti e backup automatico."
+    },
+    {
+      "id": "nota-stati",
+      "x": 1360,
+      "y": -260,
+      "w": 900,
+      "text": "I tre momenti che contano, tutti verificati sulla stampante vera.\n\nStampa in corso: le copie partono una alla volta, perciò \"Ferma la serie\" funziona davvero — su un lavoro mandato tutto insieme non fermerebbe nulla.\n\nErrore: il coperchio aperto durante la stampa arriva come stato spontaneo dopo circa un secondo e mezzo, e rientra da solo alla chiusura. Il messaggio dice a che copia si è fermata e che riprende senza rifare tutto. La fascia sopra il contenuto è il posto dove compaiono gli avvisi, uno sotto l'altro se sono più di uno.\n\nLo stesso avviso compare identico sul telefono."
+    },
+    {
+      "id": "nota-unione",
+      "x": -700,
+      "y": 980,
+      "w": 620,
+      "text": "Prodotti e modelli sono diventati una cosa sola. Il menu ha una voce in meno e si chiama Etichette: niente più rimbalzi fra due schermate per capire come verrà l'etichetta.\n\nLa scheda al centro segue l'ordine dell'etichetta del cliente — nome, ingredienti, può contenere, scadenza e conservazione, quantità, valori nutrizionali, produttore — lo stesso ordine dei blocchi elencati a destra. Si compila leggendo dall'alto in basso, come esce dalla stampante, e scorre: tutto insieme non ci sta, ma l'ordine resta intero invece di essere spezzato in schede.\n\nI valori nutrizionali e i dati del produttore stanno aperti e si scrivono lì dentro. Il produttore non sta più nelle Impostazioni: appartiene all'etichetta, e siccome l'etichetta è condivisa vale per tutti i prodotti che la usano. Per la stessa ragione ci sono anche la dicitura della scadenza e il formato della data: «Completa» dice «da consumare entro» e «Cucina» dice «Scade il», quindi è una scelta dell'etichetta e non un'impostazione della macchina. Nelle Impostazioni resta il lotto, che è la numerazione del locale e vale per tutte le etichette: si sceglie fra data e progressivo del giorno, giorno dell'anno, progressivo continuo, oppure scritto a mano da chi stampa. Accanto a ogni scelta c'è il lotto che uscirebbe oggi, così si vede prima di decidere.\n\nIl corpo del testo si sceglie da una tendina, in punti come in un elaboratore di testi: la scaletta va dal 7 al 48. Stampando in raster non c'è un vincolo tecnico, ma sotto i 7 pt l'altezza della x scende sotto 1,2 mm — il minimo di legge per le indicazioni obbligatorie — e i corpi più piccoli sono stati tolti dopo la prova di stampa del 5 settembre.\n\nL'etichetta del cliente ha i valori nutrizionali in una colonna di lato, sulla stessa altezza di scadenza, lotto e quantità: con un elenco a pila non si poteva dire. In coda a ogni riga un comando dice dove sta il blocco: piena larghezza, colonna di sinistra, colonna di destra. Non c'è nessuna regola implicita da ricordare. Dove comincia la parte a due colonne c'è una sola intestazione con i due lati: se ne accende uno e si illuminano tutti i suoi blocchi — anche quando nell'elenco sono separati da blocchi dell'altra colonna — e insieme a loro si illumina la sua metà sull'anteprima. Così l'elenco resta nell'ordine dell'etichetta e l'affiancamento si guarda quando serve. Un blocco lasciato a piena larghezza attraversa tutto e chiude la zona. Quanto spazio prende il lato acceso si sceglie lì accanto, fra un quarto, un terzo, metà e due terzi: sull'etichetta di Matteo la colonna sinistra è a due terzi, misura presa sulla ricostruzione e da verificare sull'originale.\n\nLe categorie dei prodotti sono state tolte: non servivano più, né nella scheda né come filtro nella schermata di stampa.\n\nColori: verde #5E7B18 per le azioni e per gli stati accesi, marrone #58443C per titoli e testo, fondo #EADECE. Il rosso resta solo per gli errori, l'ambra per la stampa in corso."
+    },
+    {
+      "id": "nota-libero",
+      "x": 4080,
+      "y": 980,
+      "w": 400,
+      "text": "Un'etichetta nuova si compone a blocchi: si scelgono dall'elenco, si ordinano trascinando, si salva con un nome e da quel momento è disponibile per qualsiasi prodotto.\n\nA blocchi e non a mano libera: un editor grafico darebbe più libertà ma sposterebbe il lavoro sull'utente, contro la richiesta di facilità d'uso.\n\nIl corpo si sceglie in punti da una tendina, dal 7 al 48: sotto i 7 pt il testo non arriva al minimo di legge, misurato stampando. Non è un vincolo della stampante: in raster mandiamo noi la bitmap a 300 dpi, quindi il corpo del testo è libero e la scaletta si allunga. I tre corpi 24/32/48 dot della mappatura sono dei font interni della modalità ESC/P, che abbiamo scartato.\n\nPer fare prima si parte da una copia: \"Parti da\" qui, oppure \"Duplica\" nella galleria."
+    },
+    {
+      "id": "nota-aggancio",
+      "x": 4080,
+      "y": 1960,
+      "w": 400,
+      "text": "Come un telefono si aggancia: si apre dalla scheda “Telefoni e tablet” delle Impostazioni, che dice quanti sono collegati, l'indirizzo sulla rete e la rete Wi-Fi.\n\nIl codice QR è reale e punta a http://etichette.local, con l'indirizzo scritto in chiaro e l'IP di riserva per i telefoni che non risolvono i nomi .local. Sotto: i tre passi, lo stato della rete e chi ha stampato di recente."
+    },
+    {
+      "id": "nota-mobile",
+      "x": 2600,
+      "y": 2940,
+      "w": 420,
+      "text": "Stessi contenuti sul telefono, e le stesse quattro voci in fondo: Stampa, Etichette, Storico, Impostazioni. Il PC collegato alla stampante pubblica l'interfaccia sulla rete locale, i telefoni la aprono dal browser, senza installare nulla e senza PIN.\n\nLa conferma dopo la stampa conta soprattutto qui: chi stampa dalla sala non vede la stampante e deve sapere che l'etichetta è uscita. Lo stesso vale per l'errore, che compare identico sui due schermi.\n\nLe schermate lunghe — la scheda del prodotto, la composizione a blocchi, le impostazioni — scorrono invece di essere spezzate in passi, e si sfumano in fondo per dirlo. Comporre un'etichetta nuova dal telefono si può, ma resta un lavoro da banco: dalla sala si stampa."
+    }
   ],
-  "launch": { "view": "canvas", "page": "page-1" }
+  "launch": {
+    "view": "canvas"
+  }
 }

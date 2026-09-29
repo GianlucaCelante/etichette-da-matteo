@@ -2,6 +2,12 @@
 // avanzamento (anche dalla "Stampa di prova" di Etichette). In un file a se'
 // perche' PannelliStampa.tsx deve esportare solo componenti (Fast Refresh).
 
+// La scadenza proposta alla stampa (deciso dal cliente il 24/09/2026: si
+// sceglie solo alla stampa, non piu' nell'editor dell'etichetta) e' sempre
+// oggi + questi giorni, qualunque "giorniScadenza" abbia il prodotto - una
+// costante unica invece del numero sparso in piu' punti (docs/api.md).
+export const GIORNI_SCADENZA_PROPOSTI = 7;
+
 function dueCifre(n: number): string {
   return String(n).padStart(2, "0");
 }

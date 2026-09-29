@@ -1,0 +1,24 @@
+databaseChangeLog:
+  # GET /api/storico a pagine e GET /api/storico/ultime-valide (docs/api.md, "Storico", 23
+  # settembre 2026): con 40.000 stampe l'elenco intero pesava 12,7 MB e il servizio lo filtrava in
+  # Java; ora filtri, ordine e limite stanno nella query, e servono gli indici giusti perche' la
+  # query si fermi dopo poche righe invece di scorrere tutta la tabella. Solo CREATE INDEX: nessuna
+  # ricostruzione di storico_stampe, quindi nessun rischio per le chiavi esterne di storico_lotti
+  # (vedi v10-storico-lotti-chiavi-esterne.yaml e SchemaChiaviEsterneTest).
+
+  - changeSet:
+      id: 90-storico-indici-prodotto-e-lavoro
+      author: etichette
+      comment: >
+        idx_storico_prodotto_stampato_il: le stampe di un prodotto dalla piu' recente, gia' in
+        ordine - serve all'ultima stampa valida di un semilavorato (RisolutoreLottiTracciati,
+        GET /api/storico/ultime-valide: un prodotto alla volta, si legge la prima valida e basta)
+        e al filtro prodottoId dell'elenco. La colonna id non serve nell'indice: in SQLite ogni
+        voce d'indice porta gia' il rowid, cioe' l'id, e l'ordine "stampato_il, id" viene gratis.
+        idx_storico_lavoro_id: la schermata Stampa cerca la riga del lavoro appena finito
+        (filtro lavoroId) dopo OGNI stampa, senza indice sarebbe una lettura dell'intera tabella.
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_storico_prodotto_stampato_il ON storico_stampe(prodotto_id, stampato_il);
+              CREATE INDEX idx_storico_lavoro_id ON storico_stampe(lavoro_id);

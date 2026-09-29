@@ -1,0 +1,42 @@
+databaseChangeLog:
+  # Due difetti trovati in revisione il 23 settembre 2026, indipendenti ma nello stesso giro di
+  # correzioni: righe di prodotti_tracciati orfane (SQLite qui non forza le foreign key,
+  # application.yml) lasciate da cancellazioni passate di prodotti/ingredienti prima che
+  # ProdottiController#elimina e IngredientiService#elimina imparassero a pulirle; e la schermata
+  # Stampa che non sa quale riga di storico appartiene al lavoro appena finito (prendeva sempre la
+  # piu' recente, sbagliando con due stampe quasi simultanee).
+
+  - changeSet:
+      id: 70-purga-prodotti-tracciati-orfani
+      author: etichette
+      comment: >
+        Righe di prodotti_tracciati che puntano a un prodotto, un ingrediente o un prodotto
+        tracciato ormai cancellato (docs/api.md, "Ingredienti collegati a un prodotto"): da qui in
+        poi ProdottiController#elimina/TracciatiService#eliminaCollegamenti e
+        IngredientiService#elimina non ne lasciano piu' di nuove, questa migrazione toglie quelle
+        gia' esistenti una volta sola. TracciatiService#leggi resta comunque tollerante (le scarta
+        invece di uscire con nome null) per qualunque residuo dovesse sfuggire.
+      changes:
+        - sql:
+            sql: |
+              DELETE FROM prodotti_tracciati
+              WHERE prodotto_id NOT IN (SELECT id FROM prodotti)
+                 OR (ingrediente_id IS NOT NULL AND ingrediente_id NOT IN (SELECT id FROM ingredienti))
+                 OR (prodotto_tracciato_id IS NOT NULL AND prodotto_tracciato_id NOT IN (SELECT id FROM prodotti));
+
+  - changeSet:
+      id: 71-storico-stampe-lavoro-id
+      author: etichette
+      comment: >
+        Il lavoroId del lavoro di stampa che ha scritto questa riga (docs/api.md, "Storico"): la
+        schermata Stampa deve trovare la riga del lavoro appena finito, non semplicemente la piu'
+        recente (due stampe quasi simultanee la facevano sbagliare). Nullable: le righe scritte
+        prima di questa migrazione non hanno un lavoroId da recuperare, e restano cosi'
+        (StoricoController lo espone com'e', null per loro).
+      changes:
+        - addColumn:
+            tableName: storico_stampe
+            columns:
+              - column:
+                  name: lavoro_id
+                  type: TEXT

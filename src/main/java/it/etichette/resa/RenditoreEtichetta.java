@@ -1,9 +1,5 @@
 package it.etichette.resa;
 
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.MultiFormatWriter;
-import com.google.zxing.client.j2se.MatrixToImageWriter;
-import com.google.zxing.common.BitMatrix;
 import it.etichette.api.BloccoDto;
 import it.etichette.api.EtichettaProdottoDto;
 import it.etichette.api.ProdottoDto;
@@ -72,6 +68,23 @@ import java.util.regex.Pattern;
  * 102), non con la larghezza utile precisa (58,9/98,6) - vedi {@link RisultatoResa#lungoIlNastro()}
  * per sapere quale campo (larghezza o altezza) e' quello sul nastro. Un log INFO (stampe, scala 1)
  * o DEBUG (anteprime) per ogni resa riepiloga i due candidati e la scelta, per l'assistenza.
+ *
+ * <p><b>Niente testo tagliato, a capo solo fra parole (regola del 2026-09-24, dopo le etichette
+ * vere del cliente sul 62 mm: l'intestazione "VALORI NUTRIZIONALI" usciva tagliata fuori dal bordo
+ * e "Carboidrati" andava a capo a meta' parola)</b>: in una colonna stretta il testo non esce mai
+ * dalla sua colonna e non si spezza a meta' parola se non in un caso estremo. {@link
+ * #costruisciRighe} (usato sia da {@link #disegnaParagrafo} sia dalla riga voce/valore della
+ * tabella dei valori nutrizionali, {@link #disegnaVoceValore}) prova prima l'a-capo normale (fra
+ * parole, {@link LineBreakMeasurer}); se una singola parola non sta nemmeno da sola sulla riga,
+ * {@link #restringiParoleTroppoLarghe} le riduce il corpo a scalini ({@link
+ * #corpoRidottoPerStare}) fino a farla stare, senza scendere sotto {@link #CORPO_MINIMO_A_CAPO} -
+ * solo se anche a quel corpo minimo non ci sta si arriva al caso estremo (si spezza carattere per
+ * carattere, come faceva {@link LineBreakMeasurer} da solo prima di questa regola). L'intestazione
+ * "VALORI NUTRIZIONALI (100 g)" ({@link #disegnaIntestazioneTabellaValori}) segue la stessa logica:
+ * su una riga se ci sta, altrimenti "VALORI NUTRIZIONALI" (a capo fra le due parole se serve) e
+ * sotto "per 100 g". Quando la colonna e' gia' abbastanza larga (rotolo 102, blocco a piena
+ * larghezza) nessuna parola supera mai la larghezza disponibile, quindi questa regola non scatta
+ * mai e il disegno resta identico a prima.
  */
 @Component
 public class RenditoreEtichetta {
@@ -377,13 +390,28 @@ public class RenditoreEtichetta {
             case "ingredienti" -> nonVuoto(prodotto.ingredienti());
             case "puoContenere" -> prodotto.allergeni() != null && !prodotto.allergeni().isEmpty();
             case "modoUso" -> nonVuoto(prodotto.modoUso());
-            case "scadenza" -> risolviScadenza(prodotto, parametri) != null;
-            case "lotto", "qr" -> nonVuoto(parametri.lotto());
+            case "scadenza" -> risolviScadenza(parametri) != null;
+            // Dal 24/09/2026 "conservazione" e' un blocco a se' (prima era una riga dentro
+            // "scadenza", vedi ProdottiConversioni#conConservazioneSeManca): stesso controllo che
+            // faceva "scadenza" per decidere se stampare quella riga.
+            case "conservazione" -> nonVuoto(prodotto.conservazione());
+            // "qr" non e' piu' un tipo di blocco (tolto dal 24/09/2026, docs/api.md): non produce
+            // mai contenuto, cade nel "default -> false" sotto - un'etichetta vecchia che lo avesse
+            // ancora salvato (gia' tolto in lettura da ProdottiConversioni, per sicurezza anche qui)
+            // lo salta senza errori invece di disegnare qualcosa.
+            case "lotto" -> nonVuoto(parametri.lotto());
             case "quantita" -> risolviQuantita(prodotto, parametri) != null;
-            case "valori" -> prodotto.valoriNutrizionali() != null && !prodotto.valoriNutrizionali().isEmpty();
+            // Presente solo se almeno una riga ha un valore non vuoto (deciso da Gianluca,
+            // 25/09/2026: l'editor precarica le voci obbligatorie col valore vuoto, da riempire -
+            // una riga senza valore, o senza voce, non conta - vedi righeValoriDaStampare).
+            case "valori" -> !righeValoriDaStampare(prodotto.valoriNutrizionali()).isEmpty();
             case "produttore" -> etichetta.produttore() != null && nonVuoto(etichetta.produttore().ragioneSociale());
             case "dataProduzione" -> true; // la data della stampa c'e' sempre, come titolo/riga/spazio
-            case "sigla" -> nonVuoto(prodotto.siglaOperatore()); // vuota: il blocco non si stampa (docs/api.md)
+            // "sigla" non e' piu' un tipo di blocco offerto dal 25/09/2026 (deciso da Gianluca: il
+            // produttore c'e' gia' in etichetta, la sigla era ridondante) - cade qui sotto, come
+            // "qr": nessun contenuto, mai disegnato, anche per un'etichetta vecchia che lo avesse
+            // ancora salvato (ProdottiConversioni lo toglie comunque in lettura/scrittura, questo
+            // e' un secondo livello di sicurezza, come gia' per "qr").
             case "testo", "testoGrande" -> nonVuoto(b.testo());
             case "logo" -> logo.esiste(); // senza logo caricato, il blocco non occupa spazio
             default -> false;
@@ -485,30 +513,28 @@ public class RenditoreEtichetta {
             case "puoContenere" -> y = disegnaParagrafo(g, frc, segmentiPuoContenere(prodotto.allergeni(), corpoPt), x, y, larghezza, allineamento).y();
             case "modoUso" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(prodotto.modoUso(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "scadenza" -> {
-                LocalDate scad = risolviScadenza(prodotto, parametri);
                 String dicitura = etichetta.dicituraScadenza() != null ? etichetta.dicituraScadenza() + " " : "";
                 List<Segmento> segs = List.of(
                         new Segmento(dicitura, caratteri.regolare(corpoPt)),
-                        new Segmento(formattaData(scad, etichetta.formatoData()), caratteri.grassetto(corpoPt)));
+                        new Segmento(testoScadenza(prodotto, parametri, etichetta.formatoData()), caratteri.grassetto(corpoPt)));
                 y = disegnaParagrafo(g, frc, segs, x, y, larghezza, allineamento).y();
-                if (nonVuoto(prodotto.conservazione())) {
-                    y = disegnaParagrafo(g, frc,
-                            List.of(new Segmento(prodotto.conservazione().toUpperCase(Locale.ITALY), caratteri.regolare(corpoPt))),
-                            x, y, larghezza, allineamento).y();
-                }
             }
+            // Dal 24/09/2026 la conservazione non e' piu' una riga dentro "scadenza" (sopra): e'
+            // il suo blocco, con il suo corpo - stesso testo/maiuscole di sempre (ProdottiConversioni
+            // aggiunge questo blocco da sola a un'etichetta vecchia che non lo avesse, subito dopo
+            // "scadenza" e con lo stesso corpo, cosi' la stampa resta identica a prima del cambio).
+            case "conservazione" -> y = disegnaParagrafo(g, frc,
+                    List.of(new Segmento(prodotto.conservazione().toUpperCase(Locale.ITALY), caratteri.regolare(corpoPt))),
+                    x, y, larghezza, allineamento).y();
             case "lotto" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(parametri.lotto(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
-            case "quantita" -> {
-                y = disegnaParagrafo(g, frc, List.of(new Segmento("Quantità", caratteri.grassetto(8f))), x, y, larghezza, allineamento).y();
-                y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
-            }
-            case "valori" -> y = disegnaTabellaValori(g, frc, prodotto.valoriNutrizionali(), corpoPt, x, y, larghezza);
+            // Solo il valore dal 25/09/2026 (deciso da Gianluca: via la riga "Quantità" in
+            // grassetto 8 pt che stava sopra - il valore grande basta). La chiave del blocco resta
+            // "quantita" (compatibilita' dei dati), il nome mostrato e' "Peso" (Contratto#nomeBlocco).
+            case "quantita" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
+            case "valori" -> y = disegnaTabellaValori(g, frc, righeValoriDaStampare(prodotto.valoriNutrizionali()), corpoPt, x, y, larghezza);
             case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "dataProduzione" -> y = disegnaParagrafo(g, frc,
                     List.of(new Segmento(testoDataProduzione(etichetta.formatoData()), caratteri.regolare(corpoPt))),
-                    x, y, larghezza, allineamento).y();
-            case "sigla" -> y = disegnaParagrafo(g, frc,
-                    List.of(new Segmento(testoSigla(prodotto), caratteri.regolare(corpoPt))),
                     x, y, larghezza, allineamento).y();
             case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
             case "testoGrande" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
@@ -519,7 +545,6 @@ public class RenditoreEtichetta {
                 y += mmInPx(0.8f);
             }
             case "spazio" -> y += corpoPt * Caratteri.PX_PER_PT;
-            case "qr" -> y = disegnaQr(g, parametri.lotto(), corpoPt, x, y, larghezza, allineamento);
             case "logo" -> y = disegnaLogo(g, corpoPt, x, y, larghezza, allineamento);
             default -> {
                 // nessun altro tipo di blocco previsto
@@ -542,19 +567,6 @@ public class RenditoreEtichetta {
         };
     }
 
-    private float disegnaQr(Graphics2D g, String lotto, float latoMm, float x, float y, float larghezza, String allineamento) {
-        try {
-            int latoPx = mmInPx(latoMm > 0 ? latoMm : 12f);
-            BitMatrix matrice = new MultiFormatWriter().encode(lotto, BarcodeFormat.QR_CODE, latoPx, latoPx);
-            BufferedImage qr = MatrixToImageWriter.toBufferedImage(matrice);
-            float xQr = xAllineata(x, larghezza, latoPx, allineamento);
-            g.drawImage(qr, Math.round(xQr), Math.round(y), null);
-            return y + latoPx;
-        } catch (Exception e) {
-            return y; // lotto non codificabile: il blocco non occupa spazio
-        }
-    }
-
     private static final float LOGO_ALTEZZA_MM_DEFAULT = 10f;
     private static final float LOGO_ALTEZZA_MM_MINIMA = 5f;
     private static final float LOGO_ALTEZZA_MM_MASSIMA = 30f;
@@ -563,8 +575,8 @@ public class RenditoreEtichetta {
      * Logo in bilivello con diffusione dell'errore di Floyd-Steinberg (non una soglia secca:
      * una foto o un logo con sfumature diventerebbe un blocco nero informe), alto quanto dice
      * {@code corpo} in mm (7…48 della scaletta dei corpi non si applica qui: e' un valore libero
-     * in mm, come per il blocco "qr"; docs/api.md), proporzioni conservate, posizione orizzontale
-     * secondo {@code allineamento}.
+     * in mm; docs/api.md), proporzioni conservate, posizione orizzontale secondo {@code
+     * allineamento}.
      */
     private float disegnaLogo(Graphics2D g, float altezzaMmRichiesta, float x, float y, float larghezza, String allineamento) {
         BufferedImage originale = logo.leggiImmagine();
@@ -633,8 +645,24 @@ public class RenditoreEtichetta {
         return nero;
     }
 
+    /**
+     * Le righe di {@code valori} davvero da stampare (deciso da Gianluca, 25/09/2026: l'editor
+     * precarica le voci obbligatorie - Energia, Grassi, di cui acidi grassi saturi, Carboidrati,
+     * di cui zuccheri, Proteine, Sale - col valore vuoto, da riempire): una riga con {@code valore}
+     * vuoto non si stampa (nemmeno la sola voce), e una riga con {@code voce} vuota si scarta
+     * sempre. Usata sia da {@link #haContenuto} (il blocco "valori" conta come presente solo se
+     * questa lista non e' vuota) sia da {@link #disegnaTabellaValori}, cosi' i due restano
+     * coerenti per costruzione.
+     */
+    private static List<ValoreNutrizionaleDto> righeValoriDaStampare(List<ValoreNutrizionaleDto> valori) {
+        if (valori == null) {
+            return List.of();
+        }
+        return valori.stream().filter(v -> nonVuoto(v.voce()) && nonVuoto(v.valore())).toList();
+    }
+
     private float disegnaTabellaValori(Graphics2D g, FontRenderContext frc, List<ValoreNutrizionaleDto> valori, float corpoPt, float x, float y, float larghezza) {
-        y = disegnaIntestazioneTabellaValori(g, caratteri.grassetto(corpoPt), x, y, larghezza);
+        y = disegnaIntestazioneTabellaValori(g, frc, caratteri.grassetto(corpoPt), x, y, larghezza);
         g.setStroke(new BasicStroke(2f));
         g.drawLine(Math.round(x), Math.round(y), Math.round(x + larghezza), Math.round(y));
         y += mmInPx(0.3f);
@@ -648,8 +676,19 @@ public class RenditoreEtichetta {
         return y;
     }
 
-    /** "VALORI NUTRIZIONALI (100 g)" su una riga se ci sta; altrimenti "VALORI NUTRIZIONALI" e sotto "per 100 g", a sinistra. Mai troncata. */
-    private float disegnaIntestazioneTabellaValori(Graphics2D g, Font fTitolo, float x, float y, float larghezza) {
+    /**
+     * "VALORI NUTRIZIONALI (100 g)" su una riga se ci sta; altrimenti "VALORI NUTRIZIONALI" e sotto
+     * "per 100 g", a sinistra. Mai troncata e mai tagliata fuori dal bordo (regola del 24/09/2026,
+     * vedi la nota di classe): quando "VALORI NUTRIZIONALI" da sola non ci sta nemmeno su una riga
+     * intera (colonna stretta, 62 mm), va a capo fra le due parole - stesso motore di
+     * {@link #disegnaParagrafo}/{@link #costruisciRighe}, che se serve riduce il corpo di una parola
+     * isolata che non ci sta nemmeno da sola ("NUTRIZIONALI"), invece di tagliarla. Il caso "sta gia'
+     * su due righe cosi' com'e'" (colonna di mezzo, ne' la riga unica ne' l'a-capo servono) resta col
+     * disegno di FontMetrics di sempre, non quello nuovo basato su {@link #disegnaParagrafo}: sono
+     * geometricamente equivalenti ma non byte-per-byte identici (regola 5, "identico quando c'e'
+     * spazio" - verificato con le etichette vere, vedi il messaggio finale).
+     */
+    private float disegnaIntestazioneTabellaValori(Graphics2D g, FontRenderContext frc, Font fTitolo, float x, float y, float larghezza) {
         g.setFont(fTitolo);
         FontMetrics fm = g.getFontMetrics();
         String suffisso = "(100 g)";
@@ -661,59 +700,115 @@ public class RenditoreEtichetta {
             g.drawString(suffisso, Math.round(x + larghezza - wSuffisso), baseline);
             return y + altezzaRiga(fTitolo, g);
         }
-        int baseline1 = Math.round(y) + fm.getAscent();
-        g.drawString("VALORI NUTRIZIONALI", Math.round(x), baseline1);
-        y += altezzaRiga(fTitolo, g);
-        int baseline2 = Math.round(y) + fm.getAscent();
-        g.drawString("per 100 g", Math.round(x), baseline2);
-        return y + altezzaRiga(fTitolo, g);
+        if (fm.stringWidth("VALORI NUTRIZIONALI") <= larghezza) {
+            int baseline1 = Math.round(y) + fm.getAscent();
+            g.drawString("VALORI NUTRIZIONALI", Math.round(x), baseline1);
+            y += altezzaRiga(fTitolo, g);
+            int baseline2 = Math.round(y) + fm.getAscent();
+            g.drawString("per 100 g", Math.round(x), baseline2);
+            return y + altezzaRiga(fTitolo, g);
+        }
+        y = disegnaParagrafo(g, frc, List.of(new Segmento("VALORI NUTRIZIONALI", fTitolo)), x, y, larghezza, "sinistra").y();
+        return disegnaParagrafo(g, frc, List.of(new Segmento("per 100 g", fTitolo)), x, y, larghezza, "sinistra").y();
     }
 
-    /** Sotto questa soglia affiancare voce e valore degenera in un a-capo carattere per carattere: si passa a impilarli. */
-    private static final float LARGHEZZA_MINIMA_VOCE_AFFIANCATA_MM = 8f;
-
     /**
-     * Una voce/valore della tabella: la voce va a capo (LineBreakMeasurer) se non ci sta nella
-     * larghezza disponibile (larghezza colonna meno larghezza del valore meno un piccolo
-     * margine); il valore resta allineato a destra sull'ultima riga della voce. Mai troncata.
-     * Se il valore da solo e' cosi' largo che alla voce resterebbe pochissimo spazio (a-capo
-     * carattere per carattere), la voce va a capo su tutta la larghezza della colonna e il
-     * valore si stampa allineato a destra sulla riga sotto, invece di affiancarli.
+     * Una voce/valore della tabella (regola 4 del 24/09/2026, rifinita dopo il riscontro sulle
+     * etichette vere sia sul 62 sia sul 102 - vedi la nota di classe): il nome va SEMPRE a capo a
+     * piena larghezza di colonna, come un paragrafo qualunque ({@link #costruisciRighe}, stesso
+     * motore di {@link #disegnaParagrafo}: riduce il corpo di una parola isolata SOLO se non sta
+     * da sola nell'INTERA colonna, mai per farle posto accanto al valore). Le righe PRIMA
+     * dell'ultima sono definitive, a piena larghezza, MAI toccate dal valore. Il valore si
+     * affianca all'ULTIMA riga se ci sta cosi' com'e'; altrimenti si isola la sua parola FINALE su
+     * una riga propria (le altre parole dell'ultima riga, prima e penultima comprese, restano
+     * insieme su una riga fissa a piena larghezza - mai una via di mezzo con un gruppo intermedio,
+     * per non lasciare orfana una singola parola qualunque a meta' gruppo) e si riprova con quella
+     * ({@link #paroleCondiviseColValore}) - "Carboidrati" da sola ci sta nella colonna ma non col
+     * valore: resta al corpo normale, il valore va sotto. Solo se nemmeno la parola finale da sola
+     * ci sta col valore, l'ultima riga resta intera e il valore va su una riga sua sotto, allineato
+     * a destra. Mai troncata, mai spezzata a meta' parola.
      */
-    private float disegnaVoceValore(Graphics2D g, FontRenderContext frc, String voce, String valore, Font fLabel, Font fVal, float x, float y, float larghezza) {
+    float disegnaVoceValore(Graphics2D g, FontRenderContext frc, String voce, String valore, Font fLabel, Font fVal, float x, float y, float larghezza) {
         g.setFont(fVal);
         float wVal = g.getFontMetrics().stringWidth(valore);
-        float larghezzaVoceAffiancata = larghezza - wVal - mmInPx(1f);
 
-        if (larghezzaVoceAffiancata < mmInPx(LARGHEZZA_MINIMA_VOCE_AFFIANCATA_MM)) {
-            for (TextLayout riga : costruisciRighe(frc, List.of(new Segmento(voce, fLabel)), larghezza)) {
-                y += riga.getAscent();
-                riga.draw(g, x, y);
-                y += riga.getDescent() + riga.getLeading();
-            }
+        List<TextLayout> righe = costruisciRighe(frc, List.of(new Segmento(voce, fLabel)), larghezza);
+        if (righe.isEmpty()) {
+            int baseline = Math.round(y) + g.getFontMetrics(fVal).getAscent();
+            g.drawString(valore, Math.round(x + larghezza - wVal), baseline);
+            return y + altezzaRiga(fVal, g);
+        }
+
+        // Le righe naturali PRIMA dell'ultima sono definitive: piena larghezza, mai toccate dal valore.
+        for (int i = 0; i < righe.size() - 1; i++) {
+            TextLayout riga = righe.get(i);
+            y += riga.getAscent();
+            riga.draw(g, x, y);
+            y += riga.getDescent() + riga.getLeading();
+        }
+
+        int inizioUltimaRiga = 0;
+        for (int i = 0; i < righe.size() - 1; i++) {
+            inizioUltimaRiga += righe.get(i).getCharacterCount();
+        }
+        String testoUltimaRiga = voce.substring(inizioUltimaRiga).strip();
+        String[] parole = testoUltimaRiga.trim().split("\\s+");
+        int condivise = paroleCondiviseColValore(parole, fLabel, frc, wVal, larghezza);
+
+        if (condivise == 0) {
+            // nemmeno una singola parola ci sta col valore: l'ultima riga resta intera, il valore va sotto
+            TextLayout ultima = new TextLayout(testoUltimaRiga, fLabel, frc);
+            y += ultima.getAscent();
+            ultima.draw(g, x, y);
+            y += ultima.getDescent() + ultima.getLeading();
             g.setFont(fVal);
             int baseline = Math.round(y) + g.getFontMetrics().getAscent();
             g.drawString(valore, Math.round(x + larghezza - wVal), baseline);
             return y + altezzaRiga(fVal, g);
         }
 
-        List<TextLayout> righe = costruisciRighe(frc, List.of(new Segmento(voce, fLabel)), larghezzaVoceAffiancata);
-        if (righe.isEmpty()) {
-            int baseline = Math.round(y) + g.getFontMetrics(fVal).getAscent();
-            g.drawString(valore, Math.round(x + larghezza - wVal), baseline);
-            return y + altezzaRiga(fVal, g);
+        if (condivise < parole.length) {
+            // le parole che avanzano (non condivise) diventano una riga fissa a se', a piena larghezza
+            TextLayout avanzate = new TextLayout(ultimeParole(parole, parole.length - condivise, 0), fLabel, frc);
+            y += avanzate.getAscent();
+            avanzate.draw(g, x, y);
+            y += avanzate.getDescent() + avanzate.getLeading();
         }
-        for (int i = 0; i < righe.size(); i++) {
-            TextLayout riga = righe.get(i);
-            y += riga.getAscent();
-            riga.draw(g, x, y);
-            if (i == righe.size() - 1) {
-                g.setFont(fVal);
-                g.drawString(valore, Math.round(x + larghezza - wVal), Math.round(y));
-            }
-            y += riga.getDescent() + riga.getLeading();
-        }
+        TextLayout ultima = new TextLayout(ultimeParole(parole, condivise, parole.length - condivise), fLabel, frc);
+        y += ultima.getAscent();
+        ultima.draw(g, x, y);
+        g.setFont(fVal);
+        g.drawString(valore, Math.round(x + larghezza - wVal), Math.round(y));
+        y += ultima.getDescent() + ultima.getLeading();
         return y;
+    }
+
+    /**
+     * Pacchetto-privato PER I TEST: quante delle ULTIME parole di {@code parole} condividono la
+     * riga col valore (regola 4 sopra): tutta l'ultima riga se ci sta gia' cosi' com'e'; altrimenti
+     * SOLO la sua parola finale, isolata su una riga propria (le altre, comprese fra la prima e la
+     * penultima, restano insieme su una riga fissa a piena larghezza - MAI una via di mezzo, per
+     * non lasciare orfana una parola qualunque a meta' gruppo); 0 se nemmeno la parola finale da
+     * sola ci sta col valore.
+     */
+    int paroleCondiviseColValore(String[] parole, Font fLabel, FontRenderContext frc, float wVal, float larghezza) {
+        float margineValore = mmInPx(1f);
+        if (ciStaColValore(fLabel, frc, ultimeParole(parole, parole.length, 0), margineValore, wVal, larghezza)) {
+            return parole.length;
+        }
+        if (parole.length > 1 && ciStaColValore(fLabel, frc, ultimeParole(parole, 1, parole.length - 1), margineValore, wVal, larghezza)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private static boolean ciStaColValore(Font fLabel, FontRenderContext frc, String testo, float margineValore, float wVal, float larghezza) {
+        return fLabel.getStringBounds(testo, frc).getWidth() + margineValore + wVal <= larghezza;
+    }
+
+    /** Le ultime {@code n} parole di {@code parole} (a partire dall'indice {@code daIndice}), unite da uno spazio. */
+    private static String ultimeParole(String[] parole, int n, int daIndice) {
+        return String.join(" ", java.util.Arrays.copyOfRange(parole, daIndice, daIndice + n));
     }
 
     // =========================================================================================
@@ -738,9 +833,11 @@ public class RenditoreEtichetta {
         return new EsitoParagrafo(y, righe.size());
     }
 
-    private List<TextLayout> costruisciRighe(FontRenderContext frc, List<Segmento> segmenti, float larghezza) {
+    /** Pacchetto-privato PER I TEST: verifica diretta che nessuna riga superi {@code larghezza} (regola del 24/09/2026, vedi la nota di classe). */
+    List<TextLayout> costruisciRighe(FontRenderContext frc, List<Segmento> segmenti, float larghezza) {
+        List<Segmento> aggiustati = restringiParoleTroppoLarghe(segmenti, larghezza, frc);
         StringBuilder sb = new StringBuilder();
-        for (Segmento s : segmenti) {
+        for (Segmento s : aggiustati) {
             sb.append(s.testo() != null ? s.testo() : "");
         }
         List<TextLayout> righe = new ArrayList<>();
@@ -749,7 +846,7 @@ public class RenditoreEtichetta {
         }
         AttributedString as = new AttributedString(sb.toString());
         int pos = 0;
-        for (Segmento s : segmenti) {
+        for (Segmento s : aggiustati) {
             int lunghezza = s.testo() != null ? s.testo().length() : 0;
             int fine = pos + lunghezza;
             if (fine > pos) {
@@ -763,6 +860,89 @@ public class RenditoreEtichetta {
             righe.add(misuratore.nextLayout(larghezza));
         }
         return righe;
+    }
+
+    /** Una "parola" e' una sequenza di caratteri non-spazio: dove va a capo il testo (fra parole). */
+    private static final Pattern NON_SPAZIO = Pattern.compile("\\S+");
+    /** Passo di riduzione del corpo (in punti tipografici) quando una parola non sta da sola nella larghezza disponibile, vedi {@link #corpoRidottoPerStare}. */
+    private static final float PASSO_RIDUZIONE_A_CAPO = 0.5f;
+    /**
+     * Corpo minimo sotto cui non si scende riducendo una parola per farla stare (regola del
+     * 24/09/2026, vedi la nota di classe: "niente testo tagliato, a capo solo fra parole"). Diverso
+     * dal minimo della scaletta dei corpi dell'editor ({@link Contratto#SCALETTA_CORPI}, 7 pt: quello
+     * e' un vincolo di LEGGE sul corpo che l'utente sceglie per un blocco, il progetto non ha gia' un
+     * minimo per QUESTO scopo (un ripiego interno, solo per la parola che non ci sta) - qui si scende
+     * fino a 5 pt, sotto solo se anche a 5 pt non ci sta (caso estremo: si spezza).
+     */
+    private static final float CORPO_MINIMO_A_CAPO = 5f;
+
+    /**
+     * Se una singola parola di un segmento non sta da sola nella larghezza disponibile, il font di
+     * QUELLA parola si riduce a scalini ({@link #corpoRidottoPerStare}) PRIMA di passare a {@link
+     * LineBreakMeasurer}: cosi' l'a-capo (che spezza solo fra parole) non deve spezzarla carattere
+     * per carattere per farcela entrare, tranne nel caso estremo in cui non ci sta neanche al corpo
+     * minimo. Le altre parole dello stesso segmento restano al corpo originale. Chiamato da {@link
+     * #costruisciRighe}, quindi vale per ogni paragrafo (titolo, ingredienti, produttore, testi
+     * liberi...) e per le voci della tabella dei valori nutrizionali: stesso motore di a-capo,
+     * stessa correzione (regola del 24/09/2026, vedi la nota di classe). Pacchetto-privato PER I
+     * TEST: verifica diretta che una parola isolata troppo larga venga ridotta di corpo invece di
+     * essere lasciata spezzare da {@link LineBreakMeasurer}.
+     */
+    List<Segmento> restringiParoleTroppoLarghe(List<Segmento> segmenti, float larghezza, FontRenderContext frc) {
+        List<Segmento> out = new ArrayList<>();
+        for (Segmento s : segmenti) {
+            String testo = s.testo();
+            if (testo == null || testo.isEmpty()) {
+                out.add(s);
+                continue;
+            }
+            Matcher m = NON_SPAZIO.matcher(testo);
+            List<Segmento> pezzi = null;
+            int pos = 0;
+            while (m.find()) {
+                String parola = m.group();
+                if (s.font().getStringBounds(parola, frc).getWidth() <= larghezza) {
+                    continue;
+                }
+                if (pezzi == null) {
+                    pezzi = new ArrayList<>();
+                }
+                if (m.start() > pos) {
+                    pezzi.add(new Segmento(testo.substring(pos, m.start()), s.font()));
+                }
+                pezzi.add(new Segmento(parola, corpoRidottoPerStare(s.font(), parola, larghezza, frc)));
+                pos = m.end();
+            }
+            if (pezzi == null) {
+                out.add(s);
+            } else {
+                if (pos < testo.length()) {
+                    pezzi.add(new Segmento(testo.substring(pos), s.font()));
+                }
+                out.addAll(pezzi);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Il font piu' piccolo, per passi di {@link #PASSO_RIDUZIONE_A_CAPO} pt, che fa stare {@code
+     * parola} entro {@code larghezza} (mai sotto {@link #CORPO_MINIMO_A_CAPO}): deriva sempre dallo
+     * stesso {@code fontOriginale} (stessa famiglia/stile, solo corpo diverso), cosi' non serve
+     * sapere se era regolare o grassetto. Se nemmeno al minimo ci sta, resta al minimo: la parola
+     * verra' spezzata carattere per carattere da {@link LineBreakMeasurer} (caso estremo, previsto
+     * dalla regola - vedi la nota di classe).
+     */
+    private static Font corpoRidottoPerStare(Font fontOriginale, String parola, float larghezza, FontRenderContext frc) {
+        float pxMinimo = CORPO_MINIMO_A_CAPO * Caratteri.PX_PER_PT;
+        float passoPx = PASSO_RIDUZIONE_A_CAPO * Caratteri.PX_PER_PT;
+        Font corrente = fontOriginale;
+        float px = fontOriginale.getSize2D();
+        while (corrente.getStringBounds(parola, frc).getWidth() > larghezza && px > pxMinimo) {
+            px = Math.max(pxMinimo, px - passoPx);
+            corrente = fontOriginale.deriveFont(px);
+        }
+        return corrente;
     }
 
     /** "INGREDIENTI: " in grassetto + il testo; ogni parola tutta maiuscola di almeno 3 lettere e' un allergene in grassetto. */
@@ -807,11 +987,17 @@ public class RenditoreEtichetta {
         return nonVuoto(prodotto.nomeStampa()) ? prodotto.nomeStampa() : prodotto.nome().toUpperCase(Locale.ITALY);
     }
 
-    private LocalDate risolviScadenza(ProdottoDto prodotto, ParametriStampa parametri) {
+    /**
+     * Quando la scadenza non arriva esplicita nei parametri (anteprima di Stampa prima che
+     * l'operatore la tocchi, o una resa chiamata senza {@code scadenza}): oggi +
+     * {@link Contratto#GIORNI_SCADENZA_PROPOSTI}, sempre - {@code giorniScadenza} del prodotto non
+     * guida piu' la proposta (decisione del cliente del 24/09/2026, docs/api.md).
+     */
+    private LocalDate risolviScadenza(ParametriStampa parametri) {
         if (parametri != null && parametri.scadenza() != null) {
             return parametri.scadenza();
         }
-        return prodotto.giorniScadenza() != null ? LocalDate.now().plusDays(prodotto.giorniScadenza()) : null;
+        return LocalDate.now().plusDays(Contratto.GIORNI_SCADENZA_PROPOSTI);
     }
 
     private String risolviQuantita(ProdottoDto prodotto, ParametriStampa parametri) {
@@ -826,12 +1012,21 @@ public class RenditoreEtichetta {
         return "Prodotto il " + formattaData(LocalDate.now(), formatoData);
     }
 
-    /** Pacchetto-privato per i test: {@code "Preparato da " + siglaOperatore} (docs/api.md; se vuota il blocco non si stampa, vedi haContenuto). */
-    String testoSigla(ProdottoDto prodotto) {
-        return "Preparato da " + prodotto.siglaOperatore();
+    /**
+     * Pacchetto-privato per i test: il testo della data nel blocco "scadenza" - la data vera nel
+     * {@code formatoData} dell'etichetta, oppure, quando {@link ParametriStampa#scadenzaSegnaposto()}
+     * e' vero (editor, docs/api.md), il segnaposto del formato stesso (es. "GG/MM/AAAA"), che occupa
+     * lo stesso spazio della data vera essendo i formati gia' scritti come il testo del segnaposto.
+     */
+    String testoScadenza(ProdottoDto prodotto, ParametriStampa parametri, String formatoData) {
+        if (parametri != null && parametri.scadenzaSegnaposto()) {
+            return formatoData != null ? formatoData : "GG/MM/AAAA";
+        }
+        return formattaData(risolviScadenza(parametri), formatoData);
     }
 
-    private String testoProduttore(ProduttoreDto p) {
+    /** Pacchetto-privato per i test: il testo del blocco "produttore" (docs/api.md; "Confezionato da" in coda, solo se non vuoto). */
+    String testoProduttore(ProduttoreDto p) {
         if (p == null) {
             return "";
         }
@@ -842,6 +1037,12 @@ public class RenditoreEtichetta {
         }
         if (nonVuoto(p.sedeProduzione())) {
             sb.append(" - Prodotto in: ").append(p.sedeProduzione());
+        }
+        // "Confezionato da" (deciso da Gianluca, 25/09/2026): opzionale, nello stesso stile della
+        // sede di produzione sopra - vuoto (o assente, prodotto vecchio) non cambia niente
+        // all'etichetta, cosi' un PNG gia' stampato resta identico byte per byte.
+        if (nonVuoto(p.confezionatoDa())) {
+            sb.append(" - Confezionato da: ").append(p.confezionatoDa());
         }
         return sb.toString();
     }

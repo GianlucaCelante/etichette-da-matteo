@@ -51,6 +51,21 @@ public class CodaDiStampa {
         return lavoro.id;
     }
 
+    /**
+     * Come sopra, con l'id gia' deciso dal chiamante: {@code StampeService} scrive la riga di
+     * storico (con il lavoroId) PRIMA di accodare (docs/api.md, "Storico"), quindi l'id deve
+     * esistere prima del lavoro. {@code IllegalArgumentException} se l'id e' gia' in coda.
+     */
+    public String accoda(String lavoroId, BufferedImage immagine, int rotoloMm, int copie, int margineDot,
+                         boolean taglioAutomatico, boolean prova) {
+        LavoroStampa lavoro = new LavoroStampa(lavoroId, immagine, rotoloMm, Math.max(1, copie), margineDot, taglioAutomatico, prova);
+        if (registro.putIfAbsent(lavoro.id, lavoro) != null) {
+            throw new IllegalArgumentException("lavoro di stampa gia' in coda: " + lavoroId);
+        }
+        inAttesa.add(lavoro);
+        return lavoro.id;
+    }
+
     /** Segna il lavoro come annullato; il thread del monitor lo scopre fra una copia e l'altra. */
     public boolean annulla(String lavoroId) {
         LavoroStampa lavoro = registro.get(lavoroId);

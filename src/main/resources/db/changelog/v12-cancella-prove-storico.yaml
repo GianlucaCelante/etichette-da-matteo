@@ -1,0 +1,27 @@
+databaseChangeLog:
+
+  # Le etichette fatte con la stampa di prova non devono entrare nello storico (decisione del
+  # cliente del 24/09/2026): POST /api/stampe/prova-prodotto non scrive piu' nessuna riga (vedi
+  # StoricoLavori#apri), ma nei dati veri restavano 5 righe con esito "prova" scritte prima di
+  # quella data (id 9, 10, 20, 33, 34). Questo changeset le cancella, coi loro lotti registrati -
+  # anche se in pratica una prova non ne registra mai (StoricoLavori#apri gia' saltava
+  # RisolutoreLottiTracciati#registra per dati.prova() == true): si cancella comunque per
+  # sicurezza, prima dei figli e poi del genitore (le chiavi esterne di storico_lotti verso
+  # storico_stampe, vedi v10-storico-lotti-chiavi-esterne.yaml).
+
+  - changeSet:
+      id: 100-cancella-storico-prove
+      author: etichette
+      comment: >
+        Cancella le righe di storico_stampe con esito 'prova' e le eventuali righe di
+        storico_lotti che le referenziano (storico_id o stampa_storico_id, quest'ultima e' il
+        caso di una prova scelta come "ultima stampa valida" di un semilavorato tracciato - non
+        dovrebbe mai succedere perche' ultimaStampaValida guarda solo esito 'completata', ma si
+        pulisce comunque). Il servizio fa una copia del database prima di ogni aggiornamento
+        (BackupService, vedi installer/update.ps1): questa cancellazione e' quindi recuperabile.
+      changes:
+        - sql:
+            sql: |
+              DELETE FROM storico_lotti WHERE storico_id IN (SELECT id FROM storico_stampe WHERE esito = 'prova');
+              DELETE FROM storico_lotti WHERE stampa_storico_id IN (SELECT id FROM storico_stampe WHERE esito = 'prova');
+              DELETE FROM storico_stampe WHERE esito = 'prova';

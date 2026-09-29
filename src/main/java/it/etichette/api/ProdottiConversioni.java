@@ -7,6 +7,7 @@ import it.etichette.dati.ProdottoRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -32,13 +33,29 @@ public class ProdottiConversioni {
         }, List.of());
         List<ValoreNutrizionaleDto> valori = json.leggi(p.getValoriNutrizionali(), new TypeReference<List<ValoreNutrizionaleDto>>() {
         }, List.of());
-        EtichettaProdottoDto etichetta = leggiEtichetta(p.getEtichetta());
-        return new ProdottoDto(p.getId(), p.getNome(), p.getNomeStampa(), etichetta, p.getIngredienti(),
+        EtichettaProdottoDto etichetta = leggiEtichetta(p.getEtichetta(), p.getConservazione());
+        // ingredienti non e' mai null in lettura (come zona/blocchi sopra): un prodotto creato
+        // prima del 24/09/2026 (difetto, vedi conValoriDiPartenza) puo' averlo ancora null in
+        // colonna, e l'interfaccia lo passa cosi' com'e' al gruppo "Ingredienti collegati" - che
+        // ci chiama .trim() sopra senza aspettarselo null, mandando la pagina a schermo bianco.
+        String ingredienti = p.getIngredienti() != null ? p.getIngredienti() : "";
+        return new ProdottoDto(p.getId(), p.getNome(), p.getNomeStampa(), etichetta, ingredienti,
                 allergeni, p.getModoUso(), p.getGiorniScadenza(), p.getConservazione(), p.getQuantita(), valori,
                 p.getSiglaOperatore(), p.getUsi(), p.getUltimoUso(), p.getCreatoIl(), p.getModificatoIl());
     }
 
+    /** Comportamento di sempre: un {@code etichetta.schemaLotto} mancante prende il default "data" (creazione, duplicazione). */
     public void applicaCampi(Prodotto entita, ProdottoDto dto) {
+        applicaCampi(entita, dto, Contratto.SCHEMA_LOTTO_DEFAULT);
+    }
+
+    /**
+     * Come sopra, ma con {@code schemaLottoSeAssente} come ripiego per un {@code
+     * etichetta.schemaLotto} mancante nella richiesta, invece del default fisso "data" - usato dalla
+     * PUT (docs/api.md, difetto del 23/09/2026): una PUT che non manda {@code schemaLotto} non deve
+     * resettarlo, deve lasciare quello attuale del prodotto (vedi {@link #schemaLottoAttuale}).
+     */
+    public void applicaCampi(Prodotto entita, ProdottoDto dto, String schemaLottoSeAssente) {
         entita.setNomeStampa(dto.nomeStampa());
         entita.setIngredienti(dto.ingredienti());
         entita.setPuoContenere(json.scrivi(dto.allergeni() != null ? dto.allergeni() : List.of()));
@@ -48,7 +65,12 @@ public class ProdottiConversioni {
         entita.setQuantita(dto.quantita());
         entita.setValoriNutrizionali(json.scrivi(dto.valoriNutrizionali() != null ? dto.valoriNutrizionali() : List.of()));
         entita.setSiglaOperatore(dto.siglaOperatore());
-        entita.setEtichetta(json.scrivi(normalizzaEtichetta(dto.etichetta())));
+        entita.setEtichetta(json.scrivi(normalizzaEtichetta(dto.etichetta(), schemaLottoSeAssente, dto.conservazione())));
+    }
+
+    /** Lo schemaLotto ATTUALE di un prodotto gia' salvato, da usare come ripiego in una PUT che non lo manda (vedi {@link #applicaCampi(Prodotto, ProdottoDto, String)}). */
+    public String schemaLottoAttuale(Prodotto entita) {
+        return leggiEtichetta(entita.getEtichetta(), entita.getConservazione()).schemaLotto();
     }
 
     public ProdottoDto converti(Object corpoGrezzo) {
@@ -68,15 +90,21 @@ public class ProdottiConversioni {
         Integer giorniScadenza = dto.giorniScadenza() != null ? dto.giorniScadenza() : 3;
         String conservazione = nonVuoto(dto.conservazione()) ? dto.conservazione() : "In frigo";
         String quantita = nonVuoto(dto.quantita()) ? dto.quantita() : "500 g";
+        // Vuoto (non null) se assente: a differenza di conservazione/quantita' qui non c'e' un
+        // valore di partenza sensato da proporre, ma lasciarlo null (difetto trovato il
+        // 24/09/2026) mandava l'interfaccia a schermo bianco appena si accendeva il blocco
+        // "Ingredienti" su un'etichetta nuova - vedi ProdottiConversioni#aDto e
+        // CampoIngredientiCollegati/useProposteIngredienti nell'interfaccia.
+        String ingredienti = dto.ingredienti() != null ? dto.ingredienti() : "";
         List<String> allergeni = dto.allergeni() != null ? dto.allergeni() : List.of();
         List<ValoreNutrizionaleDto> valori = dto.valoriNutrizionali() != null ? dto.valoriNutrizionali() : List.of();
         EtichettaProdottoDto etichetta = dto.etichetta() != null ? dto.etichetta() : etichettaMinima();
-        return new ProdottoDto(dto.id(), nome, nomeStampa, etichetta, dto.ingredienti(), allergeni, dto.modoUso(),
+        return new ProdottoDto(dto.id(), nome, nomeStampa, etichetta, ingredienti, allergeni, dto.modoUso(),
                 giorniScadenza, conservazione, quantita, valori, dto.siglaOperatore(), dto.usi(), dto.ultimoUso(),
                 dto.creatoIl(), dto.modificatoIl());
     }
 
-    /** Titolo 14, scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2. */
+    /** Titolo 14, scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2, schema del lotto "data". */
     private EtichettaProdottoDto etichettaMinima() {
         ProduttoreDto produttoreDiPartenza = prodotti.findTopByOrderByIdDesc()
                 .map(this::aDto).map(ProdottoDto::etichetta).map(EtichettaProdottoDto::produttore)
@@ -85,25 +113,97 @@ public class ProdottiConversioni {
                 new BloccoDto("titolo", true, 14, "piena", null),
                 new BloccoDto("scadenza", true, 8, "piena", null),
                 new BloccoDto("lotto", true, 7, "piena", null));
-        return new EtichettaProdottoDto("Scade il", "GG/MM/AAAA", produttoreDiPartenza,
+        return new EtichettaProdottoDto("Scade il", "GG/MM/AAAA", Contratto.SCHEMA_LOTTO_DEFAULT, produttoreDiPartenza,
                 new ZonaDto("1/2"), blocchi);
     }
 
-    private EtichettaProdottoDto leggiEtichetta(String etichettaJson) {
+    private EtichettaProdottoDto leggiEtichetta(String etichettaJson, String conservazione) {
         EtichettaProdottoDto e = json.leggi(etichettaJson, new TypeReference<EtichettaProdottoDto>() {
         }, null);
-        return normalizzaEtichetta(e);
+        return normalizzaEtichetta(e, Contratto.SCHEMA_LOTTO_DEFAULT, conservazione);
     }
 
-    /** zona SEMPRE presente (default "1/3"), blocchi SEMPRE non-null (default []): docs/api.md. */
-    private static EtichettaProdottoDto normalizzaEtichetta(EtichettaProdottoDto e) {
+    /**
+     * zona SEMPRE presente (default "1/3"), blocchi SEMPRE non-null (default []), schemaLotto
+     * SEMPRE presente: unico punto per lettura E scrittura, cosi' un'etichetta salvata senza
+     * schemaLotto (o con un vecchio dato letto prima di questa colonna) prende un valore sensato sia
+     * al salvataggio sia alla lettura. {@code schemaLottoSeAssente} e' quel valore: {@link
+     * Contratto#SCHEMA_LOTTO_DEFAULT} ("data") in lettura e in creazione/duplicazione, lo schemaLotto
+     * ATTUALE del prodotto in una PUT (docs/api.md, difetto del 23/09/2026: una PUT che non manda
+     * schemaLotto non deve resettarlo a "data" - vedi {@link #applicaCampi(Prodotto, ProdottoDto, String)}).
+     *
+     * <p>Toglie anche un eventuale blocco "qr" o "sigla": non sono piu' tipi di blocco offerti
+     * (rispettivamente dal 24/09/2026 e dal 25/09/2026, decisi dal cliente), quindi non passano
+     * piu' da qui in SCRITTURA - {@code valida()} li rifiuta prima, con 400, non essendo piu' in
+     * {@link Contratto#TIPI_BLOCCO}. Il filtro qui serve alla LETTURA di un'etichetta gia' salvata
+     * che li avesse ancora: l'editor non li mostra piu' e, al prossimo salvataggio, spariscono
+     * anche dal database (senza bisogno di un intervento manuale sui dati).
+     *
+     * <p>Aggiunge, quando manca, il blocco "conservazione" (vedi {@link
+     * #conConservazioneSeManca}, dal 24/09/2026): stesso ragionamento del "qr" sopra, ma al
+     * contrario - qui la migrazione serve ANCHE in scrittura (non solo in lettura), perche' senza
+     * quel blocco esplicito un'etichetta vecchia perderebbe la riga della conservazione alla
+     * stampa (non e' piu' disegnata dentro "scadenza", vedi RenditoreEtichetta). Essendo questo
+     * l'UNICO punto che normalizza i blocchi sia in lettura (aDto/leggiEtichetta) sia in scrittura
+     * (applicaCampi), e tutti i percorsi della resa (stampa vera, "Stampa di prova", anteprima e
+     * misure per {@code prodottoId}, ristampa, duplica) passano da {@code aDto} per costruire il
+     * {@code ProdottoDto} che arriva a {@code RenditoreEtichetta}, la migrazione si applica
+     * ovunque automaticamente. L'unica eccezione e' l'anteprima/misure per un {@code prodotto} in
+     * modifica mandato COSI' COM'E' dall'editor ({@code ResaController#prodottoPerAnteprima}): in
+     * quel caso non serve comunque, perche' quel {@code prodotto} e' sempre nato da una lettura
+     * gia' passata da qui (la bozza dell'editor parte da {@code GET /api/prodotti/{id}}).
+     */
+    private static EtichettaProdottoDto normalizzaEtichetta(EtichettaProdottoDto e, String schemaLottoSeAssente, String conservazione) {
         if (e == null) {
-            return new EtichettaProdottoDto(null, null, null, new ZonaDto(Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT), List.of());
+            return new EtichettaProdottoDto(null, null, schemaLottoSeAssente, null,
+                    new ZonaDto(Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT), List.of());
         }
         String larghezzaDestra = e.zona() != null && e.zona().larghezzaDestra() != null
                 ? e.zona().larghezzaDestra() : Contratto.ZONA_LARGHEZZA_DESTRA_DEFAULT;
-        List<BloccoDto> blocchi = e.blocchi() != null ? e.blocchi() : List.of();
-        return new EtichettaProdottoDto(e.dicituraScadenza(), e.formatoData(), e.produttore(), new ZonaDto(larghezzaDestra), blocchi);
+        // "sigla" e' andato via come "qr" sopra (deciso da Gianluca, 25/09/2026): niente piu' un
+        // tipo di blocco offerto, quindi non passa piu' da qui in SCRITTURA (validaEtichetta lo
+        // rifiuta prima, con 400, non essendo piu' in Contratto.TIPI_BLOCCO); qui si toglie un
+        // eventuale blocco "sigla" rimasto su un'etichetta salvata prima del cambio, in lettura
+        // E in scrittura, cosi' un prodotto vecchio non si rompe (niente 400 a una PUT che lo
+        // risalvasse senza toccarlo).
+        List<BloccoDto> blocchi = e.blocchi() != null
+                ? e.blocchi().stream().filter(b -> !"qr".equals(b.tipo()) && !"sigla".equals(b.tipo())).toList() : List.of();
+        blocchi = conConservazioneSeManca(blocchi, conservazione);
+        String schemaLotto = nonVuoto(e.schemaLotto()) ? e.schemaLotto() : schemaLottoSeAssente;
+        return new EtichettaProdottoDto(e.dicituraScadenza(), e.formatoData(), schemaLotto, e.produttore(),
+                new ZonaDto(larghezzaDestra), blocchi);
+    }
+
+    /**
+     * Se l'etichetta ha un blocco "scadenza" ma NON gia' un blocco "conservazione", e la
+     * conservazione del prodotto non e' vuota, ne aggiunge uno subito dopo lo "scadenza" - stessa
+     * zona/colonna, stesso stato acceso, corpo e allineamento dello "scadenza" (deciso dal
+     * cliente, 24/09/2026: "Conservazione" diventa un blocco a se', non piu' una riga dentro
+     * "scadenza" - vedi RenditoreEtichetta#disegnaBlocco, che ora la stampa SOLO dal blocco
+     * "conservazione"). Serve alle etichette gia' salvate PRIMA di questo cambio: senza il blocco
+     * esplicito la stampa smetterebbe di mostrare la conservazione. Un'etichetta senza "scadenza",
+     * o che ha gia' un blocco "conservazione" (nuova, o gia' passata di qui una volta - idempotente),
+     * resta cosi' com'e'.
+     */
+    private static List<BloccoDto> conConservazioneSeManca(List<BloccoDto> blocchi, String conservazione) {
+        if (!nonVuoto(conservazione) || blocchi.stream().anyMatch(b -> "conservazione".equals(b.tipo()))) {
+            return blocchi;
+        }
+        int indiceScadenza = -1;
+        for (int i = 0; i < blocchi.size(); i++) {
+            if ("scadenza".equals(blocchi.get(i).tipo())) {
+                indiceScadenza = i;
+                break;
+            }
+        }
+        if (indiceScadenza < 0) {
+            return blocchi;
+        }
+        BloccoDto scadenza = blocchi.get(indiceScadenza);
+        BloccoDto nuovo = new BloccoDto("conservazione", scadenza.acceso(), scadenza.corpo(), scadenza.colonna(), null, scadenza.allineamento());
+        List<BloccoDto> risultato = new ArrayList<>(blocchi);
+        risultato.add(indiceScadenza + 1, nuovo);
+        return risultato;
     }
 
     public static void valida(ProdottoDto dto) {
@@ -127,6 +227,9 @@ public class ProdottiConversioni {
         }
         if (etichetta.formatoData() != null && !Contratto.FORMATI_DATA.contains(etichetta.formatoData())) {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta.formatoData: valore non ammesso: " + etichetta.formatoData());
+        }
+        if (etichetta.schemaLotto() != null && !Contratto.SCHEMI_LOTTO.contains(etichetta.schemaLotto())) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta.schemaLotto: valore non ammesso: " + etichetta.schemaLotto());
         }
         if (etichetta.zona() != null && etichetta.zona().larghezzaDestra() != null
                 && !Contratto.FRAZIONI_ZONA.contains(etichetta.zona().larghezzaDestra())) {

@@ -1,0 +1,188 @@
+databaseChangeLog:
+  # Tracciabilita' dei lotti (docs/api.md, "Ingredienti, fornitori e lotti", deciso il 22
+  # settembre 2026): anagrafica ingredienti/fornitori, le consegne (arrivi) e i sacchi arrivati
+  # (lotti_ingrediente - da non confondere con la tabella "lotti", il progressivo del numero
+  # stampato sull'etichetta, invariata). L'anagrafica nasce vuota: nessun dato di partenza qui.
+
+  - changeSet:
+      id: 32-fornitori
+      author: etichette
+      comment: "Fornitori: nascono impliciti scrivendo un nome nuovo in un ingrediente o in un arrivo, nessun endpoint di creazione proprio."
+      changes:
+        - createTable:
+            tableName: fornitori
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nome_chiave
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: creato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 33-ingredienti
+      author: etichette
+      comment: "Anagrafica ingredienti: nasce vuota (docs/api.md), il primo ingrediente si crea insieme al primo lotto alla prima consegna."
+      changes:
+        - createTable:
+            tableName: ingredienti
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nome
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nome_chiave
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: fornitore_id
+                  type: INTEGER
+                  constraints:
+                    references: fornitori(id)
+                    foreignKeyName: fk_ingredienti_fornitore
+              - column:
+                  name: creato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: modificato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 34-arrivi
+      author: etichette
+      comment: "Una consegna del fornitore (documento + data): le righe creano subito i lotti, gia' aperti."
+      changes:
+        - createTable:
+            tableName: arrivi
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: fornitore_id
+                  type: INTEGER
+                  constraints:
+                    references: fornitori(id)
+                    foreignKeyName: fk_arrivi_fornitore
+              - column:
+                  name: fornitore_nome
+                  type: TEXT
+              - column:
+                  name: data
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento
+                  type: TEXT
+              - column:
+                  name: creato_il
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 35-lotti-ingrediente
+      author: etichette
+      comment: >
+        Il sacco arrivato (da non confondere con la tabella "lotti", il progressivo del numero
+        stampato sull'etichetta): codice del fornitore, scadenza scrivibile dopo, stato
+        aperto/chiuso. Indici su ingrediente_id e stato: sono i due filtri di ogni lettura
+        dell'anagrafica (elenco, chiusura automatica degli scaduti).
+      changes:
+        - createTable:
+            tableName: lotti_ingrediente
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ingrediente_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+                    references: ingredienti(id)
+                    foreignKeyName: fk_lotti_ingrediente_ingrediente
+              - column:
+                  name: codice
+                  type: TEXT
+              - column:
+                  name: scadenza
+                  type: TEXT
+              - column:
+                  name: quantita
+                  type: TEXT
+              - column:
+                  name: stato
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: arrivo_id
+                  type: INTEGER
+                  constraints:
+                    references: arrivi(id)
+                    foreignKeyName: fk_lotti_ingrediente_arrivo
+              - column:
+                  name: aperto_dal
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: chiuso_il
+                  type: TEXT
+              - column:
+                  name: chiuso_da
+                  type: TEXT
+        - createIndex:
+            indexName: idx_lotti_ingrediente_ingrediente
+            tableName: lotti_ingrediente
+            columns:
+              - column:
+                  name: ingrediente_id
+        - createIndex:
+            indexName: idx_lotti_ingrediente_stato
+            tableName: lotti_ingrediente
+            columns:
+              - column:
+                  name: stato

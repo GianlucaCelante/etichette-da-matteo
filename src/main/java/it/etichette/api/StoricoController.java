@@ -1,54 +1,258 @@
 package it.etichette.api;
 
+import it.etichette.dati.Arrivo;
+import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.LottoIngrediente;
+import it.etichette.dati.LottoIngredienteRepository;
+import it.etichette.dati.RicercaStorico;
 import it.etichette.dati.StoricoStampa;
 import it.etichette.dati.StoricoStampaRepository;
 import it.etichette.dispositivi.DispositiviService;
+import it.etichette.ingredienti.IngredientiConversioni;
 import it.etichette.stampe.RispostaStampa;
 import it.etichette.stampe.StampeService;
+import it.etichette.storico.EsportazioneStoricoService;
+import it.etichette.storico.FormatoEsportazione;
+import it.etichette.storico.RigaEsportazione;
+import it.etichette.tracciati.CatenaService;
+import it.etichette.tracciati.RisolutoreLottiTracciati;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/** {@code /api/storico} (docs/api.md): tracciabilita' delle stampe, con ristampa. */
+/** {@code /api/storico} (docs/api.md): tracciabilita' delle stampe, con ristampa e la catena dei lotti. */
 @RestController
 @RequestMapping("/api/storico")
 public class StoricoController {
 
+    /** {@code limite} (docs/api.md): una pagina non supera mai queste righe. */
+    private static final int LIMITE_MASSIMO = 1000;
+    /** {@code ultime-valide} (docs/api.md): una query per prodotto, quindi un tetto per richiesta. */
+    private static final int PRODOTTI_MASSIMI = 100;
+    /** {@code esporta} (docs/api.md): valori ammessi per {@code periodo} - a differenza di {@link #elenco}, qui uno sconosciuto e' un errore. */
+    private static final Set<String> PERIODI_VALIDI = Set.of("oggi", "7", "30", "tutto");
+    private static final DateTimeFormatter DATA_ITALIANA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter DATA_FILE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     private final StoricoStampaRepository storico;
+    private final RicercaStorico ricerca;
+    private final RisolutoreLottiTracciati risolutore;
+    private final LottoIngredienteRepository lottiIngrediente;
+    private final ArrivoRepository arrivi;
     private final StampeService stampe;
+    private final CatenaService catena;
     private final Json json;
     private final DispositiviService dispositivi;
+    private final EsportazioneStoricoService esportazione;
 
-    public StoricoController(StoricoStampaRepository storico, StampeService stampe, Json json,
-                              DispositiviService dispositivi) {
+    public StoricoController(StoricoStampaRepository storico, RicercaStorico ricerca, RisolutoreLottiTracciati risolutore,
+                              LottoIngredienteRepository lottiIngrediente, ArrivoRepository arrivi,
+                              StampeService stampe, CatenaService catena, Json json, DispositiviService dispositivi,
+                              EsportazioneStoricoService esportazione) {
         this.storico = storico;
+        this.ricerca = ricerca;
+        this.risolutore = risolutore;
+        this.lottiIngrediente = lottiIngrediente;
+        this.arrivi = arrivi;
         this.stampe = stampe;
+        this.catena = catena;
         this.json = json;
         this.dispositivi = dispositivi;
+        this.esportazione = esportazione;
     }
 
+    /**
+     * Elenco dal piu' recente (docs/api.md, "Storico"). Senza {@code prodottoId}, {@code esito},
+     * {@code lavoroId}, {@code limite} e {@code primaDi} risponde esattamente come prima che
+     * esistessero (i telefoni possono avere ancora in cache l'interfaccia vecchia, che non li
+     * conosce): tutte le righe che corrispondono a {@code periodo} e {@code q}. Filtri, ordine e
+     * limite stanno nella query ({@link RicercaStorico}), non piu' in Java sull'intera tabella.
+     */
     @GetMapping
     public List<Map<String, Object>> elenco(@RequestParam(required = false, defaultValue = "tutto") String periodo,
-                                              @RequestParam(required = false) String q) {
-        LocalDateTime soglia = soglia(periodo);
-        List<StoricoStampa> righe = storico.findAllByOrderByStampatoIlDesc();
-        String frammento = q != null ? q.toLowerCase() : null;
-        return righe.stream()
-                .filter(r -> soglia == null || !r.getStampatoIl().isBefore(soglia))
-                .filter(r -> frammento == null || frammento.isBlank()
-                        || r.getProdottoNome().toLowerCase().contains(frammento)
-                        || (r.getLotto() != null && r.getLotto().toLowerCase().contains(frammento)))
-                .map(this::aDto)
-                .toList();
+                                              @RequestParam(required = false) String q,
+                                              @RequestParam(required = false) Long prodottoId,
+                                              @RequestParam(required = false) String esito,
+                                              @RequestParam(required = false) String lavoroId,
+                                              @RequestParam(required = false) Integer limite,
+                                              @RequestParam(required = false) Long primaDi) {
+        if (limite != null && (limite < 1 || limite > LIMITE_MASSIMO)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "limite: deve essere fra 1 e " + LIMITE_MASSIMO);
+        }
+        if (primaDi != null && !storico.existsById(primaDi)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "primaDi: riga di storico non trovata: " + primaDi);
+        }
+        String frammento = q != null && !q.isBlank() ? q.toLowerCase() : null;
+        // I lotti d'ingrediente il cui codice EFFETTIVO (docs/api.md, "Storico", difetto del
+        // 23/09/2026: la ricerca non trovava il codice del lotto del fornitore, solo
+        // prodotto/lotto stampato) contiene il testo cercato: la query poi tiene le stampe che
+        // hanno registrato uno di questi.
+        Set<Long> lottoIdsTrovati = frammento != null ? lottoIdsConCodice(frammento) : Set.of();
+        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(soglia(periodo), frammento, lottoIdsTrovati,
+                prodottoId, nonVuoto(esito), nonVuoto(lavoroId), primaDi, limite));
+        return aDtos(righe);
+    }
+
+    /**
+     * {@code GET /api/storico/esporta?formato=xlsx|csv|pdf&periodo=oggi|7|30|tutto&q=testo}
+     * (docs/api.md, "Storico"): stesse righe, stesso filtro e stesso ordine di {@link #elenco} con
+     * gli stessi {@code periodo} e {@code q}, ma SENZA limite - lo storico si scarica intero, non
+     * una pagina. La ricerca resta la stessa di {@link #elenco} (stesso {@link RicercaStorico},
+     * stesso {@link #lottoIdsConCodice}): qui si valida solo {@code formato}, e si tollera solo un
+     * {@code periodo} noto - un valore sconosciuto in {@link #elenco} torna silenziosamente
+     * "tutto" (i telefoni con l'interfaccia vecchia), ma un download non deve mai scaricare un file
+     * diverso da quello richiesto senza dirlo.
+     */
+    @GetMapping("/esporta")
+    public ResponseEntity<StreamingResponseBody> esporta(@RequestParam(required = false) String formato,
+                                                            @RequestParam(required = false, defaultValue = "tutto") String periodo,
+                                                            @RequestParam(required = false) String q) {
+        FormatoEsportazione f = FormatoEsportazione.diParametro(formato);
+        LocalDateTime da = sogliaValidata(periodo);
+        String frammento = q != null && !q.isBlank() ? q.toLowerCase() : null;
+        Set<Long> lottoIdsTrovati = frammento != null ? lottoIdsConCodice(frammento) : Set.of();
+        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(da, frammento, lottoIdsTrovati, null, null, null, null, null));
+        List<RigaEsportazione> righeEsportate = righe.stream().map(RigaEsportazione::da).toList();
+        int totaleCopie = righe.stream().mapToInt(StoricoStampa::getCopie).sum();
+        LocalDateTime generatoIl = LocalDateTime.now();
+        String descrizionePeriodo = descrizionePeriodo(periodo);
+        String ricercaVisualizzata = frammento != null ? q.trim() : null;
+
+        StreamingResponseBody corpo = out -> {
+            switch (f) {
+                case CSV -> esportazione.scriviCsv(righeEsportate, out);
+                case XLSX -> esportazione.scriviXlsx(righeEsportate, out);
+                case PDF -> esportazione.scriviPdf(righeEsportate, descrizionePeriodo, ricercaVisualizzata, totaleCopie, generatoIl, out);
+            }
+        };
+        String nomeFile = "storico-stampe-" + tokenPeriodo(periodo) + "-" + LocalDate.now().format(DATA_FILE) + "." + f.estensione();
+        return ResponseEntity.ok()
+                .contentType(f.tipoContenuto())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomeFile + "\"")
+                .body(corpo);
+    }
+
+    /** Come {@link #soglia}, ma {@code 400} (docs/api.md) su un {@code periodo} che non e' oggi, 7, 30 o tutto. */
+    private LocalDateTime sogliaValidata(String periodo) {
+        if (!PERIODI_VALIDI.contains(periodo)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "periodo: deve essere oggi, 7, 30 o tutto");
+        }
+        return soglia(periodo);
+    }
+
+    /** Il pezzo di {@code periodo} nel nome del file scaricato (docs/api.md). */
+    private static String tokenPeriodo(String periodo) {
+        return switch (periodo) {
+            case "oggi" -> "oggi";
+            case "7" -> "7-giorni";
+            case "30" -> "30-giorni";
+            default -> "tutto";
+        };
+    }
+
+    /** La riga del filtro applicato nell'intestazione del PDF (docs/api.md). */
+    private static String descrizionePeriodo(String periodo) {
+        return switch (periodo) {
+            case "oggi" -> "Oggi, " + LocalDate.now().format(DATA_ITALIANA);
+            case "7" -> "Ultimi 7 giorni";
+            case "30" -> "Ultimi 30 giorni";
+            default -> "Tutto lo storico";
+        };
+    }
+
+    /**
+     * {@code GET /api/storico/ultime-valide?prodotti=1,8,3} (docs/api.md, "Storico"): per ogni
+     * prodotto, la stampa che un semilavorato registrerebbe adesso - con la STESSA regola della
+     * stampa ({@link RisolutoreLottiTracciati#ultimaStampaValida}), cosi' la striscia dei lotti
+     * in Stampa non puo' mostrare una riga diversa da quella che verra' registrata. Un prodotto
+     * senza una stampa valida non compare nella risposta; senza {@code prodotti}, {@code {}}.
+     */
+    @GetMapping("/ultime-valide")
+    public Map<String, Map<String, Object>> ultimeValide(@RequestParam(required = false) List<Long> prodotti) {
+        if (prodotti != null && prodotti.size() > PRODOTTI_MASSIMI) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "prodotti: al massimo " + PRODOTTI_MASSIMI + " per richiesta");
+        }
+        LocalDate oggi = LocalDate.now();
+        Map<Long, StoricoStampa> trovate = new LinkedHashMap<>();
+        for (Long prodottoId : prodotti != null ? new LinkedHashSet<>(prodotti) : Set.<Long>of()) {
+            if (prodottoId != null) {
+                risolutore.ultimaStampaValida(prodottoId, oggi).ifPresent(s -> trovate.put(prodottoId, s));
+            }
+        }
+        Map<Long, int[]> conteggi = catena.conteggiPerStorico(trovate.values().stream().map(StoricoStampa::getId).toList());
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        trovate.forEach((prodottoId, s) -> out.put(String.valueOf(prodottoId), aDto(s, conteggi.getOrDefault(s.getId(), new int[] {0, 0}))));
+        return out;
+    }
+
+    private List<Map<String, Object>> aDtos(List<StoricoStampa> righe) {
+        // Conteggi caricati in blocco per le sole righe della risposta (una query), non riga per riga.
+        Map<Long, int[]> conteggi = catena.conteggiPerStorico(righe.stream().map(StoricoStampa::getId).toList());
+        return righe.stream().map(r -> aDto(r, conteggi.getOrDefault(r.getId(), new int[] {0, 0}))).toList();
+    }
+
+    /**
+     * I lotti d'ingrediente il cui "codice effettivo" (docs/api.md, stessa regola di {@link
+     * IngredientiConversioni#codiceEffettivo}: il codice del fornitore, o documento+data
+     * dell'arrivo se manca) contiene {@code frammento}. Calcolato in Java perche' il codice
+     * effettivo non e' una colonna; la tabella dei lotti e' piccola (non cresce con la storia
+     * delle stampe, come invece {@code storico_lotti}), le stampe che li hanno registrati le trova
+     * poi la query di {@link RicercaStorico} con una sottoquery su {@code storico_lotti}.
+     */
+    private Set<Long> lottoIdsConCodice(String frammento) {
+        List<LottoIngrediente> tuttiILotti = lottiIngrediente.findAll();
+        if (tuttiILotti.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> arrivoIds = tuttiILotti.stream().map(LottoIngrediente::getArrivoId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Arrivo> arriviPerId = arrivi.findAllById(arrivoIds).stream().collect(Collectors.toMap(Arrivo::getId, a -> a));
+
+        Set<Long> lottoIdsTrovati = new HashSet<>();
+        for (LottoIngrediente l : tuttiILotti) {
+            Arrivo arrivo = l.getArrivoId() != null ? arriviPerId.get(l.getArrivoId()) : null;
+            String codice = IngredientiConversioni.codiceEffettivo(l, arrivo);
+            if (codice != null && codice.toLowerCase().contains(frammento)) {
+                lottoIdsTrovati.add(l.getId());
+            }
+        }
+        return lottoIdsTrovati;
+    }
+
+    private static String nonVuoto(String valore) {
+        return valore != null && !valore.isBlank() ? valore : null;
+    }
+
+    @GetMapping("/{id}/catena")
+    public CatenaDto dettaglioCatena(@PathVariable Long id) {
+        return catena.dettaglio(id);
+    }
+
+    @PutMapping("/{id}/catena")
+    public CatenaDto correggiCatena(@PathVariable Long id, @RequestBody Map<String, Object> corpo) {
+        RichiestaCorrezioneCatena r = json.converti(corpo, RichiestaCorrezioneCatena.class);
+        return catena.correggi(id, r.lotti(), r.stampe());
     }
 
     @PostMapping("/{id}/ristampa")
@@ -62,6 +266,10 @@ public class StoricoController {
     private record RichiestaCopie(Integer copie) {
     }
 
+    /** {@code stampe} (docs/api.md): chiave = id del prodotto tracciato, valore = id della riga di storico scelta, o {@code null} per "non registrato". */
+    private record RichiestaCorrezioneCatena(Map<Long, List<Long>> lotti, Map<Long, Long> stampe) {
+    }
+
     private LocalDateTime soglia(String periodo) {
         LocalDateTime oggiMezzanotte = LocalDateTime.now().toLocalDate().atStartOfDay();
         return switch (periodo) {
@@ -72,7 +280,7 @@ public class StoricoController {
         };
     }
 
-    private Map<String, Object> aDto(StoricoStampa r) {
+    private Map<String, Object> aDto(StoricoStampa r, int[] conteggio) {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("id", r.getId());
         out.put("stampatoIl", r.getStampatoIl());
@@ -85,6 +293,13 @@ public class StoricoController {
         out.put("copie", r.getCopie());
         out.put("dispositivoNome", r.getDispositivoNome());
         out.put("esito", r.getEsito());
+        out.put("lottiRegistrati", conteggio[0]);
+        out.put("lottiNonRegistrati", conteggio[1]);
+        out.put("correttoIl", r.getCorrettoIl());
+        // Il lavoroId del lavoro che ha scritto questa riga (docs/api.md, difetto del 23/09/2026):
+        // la schermata Stampa lo confronta col lavoroId in corso per trovare la SUA riga, invece di
+        // prendere sempre la piu' recente. null per le righe scritte prima di questa colonna.
+        out.put("lavoroId", r.getLavoroId());
         return out;
     }
 }

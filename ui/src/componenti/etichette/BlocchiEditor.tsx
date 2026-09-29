@@ -99,10 +99,18 @@ interface ProprietaBlocchiEditor {
 // Il vassoio dei blocchi: si accendono, si misurano in punti, si mettono a
 // piena larghezza o in una delle due colonne, si riordinano trascinando
 // (anche su touch: la maniglia ha touch-action:none). Dove comincia una
-// zona a due colonne compare l'intestazione coi due lati e le quote.
+// zona a due colonne compare l'intestazione coi due lati e le quote. Il
+// trascinamento parte da qualunque punto libero della riga, non solo dalla
+// maniglia (deciso da Gianluca, 24/09/2026: BloccoRiga mette gli "ascoltatori"
+// del puntatore sulla riga intera) - la soglia di 6 px prima che il
+// trascinamento scatti davvero e' quello che lascia funzionare al clic i
+// controlli dentro la riga (interruttore, tendina, allineamento/posizione,
+// cestino): senza muovere il puntatore oltre la soglia, dnd-kit non attiva
+// mai il trascinamento (niente preventDefault/stopPropagation), quindi il
+// click nativo del controllo arriva comunque a destinazione.
 export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestra, onCambiaLarghezzaDestra }: ProprietaBlocchiEditor) {
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
-  const sensori = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const sensori = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const onToggleAcceso = useCallback(
     (chiave: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, acceso: !b.acceso } : b))),

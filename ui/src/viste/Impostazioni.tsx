@@ -1,37 +1,35 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { percorsoLogo, percorsoQrRete } from "../api/client";
+import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { ErroreRichiesta, percorsoQrRete } from "../api/client";
 import {
-  useCaricaLogo,
+  useCercaStampante,
   useDispositivi,
   useEliminaDispositivo,
   useEliminaDispositiviSenzaNome,
-  useEliminaLogo,
+  useEseguiBackupOra,
   useImpostazioni,
   useLavoroStampa,
-  useLogoEsiste,
-  useLotto,
+  useProgramma,
   useProvaStampa,
   useRete,
+  useSalvaCartellaBackup,
   useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
-import type { Dispositivo, SchemaLotto, SchemaLottoInfo, Stampante } from "../api/tipi";
+import type { Dispositivo, Stampante } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
+import { plurale } from "../componenti/stampa/formattazione";
 import {
   IconaAllarme,
-  IconaCarica,
   IconaCercaDiNuovo,
-  IconaImmagine,
+  IconaCopia,
+  IconaScarica,
   IconaSpunta,
   IconaStampa,
   IconaTelefono,
 } from "../componenti/Icone";
 import ConfermaInline from "../componenti/ConfermaInline";
 import Sezione from "../componenti/Sezione";
-
-const TIPI_LOGO_VALIDI = ["image/png", "image/jpeg"];
-const LOGO_MASSIMO_BYTE = 2_000_000;
 
 const MARGINE_MINIMO_MM = 3;
 
@@ -48,7 +46,19 @@ function Riga({
 }) {
   return (
     <div className="riga">
-      <div className="min-w-0 flex-1">
+      {/* basis-[84px] (non flex-1, che azzera la base): la base e' quella
+          da cui si CRESCE o ci si RESTRINGE (grow/shrink), ma il browser
+          decide se titolo e valore stanno sulla stessa riga guardando la
+          base PRIMA di restringere - una base larga quanto il valore piu'
+          lungo (160px, prima) mandava a capo anche titoli corti come
+          "Modello" che ci stavano comodi (bug trovato in revisione,
+          25/09/2026: "Brother QL-1100c" finiva sulla riga sotto a 320px pur
+          avanzando spazio). 84px basta al titolo piu' corto per restare su
+          una riga sola col valore quando c'e' posto; quando non c'e' (un
+          valore lungo, o "sotto" scritto sotto il titolo) va comunque a capo
+          TUTTO insieme, non parola per parola - vedi .riga{flex-wrap} in
+          index.css. */}
+      <div className="min-w-0 grow shrink basis-[84px]">
         <div className="t">{titolo}</div>
         {sotto && <div className="s">{sotto}</div>}
       </div>
@@ -63,8 +73,13 @@ function Riga({
 
 // La pastiglia di stato nell'intestazione della scheda Stampante, sempre
 // visibile: verde/pronta, ambra/in stampa (con la copia in corso se c'e' un
-// evento "stampa" attivo), rossa/errore col messaggio del servizio, grigia
-// se la stampante e' spenta o scollegata.
+// evento "stampa" attivo), rossa/errore, grigia/scollegata. Solo lo stato in
+// breve: il messaggio intero (quello del servizio) sta UNA volta sola nel
+// riquadro ".avviso" qui sotto - prima si ripeteva anche qui e nella riga di
+// testo che c'era fra la pastiglia e "Modello" (controllo visivo, 23
+// settembre 2026, secondo giro). Non e' la pastiglia condivisa in testata
+// (StatoStampante.tsx, che resta col messaggio intero): questa vive solo
+// dentro la scheda Stampante di Impostazioni.
 function PastigliaStampante({ stampante }: { stampante: Stampante | undefined }) {
   const { data: lavoro } = useLavoroStampa();
 
@@ -78,10 +93,12 @@ function PastigliaStampante({ stampante }: { stampante: Stampante | undefined })
   }
 
   if (stampante.stato === "pronta") {
+    // "Collegata" invece di "Pronta" (deciso da Gianluca, 25/09/2026: stesso
+    // cambio di StatoStampante.tsx) - la chiave dello stato resta "pronta".
     return (
       <span className="pastiglia pronta">
         <span className="punto" />
-        <b>Pronta</b>
+        <b>Collegata</b>
       </span>
     );
   }
@@ -105,7 +122,7 @@ function PastigliaStampante({ stampante }: { stampante: Stampante | undefined })
     return (
       <span className="pastiglia guasta">
         <span className="punto" />
-        <b>{stampante.messaggio}</b>
+        <b>Errore</b>
       </span>
     );
   }
@@ -113,13 +130,17 @@ function PastigliaStampante({ stampante }: { stampante: Stampante | undefined })
   return (
     <span className="pastiglia spenta">
       <span className="punto" />
-      <b>Stampante spenta o scollegata</b>
+      <b>Scollegata</b>
     </span>
   );
 }
 
-// Il riquadro che segue la stampa di prova: "copia 1 di 1" mentre e' in
-// corso, poi "Stampata" (o l'errore) quando arriva l'evento SSE giusto.
+// Il riquadro che segue la stampa di prova: solo l'esito quando arriva -
+// "Stampata" o l'errore. Mentre e' in corso non dice piu' niente: il
+// progresso ("In stampa · copia 1 di 1") lo dice gia' la pastiglia della
+// scheda qui sopra (PastigliaStampante), ripeterlo anche qui era un
+// doppione identico nella stessa scheda (controllo visivo, 23 settembre
+// 2026, secondo giro).
 function PannelloProva({ lavoroId }: { lavoroId: string }) {
   const { data: evento } = useLavoroStampa();
   const inCorso = evento?.lavoroId === lavoroId ? evento : null;
@@ -134,15 +155,7 @@ function PannelloProva({ lavoroId }: { lavoroId: string }) {
   }
 
   if (inCorso.stato === "in_corso" || inCorso.stato === "in_pausa") {
-    return (
-      <div className="pastiglia incorso mt-3">
-        <span className="punto" />
-        <b>In stampa</b>
-        <span className="font-normal">
-          copia {inCorso.copiaCorrente} di {inCorso.copieTotali}
-        </span>
-      </div>
-    );
+    return null;
   }
 
   if (inCorso.stato === "completata") {
@@ -176,12 +189,47 @@ function PannelloProva({ lavoroId }: { lavoroId: string }) {
   );
 }
 
+// Stampante e Stampa del prototipo (vistaImpostazioni, 15/9) sono UNA scheda
+// sola qui (docs/api.md, "Impostazioni come il prototipo", 22 settembre 2026
+// sera): stato dal vivo, taglio e margine, le due azioni in fondo. "Cerca di
+// nuovo" ora fa una ricerca vera (POST /api/stampante/cerca), non ripete solo
+// quello che sapeva gia'.
 function SezioneStampante() {
   const { data: stampante } = useStampante();
+  const { data: impostazioni } = useImpostazioni();
+  const salvaImpostazioni = useSalvaImpostazioni();
   const provaStampa = useProvaStampa();
+  const cercaStampante = useCercaStampante();
   const avvisa = useAvviso();
   const [lavoroProva, setLavoroProva] = useState<string | null>(null);
+  const [margine, setMargine] = useState("3");
   const { relativo, completo } = useOraRelativa(stampante?.ultimoControllo);
+
+  useEffect(() => {
+    if (impostazioni?.margine_mm !== undefined) setMargine(impostazioni.margine_mm);
+  }, [impostazioni?.margine_mm]);
+
+  const taglia = impostazioni?.taglio_ogni_etichetta !== "false"; // di default acceso, come nel prototipo
+
+  // Solo la chiave cambiata, non tutta la mappa (PUT /api/impostazioni fa un
+  // merge parziale, docs/api.md): il servizio tiene anche chiavi interne di
+  // backup che non conosciamo e rifiuta quelle non riconosciute, mandarle
+  // indietro cosi' com'erano lette romperebbe il salvataggio.
+  const cambiaTaglio = useCallback(() => {
+    if (!impostazioni) return;
+    salvaImpostazioni.mutate({ taglio_ogni_etichetta: taglia ? "false" : "true" });
+  }, [impostazioni, taglia, salvaImpostazioni]);
+
+  const confermaMargine = useCallback(() => {
+    if (!impostazioni) return;
+    const numero = Math.max(MARGINE_MINIMO_MM, parseInt(margine, 10) || MARGINE_MINIMO_MM);
+    setMargine(String(numero));
+    salvaImpostazioni.mutate({ margine_mm: String(numero) });
+  }, [impostazioni, margine, salvaImpostazioni]);
+
+  const cambiaMargine = useCallback((evento: ChangeEvent<HTMLInputElement>) => {
+    setMargine(evento.target.value.replace(/[^0-9]/g, ""));
+  }, []);
 
   const stampaDiProva = useCallback(() => {
     provaStampa.mutate(undefined, {
@@ -194,22 +242,21 @@ function SezioneStampante() {
   }, [provaStampa, avvisa]);
 
   const cercaDiNuovo = useCallback(() => {
-    avvisa(
-      stampante
-        ? `Trovata: ${stampante.modello}${stampante.rotolo ? `, rotolo ${stampante.rotolo} mm` : ""}, ${stampante.messaggio.toLowerCase()}.`
-        : "Non trovo ancora la stampante.",
-    );
-  }, [stampante, avvisa]);
+    cercaStampante.mutate(undefined, {
+      onSuccess: (dati) =>
+        avvisa(
+          dati.stato === "scollegata"
+            ? "Non trovo ancora la stampante."
+            : `Trovata: ${dati.modello}${dati.rotolo ? `, rotolo ${dati.rotolo} mm` : ""}, ${dati.messaggio.toLowerCase()}.`,
+        ),
+      onError: () => avvisa("Non sono riuscito a cercarla di nuovo."),
+    });
+  }, [cercaStampante, avvisa]);
 
   const nonPronta = stampante?.stato === "errore" || stampante?.stato === "scollegata";
 
   return (
     <Sezione titolo="Stampante" destra={<PastigliaStampante stampante={stampante} />}>
-      {nonPronta && stampante && (
-        <div className={"text-sm leading-normal pb-2 " + (stampante.stato === "errore" ? "text-[var(--rosso)]" : "text-[var(--tenue)]")}>
-          {stampante.messaggio}
-        </div>
-      )}
       <Riga titolo="Modello" valore={stampante?.modello ?? "…"} />
       <Riga
         titolo="Rotolo caricato"
@@ -223,72 +270,38 @@ function SezioneStampante() {
         }
       />
       <Riga titolo="Ultimo controllo" valore={relativo} titoloValore={completo} />
-      {!!stampante?.errori.length && (
+      {/* Il messaggio intero (quello del servizio) compare UNA volta sola,
+          qui: prima si ripeteva anche nella pastiglia e in una riga di testo
+          a se' (controllo visivo, 23 settembre 2026, secondo giro). Per
+          "scollegata" il servizio non manda "errori": si usa "messaggio"
+          (es. "Stampante spenta o scollegata") con un suggerimento in piu'. */}
+      {nonPronta && stampante && (
         <div className="avviso mt-2.5">
           <span className="flex shrink-0">
             <IconaAllarme larghezza={20} spessoreTratto={2} />
           </span>
-          <span>{stampante.errori.join(" · ")}</span>
+          <span>
+            {/* Un punto fra il messaggio del servizio e il suggerimento
+                (G6, revisione grafica, 25/09/2026): mancava, le due frasi si
+                leggevano attaccate ("...configurazione Controlla che..."). Il
+                replace toglie un'eventuale punteggiatura finale gia' scritta
+                dal servizio prima di aggiungere il nostro punto, cosi' non
+                se ne vedono mai due di fila. */}
+            {stampante.stato === "errore"
+              ? stampante.errori.join(" · ") || stampante.messaggio
+              : `${stampante.messaggio.trim().replace(/[.!?]+$/, "")}. Controlla che sia accesa e che il cavo USB sia collegato.`}
+          </span>
         </div>
       )}
-      <div className="flex flex-wrap gap-2.5 pt-3">
-        <button
-          type="button"
-          className="btn"
-          onClick={stampaDiProva}
-          disabled={provaStampa.isPending || stampante?.stato !== "pronta"}
-        >
-          <IconaStampa larghezza={20} />
-          <span>Stampa di prova</span>
-        </button>
-        <button type="button" className="btn" onClick={cercaDiNuovo}>
-          <IconaCercaDiNuovo larghezza={20} />
-          <span>Cerca di nuovo</span>
-        </button>
-      </div>
-      {lavoroProva && <PannelloProva lavoroId={lavoroProva} />}
-    </Sezione>
-  );
-}
-
-function SezioneStampa() {
-  const { data: impostazioni } = useImpostazioni();
-  const salva = useSalvaImpostazioni();
-  const [margine, setMargine] = useState("3");
-
-  useEffect(() => {
-    if (impostazioni?.margine_mm !== undefined) setMargine(impostazioni.margine_mm);
-  }, [impostazioni?.margine_mm]);
-
-  const taglia = impostazioni?.taglio_ogni_etichetta !== "false"; // di default acceso, come nel prototipo
-
-  const cambiaTaglio = useCallback(() => {
-    if (!impostazioni) return;
-    salva.mutate({ ...impostazioni, taglio_ogni_etichetta: taglia ? "false" : "true" });
-  }, [impostazioni, taglia, salva]);
-
-  const confermaMargine = useCallback(() => {
-    if (!impostazioni) return;
-    const numero = Math.max(MARGINE_MINIMO_MM, parseInt(margine, 10) || MARGINE_MINIMO_MM);
-    setMargine(String(numero));
-    salva.mutate({ ...impostazioni, margine_mm: String(numero) });
-  }, [impostazioni, margine, salva]);
-
-  const cambiaMargine = useCallback((evento: ChangeEvent<HTMLInputElement>) => {
-    setMargine(evento.target.value.replace(/[^0-9]/g, ""));
-  }, []);
-
-  return (
-    <Sezione titolo="Stampa">
       <button type="button" className="riga w-full" onClick={cambiaTaglio}>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 grow shrink basis-[84px]">
           <div className="t">Taglia ogni etichetta</div>
           <div className="s">Se spento, taglia solo alla fine della serie</div>
         </div>
         <span className={"interruttore" + (taglia ? "" : " off")} />
       </button>
       <div className="riga">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 grow shrink basis-[84px]">
           <div className="t">Margine iniziale e finale</div>
           <div className="s">Minimo consentito dalla stampante: {MARGINE_MINIMO_MM} mm</div>
         </div>
@@ -306,192 +319,29 @@ function SezioneStampa() {
           <span className="v">mm</span>
         </div>
       </div>
-    </Sezione>
-  );
-}
-
-// Il nome "etichette.local" e' sparito (su Android non funzionava e il QR
-// bastava da solo, deciso da Gianluca il 10/9): resta solo il QR con
-// l'indirizzo IP sotto, unica cosa della sezione.
-function SezioneTelefoni() {
-  const { data: rete } = useRete();
-  const principale = rete?.principale ?? rete?.indirizzi[0];
-
-  return (
-    <Sezione titolo="Telefoni e tablet">
-      <div className="flex flex-col items-center gap-3 py-2">
-        <div className="text-[15px] font-bold">Inquadra il QR col telefono</div>
-        <img
-          src={percorsoQrRete}
-          alt="Codice QR con l'indirizzo dell'app: inquadralo dal telefono per aprirla"
-          width={148}
-          height={148}
-          className="rounded-[14px] border border-[var(--bordo)] bg-white"
-        />
-        {principale && <span className="mono text-lg font-bold text-[var(--testo)]">{principale}</span>}
+      {/* azioniSezione (G5, revisione grafica, 25/09/2026): "Stampa di
+          prova" e "Cerca di nuovo" restavano alla loro larghezza naturale,
+          diversa fra loro e allineate a sinistra con un vuoto a destra - qui
+          non ci stanno affiancati in parti uguali (il loro contenuto minimo,
+          icona+testo che non puo' andare a capo, supera meta' della scheda),
+          quindi diventano a tutta larghezza (index.css), impilati invece che
+          "in parti uguali" come nell'altro caso possibile della regola. */}
+      <div className="flex flex-wrap gap-2.5 pt-3 azioniSezione">
+        <button
+          type="button"
+          className="btn"
+          onClick={stampaDiProva}
+          disabled={provaStampa.isPending || stampante?.stato !== "pronta"}
+        >
+          <IconaStampa larghezza={20} />
+          <span>Stampa di prova</span>
+        </button>
+        <button type="button" className="btn" onClick={cercaDiNuovo} disabled={cercaStampante.isPending}>
+          <IconaCercaDiNuovo larghezza={20} />
+          <span>Cerca di nuovo</span>
+        </button>
       </div>
-    </Sezione>
-  );
-}
-
-// Il logo caricato qui e' quello che il blocco "Logo" dei blocchi
-// dell'etichetta stampa: senza un logo caricato, quel blocco non stampa
-// nulla (docs/api.md). PNG o JPEG, fino a 2 MB.
-function SezioneLogo() {
-  const { data: esiste } = useLogoEsiste();
-  const carica = useCaricaLogo();
-  const elimina = useEliminaLogo();
-  const avvisa = useAvviso();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [chiaveVersione, setChiaveVersione] = useState(0);
-  const [chiestoElimina, setChiestoElimina] = useState(false);
-
-  const apriSelettore = useCallback(() => inputRef.current?.click(), []);
-
-  const scegliFile = useCallback(
-    (evento: ChangeEvent<HTMLInputElement>) => {
-      const file = evento.target.files?.[0];
-      evento.target.value = "";
-      if (!file) return;
-      if (!TIPI_LOGO_VALIDI.includes(file.type)) {
-        avvisa("Serve un file PNG o JPEG.");
-        return;
-      }
-      if (file.size > LOGO_MASSIMO_BYTE) {
-        avvisa("Il file supera i 2 MB.");
-        return;
-      }
-      carica.mutate(file, {
-        onSuccess: () => {
-          setChiaveVersione((v) => v + 1);
-          avvisa("Logo caricato.");
-        },
-        onError: () => avvisa("Non sono riuscito a caricare il logo."),
-      });
-    },
-    [carica, avvisa],
-  );
-
-  const chiediElimina = useCallback(() => setChiestoElimina(true), []);
-  const annullaElimina = useCallback(() => setChiestoElimina(false), []);
-  const confermaElimina = useCallback(() => {
-    elimina.mutate(undefined, {
-      onSuccess: () => {
-        setChiestoElimina(false);
-        setChiaveVersione((v) => v + 1);
-        avvisa("Logo tolto.");
-      },
-      onError: () => avvisa("Non sono riuscito a toglierlo."),
-    });
-  }, [elimina, avvisa]);
-
-  return (
-    <Sezione titolo="Logo sull'etichetta">
-      <div className="flex items-center gap-4 flex-wrap py-1">
-        <div className="w-24 h-24 rounded-2xl border border-[var(--bordo)] bg-[var(--sabbia)] flex items-center justify-center overflow-hidden flex-shrink-0">
-          {esiste ? (
-            <img src={`${percorsoLogo}?v=${chiaveVersione}`} alt="Logo caricato" className="max-w-full max-h-full object-contain" />
-          ) : (
-            <span className="text-[var(--spento)]">
-              <IconaImmagine larghezza={28} spessoreTratto={1.6} />
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 flex-1 min-w-[180px]">
-          <div className="text-[13px] text-[var(--tenue)] leading-normal">
-            {esiste
-              ? "Si usa nel blocco «Logo» delle etichette."
-              : "Nessun logo caricato: il blocco «Logo» non stampa nulla finché non ce n'è uno."}
-          </div>
-          <div className="flex gap-2.5 flex-wrap items-center">
-            <button type="button" className="btn" onClick={apriSelettore} disabled={carica.isPending}>
-              <IconaCarica larghezza={18} spessoreTratto={2} />
-              <span>Carica</span>
-            </button>
-            {esiste && !chiestoElimina && (
-              <button type="button" className="btn" onClick={chiediElimina} disabled={elimina.isPending}>
-                Togli
-              </button>
-            )}
-            {esiste && chiestoElimina && (
-              <span className="flex items-center gap-2 text-[13px]">
-                <span className="text-[var(--tenue)]">Togliere il logo?</span>
-                <button type="button" className="btn" onClick={confermaElimina} disabled={elimina.isPending}>
-                  Sì
-                </button>
-                <button type="button" className="btn" onClick={annullaElimina}>
-                  No
-                </button>
-              </span>
-            )}
-          </div>
-          <div className="text-[12px] text-[var(--spento)]">PNG o JPEG, fino a 2 MB.</div>
-        </div>
-      </div>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={scegliFile} aria-label="Carica il logo" />
-    </Sezione>
-  );
-}
-
-// Il lotto e' la numerazione del locale, unica su tutte le etichette: si
-// sceglie uno dei quattro schemi, e accanto a ognuno si legge il lotto che
-// uscirebbe oggi (docs/api.md, "Lotto"; funzionalita-prima-versione.md).
-function RigaSchemaLotto({
-  schema,
-  scelto,
-  onScegli,
-  disabilitato,
-}: {
-  schema: SchemaLottoInfo;
-  scelto: boolean;
-  onScegli: (codice: SchemaLotto) => void;
-  disabilitato: boolean;
-}) {
-  const clic = useCallback(() => onScegli(schema.codice), [onScegli, schema.codice]);
-  return (
-    <button
-      type="button"
-      className="riga scelta w-full"
-      onClick={clic}
-      disabled={disabilitato}
-      aria-pressed={scelto}
-    >
-      <span className={"cerchio" + (scelto ? " on" : "")} />
-      <div className="min-w-0 flex-1">
-        <div className="t">{schema.nome}</div>
-        <div className="s mono">{schema.esempio}</div>
-      </div>
-      <span className="v mono font-bold">{schema.oggi ?? "da scrivere"}</span>
-    </button>
-  );
-}
-
-function SezioneLotto() {
-  const { data: lotto } = useLotto();
-  const { data: impostazioni } = useImpostazioni();
-  const salva = useSalvaImpostazioni();
-
-  const scegli = useCallback(
-    (codice: SchemaLotto) => {
-      if (!impostazioni) return;
-      salva.mutate({ ...impostazioni, schema_lotto: codice });
-    },
-    [impostazioni, salva],
-  );
-
-  return (
-    <Sezione titolo="Lotto" destra={<span className="text-[13px] text-[var(--tenue)]">Vale per tutte le etichette</span>}>
-      <div className="flex flex-col gap-2">
-        {(lotto?.schemi ?? []).map((schema) => (
-          <RigaSchemaLotto
-            key={schema.codice}
-            schema={schema}
-            scelto={lotto?.schema === schema.codice}
-            onScegli={scegli}
-            disabilitato={salva.isPending}
-          />
-        ))}
-      </div>
+      {lavoroProva && <PannelloProva lavoroId={lavoroProva} />}
     </Sezione>
   );
 }
@@ -537,7 +387,7 @@ function RigaDispositivo({
       <span className="text-[var(--tenue)] flex shrink-0">
         <IconaTelefono larghezza={20} spessoreTratto={1.8} />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 grow shrink basis-[84px]">
         <div className={senzaNome ? "t text-[var(--spento)] font-normal" : "t"}>{senzaNome ? "Senza nome" : nome}</div>
         <div className="s">
           {sistemaTesto ? (
@@ -552,7 +402,7 @@ function RigaDispositivo({
           {senzaNome && " · ha stampato senza un nome"}
         </div>
       </div>
-      <ConfermaInline etichetta="Scollega" domanda="Scollegare?" onConferma={scollega} disabilitato={eliminaDispositivo.isPending} />
+      <ConfermaInline etichetta="Scollega" domanda="Scollegare?" etichettaConferma="Sì, scollega" onConferma={scollega} disabilitato={eliminaDispositivo.isPending} />
     </div>
   );
 }
@@ -569,10 +419,16 @@ function ordinaDispositivi(a: Dispositivo, b: Dispositivo): number {
   return a.ultimoAccesso > b.ultimoAccesso ? -1 : a.ultimoAccesso < b.ultimoAccesso ? 1 : 0;
 }
 
-function SezioneDispositivi() {
+// Telefoni e tablet del prototipo (vistaImpostazioni, 15/9): il QR che li
+// collega e l'elenco che li scollega sono la STESSA scheda (docs/api.md,
+// "Impostazioni come il prototipo"), non due come prima. L'intestazione
+// mostra "N collegati", come il prototipo.
+function SezioneTelefoni() {
+  const { data: rete } = useRete();
   const { data: dispositivi } = useDispositivi();
   const eliminaSenzaNome = useEliminaDispositiviSenzaNome();
   const avvisa = useAvviso();
+  const principale = rete?.principale ?? rete?.indirizzi[0];
   const ceNeSenzaNome = (dispositivi ?? []).some((d) => !d.nome.trim());
 
   const togliSenzaNome = useCallback(() => {
@@ -585,7 +441,7 @@ function SezioneDispositivi() {
 
   return (
     <Sezione
-      titolo="Dispositivi collegati"
+      titolo="Telefoni e tablet"
       destra={
         <div className="flex items-center gap-2.5">
           {ceNeSenzaNome && (
@@ -593,16 +449,28 @@ function SezioneDispositivi() {
               Togli quelli senza nome
             </button>
           )}
-          {dispositivi && <span className="text-[13px] text-[var(--tenue)]">{dispositivi.length}</span>}
+          {dispositivi && <span className="text-[13px] text-[var(--tenue)]">{plurale(dispositivi.length, "collegato", "collegati")}</span>}
         </div>
       }
     >
+      <div className="flex flex-col items-center gap-2 pt-1 pb-3 mb-1 border-b border-[var(--riga)]">
+        <div className="text-[15px] font-bold">Inquadra il QR col telefono</div>
+        <img
+          src={percorsoQrRete}
+          alt="Codice QR con l'indirizzo dell'app: inquadralo dal telefono per aprirla"
+          width={130}
+          height={130}
+          className="rounded-[14px] border border-[var(--bordo)] bg-white"
+        />
+        {principale && <span className="mono text-[15px] font-bold text-[var(--testo)]">{principale}</span>}
+        <span className="text-[12px] text-[var(--spento)]">Stessa rete Wi-Fi del PC.</span>
+      </div>
       {dispositivi && dispositivi.length === 0 && (
         <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">
           <span className="flex shrink-0">
             <IconaTelefono larghezza={18} spessoreTratto={1.8} />
           </span>
-          <span>Nessun telefono collegato. Inquadra il QR qui a fianco per collegarne uno.</span>
+          <span>Nessun telefono collegato. Inquadra il QR qui sopra per collegarne uno.</span>
         </div>
       )}
       {[...(dispositivi ?? [])].sort(ordinaDispositivi).map((d) => (
@@ -612,19 +480,246 @@ function SezioneDispositivi() {
   );
 }
 
-// Fetta verticale completa: stato della stampante dal vivo, opzioni di
-// stampa, il lotto del locale, e le schede per collegare telefoni e tablet
-// dal QR e vedere chi e' collegato. Due colonne uguali dai 1024px in su
-// (vedi .grigliaImpostazioni in index.css), una colonna sotto.
+// L'unita' giusta per la dimensione (docs: una copia piccola, sotto il MB,
+// arrotondata ai MB diventava "0 MB" - su una riga che serve a sapere se
+// il backup e' stato fatto si legge come "non ha copiato niente"). Byte
+// sotto il kilobyte, KB sotto il megabyte, MB oltre, una cifra decimale
+// dove serve (toLocaleString la mette solo se non e' zero: "44 MB", non
+// "44,0 MB").
+function formattaByte(byte: number): string {
+  if (byte < 1000) return `${byte} byte`;
+  if (byte < 1_000_000) return `${Math.round(byte / 1000)} KB`;
+  return `${(byte / 1_000_000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB`;
+}
+
+// "23/09 alle 03:00": la prossima copia notturna, in chiaro (non e' "fra
+// tot", che per una data futura non ha senso con useOraRelativa, pensato per
+// il passato).
+function formattaProssima(iso: string): string {
+  const d = new Date(iso.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return iso;
+  const data = new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit" }).format(d);
+  const ora = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(d);
+  return `${data} alle ${ora}`;
+}
+
+// Nuova nel prototipo del 15/9 (vistaImpostazioni): versione del servizio,
+// dove stanno i dati, le copie di sicurezza. Niente "Apri la cartella" (il
+// servizio gira come servizio di Windows, non puo' aprire una finestra sul
+// desktop di chi guarda - docs/api.md): il percorso si copia negli appunti,
+// e la cartella di backup si sceglie scrivendo il percorso (niente
+// finestre native: "Niente confirm() nativo", come ConfermaInline).
+function SezioneProgramma() {
+  const { data: programma } = useProgramma();
+  const salvaCartella = useSalvaCartellaBackup();
+  const eseguiOra = useEseguiBackupOra();
+  const avvisa = useAvviso();
+  const [modificaCartella, setModificaCartella] = useState(false);
+  const [valoreCartella, setValoreCartella] = useState("");
+  // docs/api.md, "Copie ravvicinate e ultima copia buona" (22 settembre 2026
+  // sera): "ultima" e' l'ultimo TENTATIVO (riuscito o fallito), "ultimaRiuscita"
+  // e' l'ultima copia andata a buon fine - un tentativo fallito non deve far
+  // sparire la memoria di una copia buona.
+  const { relativo: ultimaRelativa } = useOraRelativa(programma?.backup.ultima?.quando);
+  const { relativo: riuscitaRelativa, completo: riuscitaCompleta } = useOraRelativa(programma?.backup.ultimaRiuscita?.quando);
+
+  const copiaPercorso = useCallback(
+    (percorso: string) => {
+      navigator.clipboard?.writeText(percorso).then(
+        () => avvisa("Percorso copiato."),
+        () => avvisa("Il browser non mi lascia copiare il percorso."),
+      );
+    },
+    [avvisa],
+  );
+  // Due bottoni "Copia" fissi (non una lista): un useCallback a testa,
+  // invece di una funzione nuova scritta dentro il JSX (react-perf/
+  // jsx-no-new-function-as-prop), come cambiaTaglio o confermaMargine sopra.
+  const copiaCartellaDati = useCallback(() => {
+    if (programma) copiaPercorso(programma.cartellaDati);
+  }, [programma, copiaPercorso]);
+  const copiaCartellaBackup = useCallback(() => {
+    if (programma?.backup.cartella) copiaPercorso(programma.backup.cartella);
+  }, [programma, copiaPercorso]);
+
+  const apriModificaCartella = useCallback(() => {
+    setValoreCartella(programma?.backup.cartella ?? "");
+    setModificaCartella(true);
+  }, [programma]);
+  const annullaModificaCartella = useCallback(() => setModificaCartella(false), []);
+  const cambiaValoreCartella = useCallback((evento: ChangeEvent<HTMLInputElement>) => setValoreCartella(evento.target.value), []);
+  const confermaCartella = useCallback(() => {
+    const nuova = valoreCartella.trim();
+    salvaCartella.mutate(nuova || null, {
+      onSuccess: () => {
+        setModificaCartella(false);
+        avvisa(nuova ? "Cartella di backup salvata." : "Copie di sicurezza spente.");
+      },
+      onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a salvarla."),
+    });
+  }, [valoreCartella, salvaCartella, avvisa]);
+
+  const faiCopiaOra = useCallback(() => {
+    eseguiOra.mutate(undefined, {
+      onSuccess: (esito) =>
+        avvisa(esito.esito === "riuscita" ? `Copia fatta: ${formattaByte(esito.dimensioneByte)}, ${plurale(esito.foto, "foto", "foto")}.` : `Copia non riuscita${esito.errore ? `: ${esito.errore}` : ""}.`),
+      onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a farla."),
+    });
+  }, [eseguiOra, avvisa]);
+
+  const ultima = programma?.backup.ultima;
+  const ultimaRiuscita = programma?.backup.ultimaRiuscita;
+  // La riga "Ultima copia" racconta l'informazione che conta: i dati sono al
+  // sicuro fino a quando? Quella e' ultimaRiuscita, non l'ultimo tentativo
+  // (che puo' essere fallito senza che i dati corrano rischi).
+  const testoUltima = !programma
+    ? "…"
+    : !programma.backup.cartella
+      ? "Nessuna cartella di backup: niente si copia"
+      : ultimaRiuscita
+        ? `${riuscitaRelativa} · ${formattaByte(ultimaRiuscita.dimensioneByte)}, ${plurale(ultimaRiuscita.foto, "foto", "foto")}`
+        : ultima?.esito === "fallita"
+          ? `Nessuna copia riuscita finora. Ultimo tentativo ${ultimaRelativa}, non riuscito${ultima.errore ? `: ${ultima.errore}` : ""}`
+          : "Ancora nessuna copia fatta";
+  // Il tentativo piu' recente e' fallito DOPO l'ultima copia buona: i dati
+  // di prima restano al sicuro, ma chi guarda deve sapere che l'ultimo
+  // tentativo non e' andato a segno (docs/api.md, stesso paragrafo).
+  const tentativoFallitoDopo =
+    ultima && ultima.esito === "fallita" && ultimaRiuscita && ultima.quando > ultimaRiuscita.quando ? ultima : null;
+
+  return (
+    <Sezione titolo="Programma" destra={<span className="text-[13px] text-[var(--tenue)]">Servizio «Etichette» su questo PC</span>} larga>
+      <Riga titolo="Versione" sotto="Aggiornamenti: si installa il nuovo MSI" valore={programma?.versione ?? "…"} />
+      <Riga
+        titolo="Cartella dei dati e delle foto"
+        sotto="Etichette, ingredienti, lotti, storico e le foto di fatture ed etichette"
+        titoloValore={programma?.cartellaDati}
+        valore={
+          programma && (
+            <span className="flex items-center gap-2 min-w-0">
+              {/* Tronca dall'INIZIO, non dalla fine: di un percorso la coda
+                  e' l'informazione utile ("prova-backup"), l'inizio e' quasi
+                  sempre prevedibile (docs/api.md, segnalato dopo la prova
+                  vera a 414px del 23 settembre 2026). dir="rtl" sposta i
+                  puntini di text-overflow a sinistra; text-left riallinea
+                  il testo. NIENTE unicode-bidi:plaintext: provato e tolto,
+                  con un percorso che inizia per lettera (quasi sempre) fa
+                  ripartire il verso LTR e vanifica il taglio dalla fine
+                  giusta - verificato leggendo il testo reso, non solo la
+                  regola (backslash e cifre restano nell'ordine giusto anche
+                  senza: sono l'UNICA riga con un'inversione di verso in
+                  tutto il progetto, testata a mano). */}
+              <span dir="rtl" className="mono font-bold text-[var(--testo)] truncate min-w-0 text-left">
+                {programma.cartellaDati}
+              </span>
+              <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={copiaCartellaDati}>
+                <IconaCopia larghezza={16} />
+                <span>Copia</span>
+              </button>
+            </span>
+          )
+        }
+      />
+      {!modificaCartella ? (
+        <Riga
+          titolo="Copia di sicurezza"
+          sotto="Ogni notte alle 3, su un'altra cartella o una chiavetta. Si tengono le ultime 10 copie, le più vecchie si cancellano da sole."
+          titoloValore={programma?.backup.cartella ?? undefined}
+          valore={
+            programma && (
+              <span className="flex items-center gap-2 min-w-0">
+                {programma.backup.cartella ? (
+                  <>
+                    <span dir="rtl" className="mono font-bold text-[var(--testo)] truncate min-w-0 text-left">
+                      {programma.backup.cartella}
+                    </span>
+                    <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={copiaCartellaBackup}>
+                      <IconaCopia larghezza={16} />
+                      <span>Copia</span>
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-[var(--spento)]">Nessuna</span>
+                )}
+                <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={apriModificaCartella}>
+                  {programma.backup.cartella ? "Cambia…" : "Scegli…"}
+                </button>
+              </span>
+            )
+          }
+        />
+      ) : (
+        <div className="riga">
+          <div className="min-w-0 grow shrink basis-[84px]">
+            <div className="t">Copia di sicurezza</div>
+            <div className="s">Il percorso completo della cartella, es. D:\Backup Etichette. Vuoto per spegnerle.</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="casella min-h-[44px] px-3">
+              <input
+                value={valoreCartella}
+                onChange={cambiaValoreCartella}
+                placeholder="D:\Backup Etichette"
+                aria-label="Cartella delle copie di sicurezza"
+                className="mono text-[14px] font-bold min-w-[180px]"
+              />
+            </div>
+            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={confermaCartella} disabled={salvaCartella.isPending}>
+              Salva
+            </button>
+            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={annullaModificaCartella} disabled={salvaCartella.isPending}>
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+      <Riga titolo="Ultima copia" valore={testoUltima} titoloValore={ultimaRiuscita ? riuscitaCompleta : undefined} />
+      {tentativoFallitoDopo && (
+        <div className="flex items-center gap-2.5 rounded-2xl border border-[var(--ambrabordo)] bg-[var(--ambrachiaro)] px-4 py-2.5 text-[13px] text-[var(--ambra)] mt-1">
+          <span className="flex shrink-0">
+            <IconaAllarme larghezza={18} spessoreTratto={2} />
+          </span>
+          <span>
+            Ultimo tentativo non riuscito: {ultimaRelativa}
+            {tentativoFallitoDopo.errore ? ` · ${tentativoFallitoDopo.errore}` : ""}
+          </span>
+        </div>
+      )}
+      {/* "Backup automatico" invece di "Prossima copia" (deciso da Gianluca,
+          25/09/2026). */}
+      <Riga
+        titolo="Backup automatico"
+        valore={programma?.backup.prossima ? formattaProssima(programma.backup.prossima) : "Nessuna"}
+      />
+      <div className="flex flex-wrap gap-2.5 pt-3 azioniSezione">
+        <button
+          type="button"
+          className="btn"
+          onClick={faiCopiaOra}
+          disabled={eseguiOra.isPending || !programma?.backup.cartella}
+        >
+          <IconaScarica larghezza={20} />
+          <span>Fai una copia adesso</span>
+        </button>
+      </div>
+    </Sezione>
+  );
+}
+
+// Fetta verticale completa: stato della stampante dal vivo e le sue
+// opzioni di stampa, le schede per collegare telefoni e tablet dal QR e
+// vedere chi e' collegato, e il programma (versione, dati, copie di
+// sicurezza). Logo e schema del lotto non stanno piu' qui: sono
+// personalizzazioni dell'ETICHETTA, si cambiano nel suo editor (Etichette.tsx,
+// docs/api.md, "Impostazioni come il prototipo", 22 settembre 2026 sera). Due
+// colonne uguali dai 1024px in su (vedi .grigliaImpostazioni in index.css,
+// e .larga per Programma), una colonna sotto.
 export default function Impostazioni() {
   return (
     <div className="schermo scorre grigliaImpostazioni">
       <SezioneStampante />
-      <SezioneStampa />
-      <SezioneLogo />
-      <SezioneLotto />
       <SezioneTelefoni />
-      <SezioneDispositivi />
+      <SezioneProgramma />
     </div>
   );
 }

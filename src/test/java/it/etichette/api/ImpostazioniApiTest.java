@@ -12,6 +12,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import it.etichette.dati.Impostazione;
+import it.etichette.dati.ImpostazioneRepository;
+
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -47,11 +50,20 @@ class ImpostazioniApiTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private ImpostazioneRepository impostazioni;
+
+    /**
+     * {@code schema_lotto} non e' piu' un'impostazione globale (docs/api.md, 22/09/2026 sera: e'
+     * passata a {@code prodotto.etichetta.schemaLotto}): rifiutata come chiave non riconosciuta,
+     * non piu' come valore fuori dall'elenco ammesso - per questo il valore qui e' "data", valido
+     * di per se', a dimostrare che e' la CHIAVE ad essere rifiutata, non il valore.
+     */
     @Test
-    void unoSchemaLottoNonAmmessoRispondeErrore() throws Exception {
-        mockMvc.perform(put("/api/impostazioni").contentType("application/json").content("{\"schema_lotto\":\"a_caso\"}"))
+    void schemaLottoNonEPiuUnImpostazioneRiconosciuta() throws Exception {
+        mockMvc.perform(put("/api/impostazioni").contentType("application/json").content("{\"schema_lotto\":\"data\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errore").exists());
+                .andExpect(jsonPath("$.errore").value("impostazione non riconosciuta: schema_lotto"));
     }
 
     @Test
@@ -73,6 +85,28 @@ class ImpostazioniApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.margine_mm").value("5"))
                 .andExpect(jsonPath("$.taglio_ogni_etichetta").value("false"));
+    }
+
+    /**
+     * Difetto trovato il 23/09/2026: dopo una copia di sicurezza la tabella {@code impostazioni}
+     * contiene anche le chiavi di {@code BackupService} ({@code backup.cartella}, ...); se la GET
+     * le restituisse, l'interfaccia le rimanderebbe indietro con la PUT e cadrebbe su
+     * "impostazione non riconosciuta". La GET non deve vederle, e la PUT del risultato della GET
+     * (con un valore vero cambiato) deve comunque riuscire.
+     */
+    @Test
+    void leChiaviDiBackupNonCompaionoEnonRomponoLaPut() throws Exception {
+        impostazioni.save(new Impostazione("backup.cartella", "C:\\copie"));
+
+        mockMvc.perform(get("/api/impostazioni"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$['backup.cartella']").doesNotExist());
+
+        mockMvc.perform(put("/api/impostazioni").contentType("application/json")
+                        .content("{\"margine_mm\":\"5\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.margine_mm").value("5"))
+                .andExpect(jsonPath("$['backup.cartella']").doesNotExist());
     }
 
     @Test

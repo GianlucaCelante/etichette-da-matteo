@@ -24,5 +24,27 @@ public record ProdottoDto(
         int usi,
         LocalDateTime ultimoUso,
         LocalDateTime creatoIl,
-        LocalDateTime modificatoIl) {
+        LocalDateTime modificatoIl,
+        /** Chi tracciare (docs/api.md): un prodotto nuovo nasce senza tracciati; caricato/salvato da {@code TracciatiService}. */
+        List<TracciatoDto> tracciati) {
+
+    /**
+     * Costruttore di comodo per i chiamanti che non maneggiano i tracciati (es. {@code
+     * ProdottiConversioni}, o i test di resa che costruiscono un prodotto per il renderer): nessun
+     * tracciato. Evita di dover toccare ogni chiamata esistente per un campo che quasi tutte
+     * ignorano.
+     */
+    public ProdottoDto(Long id, String nome, String nomeStampa, EtichettaProdottoDto etichetta, String ingredienti,
+            List<String> allergeni, String modoUso, Integer giorniScadenza, String conservazione, String quantita,
+            List<ValoreNutrizionaleDto> valoriNutrizionali, String siglaOperatore, int usi, LocalDateTime ultimoUso,
+            LocalDateTime creatoIl, LocalDateTime modificatoIl) {
+        this(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza, conservazione, quantita,
+                valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, List.of());
+    }
+
+    /** Nuovo DTO con gli stessi campi e i tracciati indicati (docs/api.md: aggiunti dal controller dopo la lettura/scrittura). */
+    public ProdottoDto conTracciati(List<TracciatoDto> tracciati) {
+        return new ProdottoDto(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza,
+                conservazione, quantita, valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, tracciati);
+    }
 }

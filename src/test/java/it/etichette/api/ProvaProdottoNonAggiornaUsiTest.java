@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
+import it.etichette.dati.StoricoStampaRepository;
 import it.etichette.stampante.PortaFinta;
 import it.etichette.stampante.RicercaPorta;
 import org.junit.jupiter.api.Test;
@@ -32,8 +33,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * {@code POST /api/stampe/prova-prodotto} con la stampante FINTA "pronta" (mai con quella vera):
  * una stampa di prova completa con successo ma NON deve aggiornare {@code usi}/{@code ultimoUso}
- * del prodotto (deciso dopo la fase 3: una prova non e' un uso vero). Lo storico viene comunque
- * scritto con {@code esito = "prova"} (mandato del 2026-09-08).
+ * del prodotto (deciso dopo la fase 3: una prova non e' un uso vero), ne' scrivere nessuna riga
+ * di storico (decisione del cliente del 24/09/2026: "le etichette fatte con la stampa di prova
+ * non devono entrare nello storico").
  *
  * <p>Override di {@link RicercaPorta} (di solito {@code RicercaPortaFinta}, che non trova mai
  * nulla) SOLO in questo contesto, cosi' {@link PortaFinta} si apre davvero: un thread separato
@@ -68,6 +70,8 @@ class ProvaProdottoNonAggiornaUsiTest {
     private PortaFinta porta;
     @Autowired
     private ProdottoRepository prodotti;
+    @Autowired
+    private StoricoStampaRepository storico;
     @Autowired
     private ObjectMapper mapper;
 
@@ -112,10 +116,17 @@ class ProvaProdottoNonAggiornaUsiTest {
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102());
 
-        mockMvc.perform(post("/api/stampe/prova-prodotto").contentType("application/json").content(mapper.writeValueAsString(corpo)))
-                .andExpect(status().isOk());
+        String rispostaProva = mockMvc.perform(post("/api/stampe/prova-prodotto").contentType("application/json")
+                        .content(mapper.writeValueAsString(corpo)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String lavoroId = mapper.readTree(rispostaProva).get("lavoroId").asText();
 
         assertThat(aspettaUsiInvariatoOAggiornato(usiPrima)).as("usi deve restare invariato dopo una prova").isEqualTo(usiPrima);
+        // Dal 24/09/2026 una prova non scrive nessuna riga di storico (StoricoLavori#apri):
+        // nessuna riga con questo lavoroId, ne' prima ne' dopo che il lavoro finisca.
+        boolean rigaScritta = storico.findAll().stream().anyMatch(r -> lavoroId.equals(r.getLavoroId()));
+        assertThat(rigaScritta).as("una prova non deve scrivere nessuna riga di storico").isFalse();
     }
 
     /** Aspetta fino a 5 s che il prodotto risulti stampato (storico/usi si stabilizzino), poi restituisce usi. */

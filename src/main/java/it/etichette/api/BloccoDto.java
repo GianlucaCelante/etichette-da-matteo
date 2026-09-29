@@ -6,8 +6,8 @@ package it.etichette.api;
  *
  * <p>{@code allineamento} ("sinistra", "centro", "destra"; decisione del 2026-09-09) vale per i
  * blocchi di testo (titolo, ingredienti, puoContenere, modoUso, scadenza, lotto, quantita,
- * produttore, dataProduzione, sigla, testo, testoGrande) - riga per riga, dentro la larghezza
- * disponibile del blocco (piena o della sua colonna) - e per "qr"/"logo" (posizione orizzontale);
+ * produttore, dataProduzione, testo, testoGrande) - riga per riga, dentro la larghezza
+ * disponibile del blocco (piena o della sua colonna) - e per "logo" (posizione orizzontale);
  * "valori", "riga" e "spazio" lo ignorano. "sinistra" di default, sia quando il campo manca in
  * JSON sia quando e' esplicitamente null (l'accessor lo normalizza, vedi sotto) - un valore NON
  * null ma sconosciuto non viene normalizzato, cosi' la validazione ({@code ProdottiConversioni})

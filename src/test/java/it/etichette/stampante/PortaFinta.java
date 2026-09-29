@@ -87,4 +87,14 @@ public class PortaFinta implements Porta {
     public void accodaNessunDato() {
         risposte.add(new byte[0]);
     }
+
+    /**
+     * Butta le risposte precaricate e non ancora lette (es. quelle avanzate dal thread che tiene
+     * "viva" la porta finche' il monitor non risulta pronto): da qui in poi la stampante finta non
+     * risponde piu' a nulla finche' non se ne accodano di nuove - un lavoro accodato resta fermo
+     * alla prima lettura di stato, in pausa, senza mai mandare una copia.
+     */
+    public void svuotaRisposte() {
+        risposte.clear();
+    }
 }

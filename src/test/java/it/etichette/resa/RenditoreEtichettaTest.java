@@ -11,11 +11,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.font.FontRenderContext;
+import java.awt.font.TextLayout;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.util.HexFormat;
 import java.util.List;
 
 import javax.imageio.ImageIO;
@@ -70,7 +76,7 @@ class RenditoreEtichettaTest {
     }
 
     private ParametriStampa parametriDiProva() {
-        return new ParametriStampa("2148 g", LocalDate.of(2026, 9, 15), "L 20260908-004");
+        return new ParametriStampa("2148 g", LocalDate.of(2026, 9, 15), "L 20260908-004", false);
     }
 
     /**
@@ -164,12 +170,13 @@ class RenditoreEtichettaTest {
     }
 
     /**
-     * Prodotto ricco (Completa + qr 18 + logo 10) sul 62: verticale, larga quanto il rotolo,
-     * {@code lungoIlNastro} falso (test (1) del mandato: qr/logo sono blocchi a misura FISSA, non
-     * si accorciano allargando la riga, quindi di norma spingono verso il verticale).
+     * Prodotto ricco (Completa + logo 10) sul 62: verticale, larga quanto il rotolo, {@code
+     * lungoIlNastro} falso (test (1) del mandato: "logo" e' un blocco a misura FISSA, non si
+     * accorcia allargando la riga, quindi di norma spinge verso il verticale - "qr" faceva lo
+     * stesso ma non e' piu' un tipo di blocco, tolto dal 24/09/2026, docs/api.md).
      */
     @Test
-    void unProdottoRiccoConQrELogoSulRotolo62SceglieIlVerticale() throws Exception {
+    void unProdottoRiccoConLogoSulRotolo62SceglieIlVerticale() throws Exception {
         Path cartella = Files.createTempDirectory("etichette-test-prodotto-ricco-");
         salvaLogoDiProva(cartella);
         Caratteri caratteri = new Caratteri();
@@ -177,7 +184,6 @@ class RenditoreEtichettaTest {
         RenditoreEtichetta rendererConLogo = new RenditoreEtichetta(caratteri, new LogoService(cartella.toString()));
 
         List<BloccoDto> blocchi = new java.util.ArrayList<>(etichettaCompleta().blocchi());
-        blocchi.add(new BloccoDto("qr", true, 18, "piena", null));
         blocchi.add(new BloccoDto("logo", true, 10, "piena", null));
         EtichettaProdottoDto etichettaRicca = new EtichettaProdottoDto(etichettaCompleta().dicituraScadenza(),
                 etichettaCompleta().formatoData(), etichettaCompleta().produttore(), etichettaCompleta().zona(), blocchi);
@@ -190,6 +196,72 @@ class RenditoreEtichettaTest {
         assertThat(r.lungoIlNastro()).isFalse();
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
         assertThat(contienePixelNeri(r.immagine())).isTrue();
+    }
+
+    /**
+     * Un blocco "qr" salvato (dato vecchio: non e' piu' un tipo di blocco offerto dal 24/09/2026,
+     * docs/api.md) non fa fallire la resa e non disegna nulla - il renderer lo salta come un tipo
+     * sconosciuto qualunque ({@link RenditoreEtichetta#haContenuto} sopra).
+     */
+    @Test
+    void unBloccoQrSalvatoVieneSaltatoSenzaErrori() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("qr", true, 18, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, parametriDiProva(), 62, 1.0);
+
+        assertThat(contienePixelNeri(r.immagine())).isFalse();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // "Conservazione" come blocco a se' (24/09/2026, deciso dal cliente: non piu' una riga
+    // dentro "scadenza" - vedi ProdottiConversioni#conConservazioneSeManca per la normalizzazione
+    // di un'etichetta vecchia, e ResaApiTest per la verifica che la stampa resti identica).
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Il blocco "conservazione" da solo stampa la conservazione del prodotto in maiuscolo (stesso
+     * testo/maiuscole di sempre, prima disegnato dentro "scadenza"); vuota, non disegna nulla -
+     * stesso comportamento di "modoUso" (haContenuto sopra).
+     */
+    @Test
+    void unBloccoConservazioneSeparatoStampaLaConservazioneInMaiuscolo() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("conservazione", true, 8, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto conTesto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null,
+                "Fuori dal frigo", null, List.of(), null, 0, null, null, null);
+        ProdottoDto senzaTesto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null,
+                "", null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa risultatoConTesto = renderer.rendi(conTesto, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa risultatoSenzaTesto = renderer.rendi(senzaTesto, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(contienePixelNeri(risultatoConTesto.immagine())).isTrue();
+        assertThat(contienePixelNeri(risultatoSenzaTesto.immagine())).isFalse();
+    }
+
+    /**
+     * Dal 24/09/2026 "scadenza" non stampa piu' la conservazione (prima era una seconda riga
+     * dentro lo stesso blocco, tolta con la revisione che ha introdotto il blocco "conservazione"):
+     * un'etichetta con SOLO "scadenza" (senza il blocco "conservazione") stampa l'IDENTICO PNG sia
+     * che il prodotto abbia una conservazione valorizzata sia che non ce l'abbia - separazione
+     * netta, non un residuo dimenticato nel vecchio case.
+     */
+    @Test
+    void ilBloccoScadenzaDaSoloNonStampaPiuLaConservazione() throws Exception {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("scadenza", true, 8, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto conConservazione = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null,
+                "Fuori dal frigo", null, List.of(), null, 0, null, null, null);
+        ProdottoDto senzaConservazione = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null,
+                null, null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa r1 = renderer.rendi(conConservazione, ParametriStampa.VUOTI, 62, 1.0);
+        RisultatoResa r2 = renderer.rendi(senzaConservazione, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(pngBytes(r1.immagine())).isEqualTo(pngBytes(r2.immagine()));
     }
 
     /**
@@ -317,6 +389,348 @@ class RenditoreEtichettaTest {
         assertThat(r.avvisi()).doesNotContain("Il contenuto non sta nell'altezza del rotolo: riduci i corpi o spegni dei blocchi");
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Tabella dei valori nutrizionali in colonna stretta (24/09/2026): sulle etichette vere del
+    // cliente, sul 62 mm con "valori" nella colonna destra di "Due colonne" (quota 1/3),
+    // l'intestazione "VALORI NUTRIZIONALI" usciva TAGLIATA fuori dal bordo ("VALORI NUTRIZI") e
+    // "Carboidrati" andava a capo a meta' parola ("Carboidr"/"ati"). Vedi la nota di classe di
+    // RenditoreEtichetta: niente testo tagliato, a capo solo fra parole, corpo ridotto a scalini
+    // (mai sotto 5 pt) solo se una parola isolata non ci sta nemmeno da sola.
+    // ---------------------------------------------------------------------------------------
+
+    /** Le 8 voci vere della "Base pizza low carb" (v2-semi.yaml), con le due voci a rischio di rottura: "Carboidrati" (parola sola) e "di cui acidi grassi saturi" (frase). */
+    private List<ValoreNutrizionaleDto> valoriNutrizionaliCompleti() {
+        return List.of(
+                new ValoreNutrizionaleDto("Energia", "385 kJ / 91 kcal"),
+                new ValoreNutrizionaleDto("Grassi", "2,6 g"),
+                new ValoreNutrizionaleDto("di cui acidi grassi saturi", "0,5 g"),
+                new ValoreNutrizionaleDto("Carboidrati", "2 g"),
+                new ValoreNutrizionaleDto("di cui zuccheri", "0,7 g"),
+                new ValoreNutrizionaleDto("Fibre", "3,1 g"),
+                new ValoreNutrizionaleDto("Proteine", "15 g"),
+                new ValoreNutrizionaleDto("Sale", "1,5 g"));
+    }
+
+    /**
+     * Colonna stretta reale (62 mm, "due colonne" quote 1/3 e 1/4, corpo 7 - lo stesso della
+     * "Completa"): nessuna riga dell'intestazione o delle voci a rischio supera mai la larghezza
+     * della colonna, e nessuna parola isolata viene spezzata a meta' - il numero di righe non
+     * supera mai il numero di parole (una parola spezzata a meta' produce almeno una riga in piu':
+     * verificato contro il renderer pre-fix, "NUTRIZIONALI" a 159 px dava 2 righe,
+     * "NUTRIZIONA"/"LI"). Le larghezze di colonna sono calcolate come {@code disegnaZona}: {@code
+     * (larghezzaContenuto - gutter) * frazione}.
+     */
+    @Test
+    void nessunaRigaSuperaLaColonnaENessunaParolaSiSpezzaInColonnaStretta() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage buf = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = buf.createGraphics();
+        FontRenderContext frc = g.getFontRenderContext();
+
+        int larghezzaUtile62 = ProtocolloQl.ROTOLI_CONTINUI.get(62)[1];
+        int margine = (int) Math.round(1.5 * ProtocolloQl.PUNTI_PER_MM); // MARGINE_MM del renderer
+        int gutter = (int) Math.round(2.0 * ProtocolloQl.PUNTI_PER_MM); // GUTTER_MM del renderer
+        int larghezzaContenuto = larghezzaUtile62 - 2 * margine;
+
+        for (double frazioneDx : List.of(1.0 / 3, 1.0 / 4)) {
+            float wDx = Math.round((larghezzaContenuto - gutter) * frazioneDx);
+
+            assertNessunaParolaSiSpezza(frc, "VALORI NUTRIZIONALI", caratteri.grassetto(7f), wDx);
+            assertNessunaParolaSiSpezza(frc, "NUTRIZIONALI", caratteri.grassetto(7f), wDx);
+            assertNessunaParolaSiSpezza(frc, "Carboidrati", caratteri.grassetto(7f), wDx);
+            assertNessunaParolaSiSpezza(frc, "di cui acidi grassi saturi", caratteri.regolare(7f), wDx);
+        }
+    }
+
+    private void assertNessunaParolaSiSpezza(FontRenderContext frc, String testo, Font font, float larghezza) {
+        List<TextLayout> righe = renderer.costruisciRighe(frc, List.of(new RenditoreEtichetta.Segmento(testo, font)), larghezza);
+        int numeroParole = testo.trim().split("\\s+").length;
+        assertThat(righe.size())
+                .describedAs("'%s' a larghezza %.0f: %d righe per %d parole, sembra spezzata a meta' parola",
+                        testo, larghezza, righe.size(), numeroParole)
+                .isLessThanOrEqualTo(numeroParole);
+        for (TextLayout riga : righe) {
+            assertThat(riga.getVisibleAdvance())
+                    .describedAs("'%s' a larghezza %.0f: una riga esce dalla colonna", testo, larghezza)
+                    .isLessThanOrEqualTo(larghezza);
+        }
+    }
+
+    /**
+     * Una singola parola troppo larga per la colonna (qui "NUTRIZIONALI", il caso della colonna a
+     * 1/4 su 62 mm) viene ridotta di corpo invece di essere lasciata spezzare carattere per
+     * carattere da {@link java.awt.font.LineBreakMeasurer}: resta UN segmento solo, con lo stesso
+     * testo e un font piu' piccolo, mai sotto 5 pt.
+     */
+    @Test
+    void unaParolaTroppoLargaVieneRidottaDiCorpoInveceDiEssereSpezzata() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage buf = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = buf.createGraphics();
+        FontRenderContext frc = g.getFontRenderContext();
+        Font originale = caratteri.grassetto(7f);
+
+        List<RenditoreEtichetta.Segmento> ridotti = renderer.restringiParoleTroppoLarghe(
+                List.of(new RenditoreEtichetta.Segmento("NUTRIZIONALI", originale)), 159f, frc);
+
+        assertThat(ridotti).hasSize(1);
+        assertThat(ridotti.get(0).testo()).isEqualTo("NUTRIZIONALI");
+        assertThat(ridotti.get(0).font().getSize2D()).isLessThan(originale.getSize2D());
+        assertThat(ridotti.get(0).font().getSize2D()).isGreaterThanOrEqualTo(5f * Caratteri.PX_PER_PT - 0.01f);
+        assertThat(ridotti.get(0).font().getStringBounds("NUTRIZIONALI", frc).getWidth()).isLessThanOrEqualTo(159);
+    }
+
+    /** Con spazio a sufficienza (regola 5, "identico a prima"): nessuna parola viene toccata. */
+    @Test
+    void unaParolaCheStaGiaNonVieneToccata() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage buf = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = buf.createGraphics();
+        FontRenderContext frc = g.getFontRenderContext();
+        List<RenditoreEtichetta.Segmento> segmenti = List.of(new RenditoreEtichetta.Segmento("NUTRIZIONALI", caratteri.grassetto(7f)));
+
+        List<RenditoreEtichetta.Segmento> risultato = renderer.restringiParoleTroppoLarghe(segmenti, 1000f, frc);
+
+        assertThat(risultato).isEqualTo(segmenti);
+    }
+
+    /**
+     * Regola 4 (24/09/2026, dopo il riscontro sulle etichette vere - "Salsa di pomodoro" sul 62
+     * mostrava "Carboidrati" ridotta di corpo per farla stare insieme al valore): una parola che
+     * sta da sola nell'INTERA colonna, ma non insieme al valore, resta al corpo NORMALE - il corpo
+     * si riduce SOLO se la parola non sta da sola in tutta la colonna (regola 2), MAI per farle
+     * posto accanto al valore. Il valore va sotto, allineato a destra: si riconosce dall'altezza
+     * consumata, due righe (etichetta + valore) invece di una sola (che vorrebbe dire che il
+     * valore condivide la riga, o che l'etichetta e' stata ridotta per farcela stare).
+     */
+    @Test
+    void unaParolaCheStaDaSolaMaNonConIlValoreRestaAlCorpoNormaleEIlValoreVaSotto() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage img = new BufferedImage(300, 200, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D g = img.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 300, 200);
+        g.setColor(Color.BLACK);
+        FontRenderContext frc = g.getFontRenderContext();
+        float larghezza = 212f; // wDx (1/3 su 62 mm, corpo 7 - la "Completa" vera), vedi disegnaZona
+        Font fLabel = caratteri.grassetto(7f);
+        Font fVal = caratteri.regolare(7f);
+        String valore = "1234,5 g"; // volutamente largo: precondizione del difetto, verificata sotto
+
+        // precondizioni del difetto segnalato: "Carboidrati" ci sta da sola in tutta la colonna...
+        double larghezzaParola = fLabel.getStringBounds("Carboidrati", frc).getWidth();
+        assertThat(larghezzaParola).isLessThanOrEqualTo(larghezza);
+        // ...ma non insieme al valore (altrimenti il test non proverebbe la regola 4)
+        double margineValore = Math.round(1f * ProtocolloQl.PUNTI_PER_MM);
+        double larghezzaValore = fVal.getStringBounds(valore, frc).getWidth();
+        assertThat(larghezzaParola + margineValore + larghezzaValore).isGreaterThan(larghezza);
+
+        float yFinale = renderer.disegnaVoceValore(g, frc, "Carboidrati", valore, fLabel, fVal, 10, 10, larghezza);
+
+        // "Carboidrati" non si e' ridotta: alla stessa larghezza (l'intera colonna, non una
+        // larghezza ridotta per il valore) costruisciRighe produce UNA riga non spezzata, alla
+        // larghezza intera della parola non ridotta (nessuno scalino di corpoRidottoPerStare).
+        List<TextLayout> righe = renderer.costruisciRighe(frc, List.of(new RenditoreEtichetta.Segmento("Carboidrati", fLabel)), larghezza);
+        assertThat(righe).hasSize(1);
+        assertThat(righe.get(0).getAdvance()).isCloseTo((float) larghezzaParola, org.assertj.core.data.Offset.offset(0.5f));
+
+        // altezza consumata: DUE righe (etichetta + valore sotto), non una sola - se il valore
+        // avesse condiviso la riga (o l'etichetta si fosse ridotta per farcela stare) sarebbe stata
+        // una riga sola.
+        float unaRiga = righe.get(0).getAscent() + righe.get(0).getDescent() + righe.get(0).getLeading();
+        assertThat(yFinale - 10).isGreaterThan(unaRiga * 1.5f);
+
+        assertThat(contienePixelNeri(img)).isTrue();
+    }
+
+    /**
+     * Regola 4, seconda meta' (24/09/2026, dopo il riscontro sulle etichette vere - "Base pizza"
+     * sul 62 mostrava "di cui acidi grassi saturi" a capo una parola per riga, "di cui" / "acidi" /
+     * "grassi" / "saturi"): un nome su piu' righe va a capo a PIENA larghezza di colonna (come
+     * {@link #costruisciRighe} chiamato direttamente sulla stessa larghezza) - solo la scelta se il
+     * valore condivide l'ULTIMA riga o va sotto dipende dal valore, le righe prima dell'ultima
+     * restano identiche qualunque sia il valore. Si verifica cambiando SOLO il valore (corto: entra
+     * nell'ultima riga; lungo: no) e controllando che l'altezza cresca di ESATTAMENTE una riga (il
+     * valore va sotto), non che l'intero nome si riorganizzi in piu' righe strette.
+     */
+    @Test
+    void ilNomeSuPiuRigheVaACapoAPienaLarghezzaIndipendentementeDalValore() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage misura = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D gm = misura.createGraphics();
+        FontRenderContext frc = gm.getFontRenderContext();
+        float larghezza = 212f; // wDx (1/3 su 62 mm, corpo 7 - la "Completa" vera), vedi disegnaZona
+        Font fLabel = caratteri.regolare(7f); // "di cui ..." e' regolare, non grassetto
+        Font fVal = caratteri.regolare(7f);
+        String voce = "di cui acidi grassi saturi";
+
+        // precondizione: il nome, da solo a piena larghezza, ha davvero bisogno di piu' righe
+        // (altrimenti il test non proverebbe nulla sull'a-capo multi-riga).
+        List<TextLayout> righeNomeAPienaLarghezza = renderer.costruisciRighe(frc, List.of(new RenditoreEtichetta.Segmento(voce, fLabel)), larghezza);
+        assertThat(righeNomeAPienaLarghezza.size()).isGreaterThan(1);
+        float unaRiga = righeNomeAPienaLarghezza.get(0).getAscent() + righeNomeAPienaLarghezza.get(0).getDescent() + righeNomeAPienaLarghezza.get(0).getLeading();
+
+        BufferedImage imgCorto = new BufferedImage(300, 200, BufferedImage.TYPE_BYTE_BINARY);
+        float yCorto = renderer.disegnaVoceValore(imgCorto.createGraphics(), frc, voce, "1 g", fLabel, fVal, 10, 10, larghezza);
+        BufferedImage imgLungo = new BufferedImage(300, 200, BufferedImage.TYPE_BYTE_BINARY);
+        float yLungo = renderer.disegnaVoceValore(imgLungo.createGraphics(), frc, voce, "123456,7 g", fLabel, fVal, 10, 10, larghezza);
+
+        // il valore lungo non condivide l'ultima riga (va sotto): un'altezza in piu' di ESATTAMENTE
+        // una riga rispetto al valore corto (che la condivide) - se il nome si fosse invece
+        // riorganizzato su piu' righe strette per via del valore, la differenza non sarebbe una
+        // riga pulita.
+        assertThat(yLungo - yCorto).isCloseTo(unaRiga, org.assertj.core.data.Offset.offset(unaRiga * 0.3f));
+    }
+
+    /**
+     * Colonna stretta reale, resa completa (non solo il motore di a-capo): l'inchiostro della
+     * tabella non esce MAI dal margine destro dell'etichetta (1,5 mm) - prima del fix "VALORI
+     * NUTRIZIONALI" ci arrivava e proseguiva ben oltre, sparendo fuori dal bordo dell'immagine.
+     * Il filetto orizzontale sotto l'intestazione tocca ESATTAMENTE il bordo del margine (la
+     * colonna finisce li'), quindi si controllano solo i pixel STRETTAMENTE oltre quel confine.
+     */
+    @Test
+    void laTabellaValoriInColonnaStrettaNonEsceDalMargineDestro() {
+        List<BloccoDto> blocchi = List.of(
+                new BloccoDto("testo", true, 7, "sx", "x"), // sx non vuoto: dx resta davvero stretta, vedi disegnaZona
+                new BloccoDto("valori", true, 7, "dx", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, new ZonaDto("1/3"), blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                valoriNutrizionaliCompleti(), null, 0, null, null, null);
+
+        RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+
+        int margine = (int) Math.round(1.5 * ProtocolloQl.PUNTI_PER_MM);
+        BufferedImage img = r.immagine();
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = img.getWidth() - margine + 1; x < img.getWidth(); x++) {
+                assertThat((img.getRGB(x, y) & 0xFFFFFF) == 0)
+                        .describedAs("pixel nero oltre il margine destro a (%d,%d)", x, y)
+                        .isFalse();
+            }
+        }
+        assertThat(contienePixelNeri(img)).isTrue();
+    }
+
+    /**
+     * Colonna larga (regola 5, "identico a prima del fix"): un blocco "valori" a piena larghezza
+     * (non in "due colonne") su 102 mm e su 62 mm ha gia' spazio a sufficienza per "VALORI
+     * NUTRIZIONALI (100 g)" su una riga e per ogni voce/valore affiancati - la regola del
+     * 24/09/2026 non deve MAI scattare qui: il PNG resta IDENTICO, byte per byte, a quello di
+     * prima del fix (hash calcolato con il renderer pre-fix su una copia usa-e-getta fuori dal
+     * progetto, stessi identici dati).
+     */
+    @Test
+    void laTabellaValoriAPienaLarghezzaRestaIdenticaAPrimaDelFix() throws Exception {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("valori", true, 7, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        ProdottoDto prodotto = new ProdottoDto(1L, "Salsa di pomodoro", null, etichetta, null, List.of(), null, null,
+                null, null, valoriNutrizionaliCompleti(), null, 0, null, null, null);
+
+        RisultatoResa r102 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r62 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+
+        assertThat(sha256(pngBytes(r102.immagine())))
+                .isEqualTo("d1ce180925165ace10e911ee18afc3049133aeee6872be73c63ebf3ce1098c1e");
+        assertThat(sha256(pngBytes(r62.immagine())))
+                .isEqualTo("c6e914c4285868ee4e2f48d6fdb1842b6e9bc4a7dd32b1686b19deb3bcd01e63");
+    }
+
+    private static String sha256(byte[] dati) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dati));
+    }
+
+    /**
+     * Regola 4, rifinita col 102 (24/09/2026 - il cliente ha chiesto di provare anche il 102):
+     * "Base pizza low carb" (prodotto reale id=1, v2-semi.yaml) sul 102 aveva "VALORI NUTRIZIONALI"
+     * e ogni voce/valore gia' con spazio a sufficienza - deve restare IDENTICA, byte per byte, a
+     * prima di TUTTO il lavoro di oggi (hash calcolato col renderer pre-fix su una copia usa e
+     * getta fuori dal progetto, con lo stesso identico fixture - la normalizzazione "conservazione"
+     * di {@code ProdottiConversioni#conConservazioneSeManca}, che qui va aggiunta a mano perche'
+     * questo test costruisce l'etichetta direttamente, senza passare dall'API).
+     */
+    @Test
+    void laBasePizzaSulRotolo102RestaIdenticaAPrimaDiTuttoIlLavoroDiOggi() throws Exception {
+        List<BloccoDto> blocchi = List.of(
+                new BloccoDto("titolo", true, 18, "piena", null),
+                new BloccoDto("ingredienti", true, 7, "piena", null),
+                new BloccoDto("puoContenere", true, 7, "piena", null),
+                new BloccoDto("modoUso", false, 7, "piena", null),
+                new BloccoDto("scadenza", true, 8, "sx", null),
+                new BloccoDto("conservazione", true, 8, "sx", null), // aggiunto da ProdottiConversioni, normalmente
+                new BloccoDto("lotto", true, 7, "sx", null),
+                new BloccoDto("quantita", true, 28, "sx", null),
+                new BloccoDto("valori", true, 7, "dx", null),
+                new BloccoDto("riga", true, 8, "piena", null),
+                new BloccoDto("produttore", true, 7, "sx", null));
+        ProduttoreDto produttore = new ProduttoreDto("Michi s.n.c. di Michele Alberto Crivellari",
+                "Via Brigata Marche 257 - 31030 Carbonera (TV)", "Via Trieste 4/II - 31020 Fontane di Villorba (TV)");
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto("da consumare entro", "GG/MM/AAAA", produttore, new ZonaDto("1/3"), blocchi);
+        String ingredienti = "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO, "
+                + "Lievito madre di farina di FRUMENTO in polvere, Lievito disattivato, Proteina di AVENA], Olio di girasole, "
+                + "Sale iodato, Lievito di birra compresso, Coadiuvante in polvere per panificazione [Farina di GRANO tenero "
+                + "tipo 0, Enzimi], Miscela per spolvero [SEMOLA rimacinata di GRANO duro, Farina di riso, Farina di mais].";
+        ProdottoDto prodotto = new ProdottoDto(1L, "Base pizza low carb", "BASE PIZZA LOW CARB ARTIGIANALE", etichetta,
+                ingredienti, List.of("Latte", "Lupini", "Senape", "Sesamo", "Soia", "Uova"),
+                "3 modi per prepararle al meglio.", 7, "Fuori dal frigo", "2148 g", valoriNutrizionaliCompleti(),
+                null, 0, null, null, null);
+        ParametriStampa parametri = new ParametriStampa(null, LocalDate.of(2026, 10, 1), "L 20260924-099", false);
+
+        RisultatoResa r = renderer.rendi(prodotto, parametri, 102, 1.0);
+
+        assertThat(sha256(pngBytes(r.immagine())))
+                // Ricalcolato il 25/09/2026: "quantita" non disegna piu' la riga "Quantità" sopra
+                // il valore (deciso da Gianluca) - unico cambiamento rispetto all'hash precedente
+                // (ece356d1...), verificato confrontando i due PNG a occhio prima di aggiornarlo.
+                .isEqualTo("9964726467f092a299d0811b41a4c1282fe97ff0ba32c57a9af1c3c9ee451e06");
+    }
+
+    /**
+     * Regola 4, rifinita (24/09/2026): quando l'ultima riga NATURALE del nome (a piena larghezza,
+     * "grassi saturi" per "di cui acidi grassi saturi" nella colonna 1/3 su 62 mm) non sta insieme
+     * al valore, condivide la riga SOLO la sua parola finale ("saturi") - non tutta la riga naturale
+     * (il difetto di un primo tentativo di questo fix: dava "grassi saturi" / "0,5 g" separati) e
+     * non un gruppo intermedio (mai una parola orfana a meta' gruppo, vedi {@link
+     * RenditoreEtichetta#paroleCondiviseColValore}).
+     */
+    @Test
+    void ilValoreCondivideSoloLUltimaParolaQuandoLUltimaRigaNaturaleNonCiStaIntera() {
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        BufferedImage misura = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_BINARY);
+        Graphics2D gm = misura.createGraphics();
+        FontRenderContext frc = gm.getFontRenderContext();
+        float larghezza = 212f; // wDx (1/3 su 62 mm, corpo 7 - la "Completa" vera), vedi disegnaZona
+        Font fLabel = caratteri.regolare(7f); // "di cui ..." e' regolare, non grassetto
+        Font fVal = caratteri.regolare(7f);
+        String voce = "di cui acidi grassi saturi";
+        String valore = "0,5 g";
+
+        // l'ultima riga naturale (a piena larghezza) di questa voce ha piu' di una parola - altrimenti
+        // il test non proverebbe la scelta fra "tutta la riga" e "solo l'ultima parola".
+        List<TextLayout> righeNaturali = renderer.costruisciRighe(frc, List.of(new RenditoreEtichetta.Segmento(voce, fLabel)), larghezza);
+        int inizioUltima = 0;
+        for (int i = 0; i < righeNaturali.size() - 1; i++) {
+            inizioUltima += righeNaturali.get(i).getCharacterCount();
+        }
+        String testoUltimaRiga = voce.substring(inizioUltima).strip();
+        String[] parole = testoUltimaRiga.trim().split("\\s+");
+        assertThat(parole.length).isGreaterThan(1);
+        // ...e non ci sta insieme al valore (altrimenti condividerebbe la riga intera, niente da provare)
+        float wVal = (float) fVal.getStringBounds(valore, frc).getWidth();
+        assertThat(fLabel.getStringBounds(testoUltimaRiga, frc).getWidth() + Math.round(1f * ProtocolloQl.PUNTI_PER_MM) + wVal)
+                .isGreaterThan(larghezza);
+
+        int condivise = renderer.paroleCondiviseColValore(parole, fLabel, frc, wVal, larghezza);
+
+        assertThat(condivise).isEqualTo(1); // SOLO l'ultima parola ("saturi"), non tutta la riga naturale
+    }
+
     @Test
     void ingredientiConFrumentoProduconoUnaRunInGrassetto() {
         // Nota: Font.isBold() non e' affidabile su un font fisico caricato da un file .ttf gia'
@@ -342,14 +756,17 @@ class RenditoreEtichettaTest {
         });
     }
 
-    /** Blocchi veri della "Cucina" dopo la revisione contro il mockup del 2026-09-08 (v2-semi.yaml, 18-etichette-blocchi-cucina-dati). */
+    /**
+     * Blocchi veri della "Cucina" dopo la revisione contro il mockup del 2026-09-08 (v2-semi.yaml,
+     * 18-etichette-blocchi-cucina-dati), senza piu' il blocco "sigla" (tolto il 25/09/2026, deciso
+     * dal cliente: il produttore c'e' gia' in etichetta).
+     */
     private EtichettaProdottoDto etichettaCucina() {
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("titolo", true, 14, "piena", null),
                 new BloccoDto("dataProduzione", true, 8, "piena", null),
                 new BloccoDto("scadenza", true, 8, "piena", null),
-                new BloccoDto("lotto", true, 7, "piena", null),
-                new BloccoDto("sigla", true, 7, "piena", null));
+                new BloccoDto("lotto", true, 7, "piena", null));
         ProduttoreDto produttore = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null);
         return new EtichettaProdottoDto("Scade il", "GG/MM/AAAA", produttore, new ZonaDto("1/2"), blocchi);
     }
@@ -362,7 +779,7 @@ class RenditoreEtichettaTest {
     }
 
     @Test
-    void laCucinaDiImpastoClassico24hContieneDataDiProduzioneESigla() {
+    void laCucinaDiImpastoClassico24hContieneDataDiProduzione() {
         ProdottoDto prodotto = impastoClassico24h();
         RisultatoResa r = renderer.rendi(prodotto, parametriDiProva(), 102, 1.0);
 
@@ -370,22 +787,70 @@ class RenditoreEtichettaTest {
         // la riga di "dataProduzione" (data della stampa: cambia ogni giorno, non si confronta un
         // valore fisso) inizia sempre con "Prodotto il " nel formatoData dell'etichetta.
         assertThat(renderer.testoDataProduzione(prodotto.etichetta().formatoData())).startsWith("Prodotto il ");
-        // la riga di "sigla" e' esattamente "Preparato da " + siglaOperatore del prodotto.
-        assertThat(renderer.testoSigla(prodotto)).isEqualTo("Preparato da M.C.");
     }
 
+    /**
+     * Il blocco "scadenza" nell'editor (docs/api.md, {@code scadenzaSegnaposto}): con il parametro
+     * vero il testo e' il SEGNAPOSTO del formato scelto ("GG/MM/AAAA" ecc., non la data vera), con
+     * il parametro assente (o falso) resta la data vera come sempre - stessa cosa per gli altri due
+     * formati offerti dall'interfaccia (tendina "Formato data", FORMATI_DATA in tipi.ts).
+     */
     @Test
-    void ilBloccoSiglaNonOccupaSpazioSeSiglaOperatoreEVuota() {
+    void ilTestoDellaScadenzaEIlSegnapostoDelFormatoSoloConScadenzaSegnaposto() {
+        ProdottoDto prodotto = impastoClassico24h(); // giorniScadenza = 3
+        LocalDate scad = LocalDate.of(2026, 9, 15);
+        ParametriStampa conDataVera = new ParametriStampa(null, scad, null, false);
+        ParametriStampa conSegnaposto = new ParametriStampa(null, scad, null, true);
+
+        assertThat(renderer.testoScadenza(prodotto, conDataVera, "GG/MM/AAAA")).isEqualTo("15/09/2026");
+        assertThat(renderer.testoScadenza(prodotto, conSegnaposto, "GG/MM/AAAA")).isEqualTo("GG/MM/AAAA");
+        assertThat(renderer.testoScadenza(prodotto, conSegnaposto, "GG/MM/AA")).isEqualTo("GG/MM/AA");
+        assertThat(renderer.testoScadenza(prodotto, conSegnaposto, "GG.MM.AAAA")).isEqualTo("GG.MM.AAAA");
+        // il segnaposto occupa lo stesso numero di caratteri della data vera nello stesso formato.
+        assertThat(renderer.testoScadenza(prodotto, conSegnaposto, "GG/MM/AAAA"))
+                .hasSameSizeAs(renderer.testoScadenza(prodotto, conDataVera, "GG/MM/AAAA"));
+    }
+
+    /**
+     * Il blocco "scadenza" ora compare SEMPRE quando e' acceso, anche su un prodotto senza
+     * {@code giorniScadenza} (decisione del cliente del 24/09/2026: la proposta alla stampa e'
+     * sempre oggi + {@link it.etichette.dati.Contratto#GIORNI_SCADENZA_PROPOSTI} giorni, non piu'
+     * legata a {@code giorniScadenza} del prodotto) - prima di questa decisione un prodotto senza
+     * {@code giorniScadenza} lasciava il blocco assente, col segnaposto compreso; ora, non avendo
+     * mai piu' scadenza "assente", il segnaposto compare regolarmente.
+     */
+    @Test
+    void ilBloccoScadenzaCompareColSegnapostoAncheSuUnProdottoSenzaGiorniScadenza() {
+        List<BloccoDto> soloScadenza = List.of(new BloccoDto("scadenza", true, 8, "piena", null));
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, "GG/MM/AAAA", null, new ZonaDto("1/3"), soloScadenza);
+        ProdottoDto senzaGiorniScadenza = new ProdottoDto(2L, "Prodotto senza giorniScadenza", null, etichetta,
+                "Acqua", List.of(), "", null, "In frigo", "250 g", List.of(), "", 0, null, null, null); // giorniScadenza = null
+
+        ParametriStampa conSegnaposto = new ParametriStampa(null, null, null, true);
+        RisultatoResa r = renderer.rendi(senzaGiorniScadenza, conSegnaposto, 102, 1.0);
+
+        assertThat(contienePixelNeri(r.immagine())).isTrue();
+    }
+
+    /**
+     * Un blocco "sigla" salvato (dato vecchio: non e' piu' un tipo di blocco offerto dal
+     * 25/09/2026, docs/api.md) non fa fallire la resa e non disegna nulla - il renderer lo salta
+     * come un tipo sconosciuto qualunque ({@link RenditoreEtichetta#haContenuto} sopra), stesso
+     * trattamento di "qr" ({@code unBloccoQrSalvatoVieneSaltatoSenzaErrori}) - anche con
+     * {@code siglaOperatore} valorizzato: non conta piu' niente, la sigla non si stampa mai.
+     */
+    @Test
+    void unBloccoSiglaSalvatoVieneSaltatoSenzaErrori() {
         List<BloccoDto> soloSigla = List.of(new BloccoDto("sigla", true, 7, "piena", null));
         EtichettaProdottoDto etichettaSoloSigla = new EtichettaProdottoDto(null, "GG/MM/AAAA", null, new ZonaDto("1/3"), soloSigla);
-        ProdottoDto senzaSigla = new ProdottoDto(2L, "Impasto classico 24h", null, etichettaSoloSigla,
+        ProdottoDto conSiglaOperatore = new ProdottoDto(2L, "Impasto classico 24h", null, etichettaSoloSigla,
                 "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", List.of(), "", 3,
-                "In frigo", "250 g", List.of(), "", 0, null, null, null); // siglaOperatore = ""
+                "In frigo", "250 g", List.of(), "M.C.", 0, null, null, null); // siglaOperatore valorizzato: non conta piu'
 
-        RisultatoResa r = renderer.rendi(senzaSigla, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r = renderer.rendi(conSiglaOperatore, ParametriStampa.VUOTI, 102, 1.0);
 
-        // nessun contenuto: il blocco "sigla" e' l'unico e non si stampa (haContenuto -> false),
-        // quindi l'etichetta resta vuota (solo il margine, nessun pixel nero).
+        // nessun contenuto: il blocco "sigla" e' l'unico e non e' piu' un tipo conosciuto, quindi
+        // l'etichetta resta vuota (solo il margine, nessun pixel nero).
         assertThat(contienePixelNeri(r.immagine())).isFalse();
     }
 
@@ -399,8 +864,138 @@ class RenditoreEtichettaTest {
 
         RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
 
-        // a differenza di "sigla", "dataProduzione" ha sempre contenuto (la data di oggi c'e' sempre).
+        // "dataProduzione" ha sempre contenuto (la data di oggi c'e' sempre) - a differenza di un
+        // blocco "sigla" salvato (dato vecchio), che non ne ha mai piu' (vedi sopra).
         assertThat(contienePixelNeri(r.immagine())).isTrue();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // "quantita" stampa solo il valore (deciso da Gianluca, 25/09/2026: via la riga "Quantità" in
+    // grassetto 8 pt che stava sopra - il nome mostrato nell'editor diventa "Peso", Contratto#nomeBlocco).
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Dal 25/09/2026 "quantita" disegna ESATTAMENTE come un "testoGrande" con lo stesso testo:
+     * un solo paragrafo in grassetto al corpo del blocco, senza nessuna riga sopra. Verificato per
+     * uguaglianza byte-per-byte dei due PNG, non solo "ci sono pixel neri": prima di questo cambio
+     * "quantita" occupava sempre un po' piu' spazio verticale (la riga "Quantità" a corpo 8).
+     */
+    @Test
+    void ilBloccoQuantitaStampaSoloIlValoreComeUnTestoGrande() throws Exception {
+        List<BloccoDto> bloccoQuantita = List.of(new BloccoDto("quantita", true, 28, "piena", null));
+        EtichettaProdottoDto etichettaQuantita = new EtichettaProdottoDto(null, null, null, null, bloccoQuantita);
+        ProdottoDto prodottoQuantita = new ProdottoDto(1L, "Prodotto", null, etichettaQuantita, null, List.of(), null,
+                null, null, "2148 g", List.of(), null, 0, null, null, null);
+
+        List<BloccoDto> bloccoTestoGrande = List.of(new BloccoDto("testoGrande", true, 28, "piena", "2148 g"));
+        EtichettaProdottoDto etichettaTestoGrande = new EtichettaProdottoDto(null, null, null, null, bloccoTestoGrande);
+        ProdottoDto prodottoTestoGrande = new ProdottoDto(1L, "Prodotto", null, etichettaTestoGrande, null, List.of(),
+                null, null, null, null, List.of(), null, 0, null, null, null);
+
+        RisultatoResa rQuantita = renderer.rendi(prodottoQuantita, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rTestoGrande = renderer.rendi(prodottoTestoGrande, ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(contienePixelNeri(rQuantita.immagine())).isTrue();
+        assertThat(pngBytes(rQuantita.immagine())).isEqualTo(pngBytes(rTestoGrande.immagine()));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // "Confezionato da" del produttore, opzionale (deciso da Gianluca, 25/09/2026): vuoto o
+    // assente non cambia niente all'etichetta, valorizzato si aggiunge in coda al testo del
+    // produttore, nello stile gia' usato per la sede di produzione.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void testoProduttoreAggiungeConfezionatoDaSoloSeNonVuoto() {
+        ProduttoreDto senzaCampo = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null); // costruttore di comodo a 3 argomenti
+        ProduttoreDto vuoto = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null, "");
+        ProduttoreDto valorizzato = new ProduttoreDto("Michi s.n.c.", "Carbonera (TV)", null, "Laboratorio Rossi s.r.l.");
+
+        assertThat(renderer.testoProduttore(senzaCampo)).isEqualTo("Michi s.n.c. - Carbonera (TV)");
+        assertThat(renderer.testoProduttore(vuoto)).isEqualTo(renderer.testoProduttore(senzaCampo));
+        assertThat(renderer.testoProduttore(valorizzato)).isEqualTo("Michi s.n.c. - Carbonera (TV) - Confezionato da: Laboratorio Rossi s.r.l.");
+    }
+
+    /**
+     * Verifica di regressione richiesta esplicitamente (docs/api.md): il PNG di un'etichetta gia'
+     * salvata resta IDENTICO byte per byte sia che {@code confezionatoDa} sia assente (prodotto
+     * vecchio) sia che sia una stringa vuota (l'interfaccia lo manda comunque); con un valore, il
+     * PNG e' diverso davvero (il blocco disegna qualcosa in piu').
+     */
+    @Test
+    void ilBloccoProduttoreRestaIdenticoByteAByteConConfezionatoDaVuotoOAssente() throws Exception {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("produttore", true, 7, "piena", null));
+        ProduttoreDto assente = new ProduttoreDto("Michi s.n.c.", "Via Roma 1", "Via Trieste 2");
+        ProduttoreDto vuoto = new ProduttoreDto("Michi s.n.c.", "Via Roma 1", "Via Trieste 2", "");
+        ProduttoreDto valorizzato = new ProduttoreDto("Michi s.n.c.", "Via Roma 1", "Via Trieste 2", "Laboratorio Rossi s.r.l.");
+
+        RisultatoResa rAssente = renderer.rendi(prodottoConProduttore(blocchi, assente), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rVuoto = renderer.rendi(prodottoConProduttore(blocchi, vuoto), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rValorizzato = renderer.rendi(prodottoConProduttore(blocchi, valorizzato), ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(pngBytes(rAssente.immagine())).isEqualTo(pngBytes(rVuoto.immagine()));
+        assertThat(pngBytes(rValorizzato.immagine())).isNotEqualTo(pngBytes(rAssente.immagine()));
+        assertThat(contienePixelNeri(rValorizzato.immagine())).isTrue();
+    }
+
+    private ProdottoDto prodottoConProduttore(List<BloccoDto> blocchi, ProduttoreDto produttore) {
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, produttore, new ZonaDto("1/3"), blocchi);
+        return new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                List.of(), null, 0, null, null, null);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Valori nutrizionali precaricati con valore vuoto (deciso da Gianluca, 25/09/2026: l'editor
+    // precarica le voci obbligatorie col valore vuoto, da riempire) - RenditoreEtichetta#righeValoriDaStampare.
+    // ---------------------------------------------------------------------------------------
+
+    /** Una riga con {@code valore} vuoto non stampa niente, nemmeno la sola voce: il PNG e' identico a quello senza quella riga. */
+    @Test
+    void unaRigaDiValoriConValoreVuotoNonStampaNienteNeLaVoceDaSola() throws Exception {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("valori", true, 7, "piena", null));
+        List<ValoreNutrizionaleDto> conRigaVuota = List.of(
+                new ValoreNutrizionaleDto("Energia", "385 kJ / 91 kcal"),
+                new ValoreNutrizionaleDto("Grassi", "")); // precaricata, non ancora riempita
+        List<ValoreNutrizionaleDto> senzaRigaVuota = List.of(new ValoreNutrizionaleDto("Energia", "385 kJ / 91 kcal"));
+
+        RisultatoResa rConRigaVuota = renderer.rendi(prodottoConValori(blocchi, conRigaVuota), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rSenzaRigaVuota = renderer.rendi(prodottoConValori(blocchi, senzaRigaVuota), ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(contienePixelNeri(rConRigaVuota.immagine())).isTrue();
+        assertThat(pngBytes(rConRigaVuota.immagine())).isEqualTo(pngBytes(rSenzaRigaVuota.immagine()));
+    }
+
+    /** Una riga con {@code voce} vuota si scarta sempre, anche se ha un valore. */
+    @Test
+    void unaRigaDiValoriConVoceVuotaSiScartaSempre() throws Exception {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("valori", true, 7, "piena", null));
+        List<ValoreNutrizionaleDto> conVoceVuota = List.of(
+                new ValoreNutrizionaleDto("Energia", "385 kJ / 91 kcal"),
+                new ValoreNutrizionaleDto("", "12345 kcal")); // voce vuota: scartata anche col valore
+        List<ValoreNutrizionaleDto> senzaQuellaRiga = List.of(new ValoreNutrizionaleDto("Energia", "385 kJ / 91 kcal"));
+
+        RisultatoResa rConVoceVuota = renderer.rendi(prodottoConValori(blocchi, conVoceVuota), ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rSenzaQuellaRiga = renderer.rendi(prodottoConValori(blocchi, senzaQuellaRiga), ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(pngBytes(rConVoceVuota.immagine())).isEqualTo(pngBytes(rSenzaQuellaRiga.immagine()));
+    }
+
+    /** Se TUTTE le righe hanno il valore vuoto il blocco "valori" non ha contenuto: non occupa spazio, come "sigla"/"qr". */
+    @Test
+    void ilBloccoValoriNonOccupaSpazioSeTutteLeRigheHannoIlValoreVuoto() {
+        List<BloccoDto> blocchi = List.of(new BloccoDto("valori", true, 7, "piena", null));
+        List<ValoreNutrizionaleDto> tutteVuote = List.of(
+                new ValoreNutrizionaleDto("Energia", ""), new ValoreNutrizionaleDto("Grassi", ""), new ValoreNutrizionaleDto("Sale", ""));
+
+        RisultatoResa r = renderer.rendi(prodottoConValori(blocchi, tutteVuote), ParametriStampa.VUOTI, 102, 1.0);
+
+        assertThat(contienePixelNeri(r.immagine())).isFalse();
+    }
+
+    private ProdottoDto prodottoConValori(List<BloccoDto> blocchi, List<ValoreNutrizionaleDto> valori) {
+        EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
+        return new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
+                valori, null, 0, null, null, null);
     }
 
     @Test
@@ -472,16 +1067,29 @@ class RenditoreEtichettaTest {
         assertThat(margineDx).isCloseTo(margineAtteso, org.assertj.core.data.Offset.offset(4));
     }
 
-    /** Il QR centrato ha anch'esso margini sinistro e destro uguali entro pochi punti (posizione orizzontale, non solo il testo). */
+    /**
+     * Il logo centrato ha anch'esso margini sinistro e destro uguali entro pochi punti (posizione
+     * orizzontale di un'IMMAGINE, non solo del testo) - lo stesso test valeva per il blocco "qr",
+     * anche lui posizionato con {@code xAllineata}, prima che sparisse dal 24/09/2026 (docs/api.md).
+     */
     @Test
-    void unQrCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti() {
-        List<BloccoDto> blocchi = List.of(new BloccoDto("qr", true, 18, "piena", null, "centro"));
+    void unLogoCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti() throws Exception {
+        Path cartella = Files.createTempDirectory("etichette-test-logo-centrato-");
+        // Tutto nero (a differenza di salvaLogoDiProva, meta' nera/meta' bianca): qui
+        // l'inchiostro deve toccare i bordi sinistro e destro del logo, altrimenti il
+        // bounding box misurato non e' quello del logo intero e il test del centraggio
+        // non avrebbe senso.
+        salvaLogoPienoDiProva(cartella);
+        Caratteri caratteri = new Caratteri();
+        caratteri.carica();
+        RenditoreEtichetta rendererConLogo = new RenditoreEtichetta(caratteri, new LogoService(cartella.toString()));
+
+        List<BloccoDto> blocchi = List.of(new BloccoDto("logo", true, 18, "piena", null, "centro"));
         EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
         ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
                 List.of(), null, 0, null, null, null);
-        ParametriStampa parametri = new ParametriStampa(null, null, "L 20260909-001");
 
-        RisultatoResa r = renderer.rendi(prodotto, parametri, 62, 1.0);
+        RisultatoResa r = rendererConLogo.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
         int[] limiti = limitiOrizzontaliInchiostro(r.immagine());
 
         assertThat(limiti).isNotNull();
@@ -518,6 +1126,28 @@ class RenditoreEtichettaTest {
         g.fillRect(0, 0, 20, 20);
         g.dispose();
         ImageIO.write(sorgente, "png", cartella.resolve("logo.png").toFile());
+    }
+
+    /**
+     * Logo di prova TUTTO nero (a differenza di {@link #salvaLogoDiProva}, meta' nera/meta'
+     * bianca): serve ai test che misurano il bounding box del logo per intero (es. il centraggio,
+     * {@code unLogoCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti}), dove l'inchiostro deve
+     * toccare i bordi sinistro e destro del logo.
+     */
+    private static void salvaLogoPienoDiProva(Path cartella) throws Exception {
+        BufferedImage sorgente = new BufferedImage(40, 20, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = sorgente.createGraphics();
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, 40, 20);
+        g.dispose();
+        ImageIO.write(sorgente, "png", cartella.resolve("logo.png").toFile());
+    }
+
+    /** I byte del PNG di un'immagine: confronto per uguaglianza pixel-per-pixel senza un loop a mano nel test. */
+    private static byte[] pngBytes(BufferedImage img) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", out);
+        return out.toByteArray();
     }
 
     private static boolean contienePixelNeri(BufferedImage img) {

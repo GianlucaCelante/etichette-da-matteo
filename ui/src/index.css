@@ -60,6 +60,7 @@
   --verdebordo: #B9C89A;
   --ambra: #A97514;
   --ambrachiaro: #F7EBD3;
+  --ambrabordo: #E5CB93;
   --rosso: #a3301a;
   --rossocupo: #8c3520;
   --rossochiaro: #fbe4e0;
@@ -140,8 +141,17 @@ svg { display: block; flex-shrink: 0; }
   writing-mode: vertical-rl; text-orientation: mixed; font-size: 12.5px; font-weight: 700; color: var(--tenue);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-height: 0; padding: 2px 0;
 }
-.scorre { overflow-y: auto; overscroll-behavior: contain; }
-.scorre::-webkit-scrollbar { width: 8px; }
+/* Barre di scorrimento (revisione grafica, 25/09/2026): sottili e discrete
+   su PC (thin, colore del bordo del tema, niente traccia colorata), del
+   tutto invisibili sul telefono - lo scorrimento col dito resta, la barra
+   grigia con le frecce no (G1). ".scorre" e' il caso comune (elenchi,
+   finestre, la textarea che scorre oltre la sua altezza massima); gli altri
+   contenitori che scorrono per conto proprio (".schermo" sul telefono,
+   ".corpoLente", ".tendinaSimili", ".foglioTabellaScorre") ripetono la
+   stessa coppia di regole piu' sotto, vicino a dove sono definiti. */
+.scorre { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--bordo2) transparent; }
+.scorre::-webkit-scrollbar { width: 6px; }
+.scorre::-webkit-scrollbar-track { background: transparent; }
 .scorre::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
 .barrasotto { display: none; }
 
@@ -167,6 +177,20 @@ svg { display: block; flex-shrink: 0; }
 .btn.primario { background: var(--verde); border-color: var(--verde); color: #fff; }
 .btn.primario:disabled, .btn:disabled { opacity: .55; cursor: default; }
 .btn.grande { height: 60px; font-size: 19px; border-radius: 14px; }
+/* .azioniSezione (G5, revisione grafica, 25/09/2026): bottoni impilati che
+   restavano ognuno alla propria larghezza naturale, diversa da un bottone
+   all'altro, allineati a sinistra con un vuoto a destra ("Stampa di
+   prova"/"Cerca di nuovo" e "Fai una copia adesso" in Impostazioni.tsx).
+   flex-basis:0 (non 100%): un bottone non puo' restringersi sotto il suo
+   contenuto minimo (white-space:nowrap, sopra) - se insieme non ci stanno
+   piu' (la scheda stretta di PC/tablet a due colonne, o il telefono) il
+   flex-wrap del genitore li impila da solo, uno per riga, e flex-grow:1 fa
+   si' che quella riga la riempia da bordo a bordo lui solo ("a tutta
+   larghezza"); se invece c'e' posto (scheda intera su PC) restano
+   affiancati e diventano uguali (flex-grow:1 su entrambi si divide lo
+   spazio avanzato in parti uguali) - "affiancati in parti uguali", l'altra
+   meta' della regola, senza bisogno di due CSS diversi per le due schede. */
+.azioniSezione .btn { flex: 1 1 0; justify-content: center; }
 .pastiglia {
   display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 12px;
   border-radius: 18px; font-size: 13px; font-weight: 700; white-space: nowrap;
@@ -202,25 +226,65 @@ svg { display: block; flex-shrink: 0; }
 .casella .unita { margin-left: auto; font-size: 14px; color: var(--spento); }
 /* il lotto (mono) sta stretto in meta' griglia: corpo piu' piccolo, come nel
    prototipo (campoLetto con mono:true), e meno spazio perso in padding/gap,
-   cosi' il numero intero e "AUTO" ci stanno senza troncare anche sui 390px. */
+   cosi' il numero intero ci sta senza troncare anche sui 390px. */
 .casella.mono { font-size: 13px; white-space: nowrap; padding: 10px 10px; gap: 4px; }
-/* segna un valore proposto dal servizio (lotto auto, come nel prototipo):
-   resta modificabile, la pastiglia dice solo da dove viene il valore. */
-.casella .auto {
-  margin-left: auto; font-size: 10px; font-weight: 700; background: var(--riga); color: #6B5A4E;
-  padding: 2px 6px; border-radius: 5px; letter-spacing: .04em; flex-shrink: 0;
+/* Le textarea (Ingredienti, Modo d'uso e gli altri campi a piu' righe,
+   CampoArea in CampiComuni.tsx): niente piu' barra di scorrimento interna
+   fissa a 3 righe - l'altezza cresce col contenuto (E3, deciso da Gianluca,
+   25/09/2026). field-sizing:content (Edge/Chrome recenti - stesso vincolo
+   dei font incorporati, il servizio risponde solo in rete locale) fa
+   ridisegnare l'elemento alla misura del testo vero, come un div che
+   cresce; min-height parte dalle 3 righe di prima (rows=3 in CampiComuni.tsx
+   resta come misura di ripiego per i browser senza field-sizing), max-height
+   ferma la crescita verso le 12 righe - oltre torna a scorrere (".scorre",
+   gia' con la barra sottile/nascosta qui sopra). */
+textarea.scorre {
+  field-sizing: content;
+  min-height: 84px;
+  max-height: 280px;
+  resize: vertical;
+}
+@media (max-width: 860px) {
+  /* Niente maniglia di ridimensionamento a mano sul telefono (E3): con
+     l'altezza che segue gia' da sola il contenuto non serve, e sul tocco
+     "trascinare l'angolo" e' comunque scomodo quanto inutile. Su PC resta
+     (resize-y in CampiComuni.tsx). */
+  textarea.scorre { resize: none; }
 }
 .scheda { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
 .sep { height: 1px; background: var(--riga); }
 
 .riga {
-  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px;
+  /* align-items:flex-start, non piu' center (G4, revisione grafica,
+     25/09/2026): il valore deve stare sulla PRIMA riga dell'etichetta, non
+     centrato contro tutta l'altezza del blocco titolo+sotto - con un
+     titolo che va a capo (basis-[84px] in Impostazioni.tsx, vedi il
+     commento li') centrarlo lo spostava in mezzo, non piu' accanto al
+     testo del titolo vero. min-height 44px, non piu' 56 (R6, seconda
+     review, stesso giro): con flex-start lo spazio fra il contenuto vero
+     (una riga sola di testo, 24px) e il fondo del riquadro finiva TUTTO
+     sotto invece di dividersi sopra/sotto come con "center" - 56px lasciava
+     uno spazio vuoto ben visibile prima della riga successiva (o del
+     riquadro d'errore). 44px e' comunque un'area di tocco decente, il
+     contenuto piu' alto (righe con "sotto", o un titolo andato a capo)
+     resta piu' alto di lui: min-height non taglia mai niente, alza solo il
+     pavimento. */
+  display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 8px 14px;
   border-bottom: 1px solid var(--riga);
 }
 .riga:last-child { border-bottom: none; }
 .riga .t { font-size: 16px; font-weight: 700; }
 .riga .s { font-size: 13px; color: var(--tenue); }
 .riga .v { margin-left: auto; font-size: 15px; color: var(--tenue); white-space: nowrap; }
+/* Le righe di Impostazioni (Sezione.tsx: Stampante, Telefoni e tablet,
+   Programma) partivano 14px (2px sul telefono) piu' a destra del titolo
+   della scheda, del riquadro d'errore e dei bottoni - tutti diretti dentro
+   ".sezione", senza il padding orizzontale di ".riga" (R6, seconda review
+   25/09/2026): stesso schema gia' usato per ".riga.fornitore" in
+   FinestraFornitori.tsx ("padding orizzontale 0: nomi allineati al titolo
+   della finestra"), qui scoped a ".sezione" perche' ".riga" nudo resta
+   quello di sempre altrove. */
+.sezione .riga { padding-left: 0; padding-right: 0; }
 
 .interruttore { width: 52px; height: 30px; border-radius: 15px; background: var(--verde); position: relative; flex-shrink: 0; }
 .interruttore::after {
@@ -247,6 +311,13 @@ svg { display: block; flex-shrink: 0; }
 }
 .finestra.piccola { width: min(440px, 100%); padding: 24px 24px 20px; gap: 18px; }
 .piedeFinestra { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+/* Il foglio della catena (FoglioCatena.tsx): una finestra a parte, piu'
+   stretta della base (1120px, pensata per le finestre larghe) ma senza il
+   padding di ".piccola" - il suo contenuto ha gia' il proprio (.foglioStampa
+   sotto). Il piede pero' ha bisogno del suo respiro a parte, vedi
+   .piedeFoglio (difetto trovato il 23 settembre 2026: i bottoni toccavano il
+   bordo arrotondato e restavano tagliati dall'overflow:hidden di .finestra). */
+.finestra.foglio2 { width: min(820px, 100%); }
 .avvisino {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
   padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
@@ -266,7 +337,6 @@ svg { display: block; flex-shrink: 0; }
 .prodotto .d { font-size: 13px; color: var(--tenue); margin-top: auto; }
 .prodotto.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 17px 19px; }
 .campo { display: flex; flex-direction: column; gap: 6px; }
-.fuoriEtichetta { font-size: 12.5px; color: var(--spento); line-height: 1.45; padding: 0 6px; flex-shrink: 0; }
 .scelto { background: var(--verdechiaro); color: var(--verdescuro); }
 .rigaEt { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
 .rigaEt .cambia { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 700; color: var(--verdescuro); }
@@ -290,7 +360,11 @@ svg { display: block; flex-shrink: 0; }
   box-shadow: 0 1px 3px rgba(58, 49, 40, .07); font-size: 12.5px; font-weight: 700;
 }
 .blocco.spento { border-left-color: #C6B7A3; }
-.blocco.trascina { opacity: .4; }
+/* Trascinabile prendendo la riga in qualunque punto libero, non solo dalla
+   maniglia (24/09/2026): il cursore lo dice, sulla riga intera - tranne sul
+   telefono, che resta senza trascinamento (RigaBloccoTelefono.tsx). */
+.blocco:not(.telefono) { cursor: grab; }
+.blocco.trascina { opacity: .4; cursor: grabbing; }
 .blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blocco.spento .nome { color: var(--spento); }
 /* riga semplificata del telefono (revisione di questo giro): il nome non si
@@ -331,6 +405,16 @@ svg { display: block; flex-shrink: 0; }
 .azioniBlocco button { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
 .azioniBlocco button.on { background: var(--testo); color: #fff; }
 .azioniBlocco .separatore { width: 1px; height: 16px; background: var(--bordo2); flex-shrink: 0; }
+/* Il cestino che toglie un blocco (o una voce dei valori nutrizionali):
+   richiesta del cliente, 24 settembre 2026, al posto della vecchia X - stesso
+   riquadro di .lato/.azioniBlocco cosi' sta in famiglia con gli altri
+   bottoni piccoli della riga. */
+.cestino {
+  width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px;
+  background: var(--carta); display: flex; align-items: center; justify-content: center;
+  color: var(--spento); flex-shrink: 0;
+}
+.cestino:hover, .cestino:focus-visible { color: var(--rosso); background: var(--rossochiaro); }
 .via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
 /* Il gruppo "due colonne" (deciso da Gianluca, non nel mockup): i blocchi sx/dx
    consecutivi stanno dentro questo riquadro verde, che li segnala come un
@@ -349,6 +433,16 @@ svg { display: block; flex-shrink: 0; }
 .piedeRotolo { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--riga); margin-top: 4px; flex-wrap: wrap; }
 .strumentiEt { display: flex; align-items: center; gap: 8px; }
 .strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }
+/* Meno padding orizzontale di un .btn normale (S3): con flex:1 contro
+   flex-[2] di "Stampa" il padding di serie (22px per lato) da solo
+   spingeva "Modifica" oltre il terzo scarso voluto, perche' il testo+icona
+   non possono restringersi sotto la loro larghezza naturale (il "contenuto
+   minimo" di un elemento flex e' comunque un pavimento, checked in
+   revisione: 152px invece dei 120px teorici di un terzo esatto). "flex:1"
+   vive qui (non piu' "flex-1" di Tailwind in Stampa.tsx, seconda review
+   25/09/2026): serve poterlo spegnere sotto i 359px senza scontrarsi con
+   un'utility che vince sempre sulle regole di questo file. */
+.azioneModifica { flex: 1; padding: 0 14px; }
 .strumentiEt .btn.tondo { width: 44px; padding: 0; gap: 0; border-radius: 22px; }
 .strumentiEt .sep { width: 1px; height: 28px; background: var(--bordo); margin: 0 4px; flex-shrink: 0; }
 /* schermo stretto ma non telefono: Duplica ed Elimina restano con la sola icona */
@@ -358,6 +452,183 @@ svg { display: block; flex-shrink: 0; }
 }
 .btn.elimina { color: var(--rosso); }
 .btn.elimina.forte { background: var(--rosso); border-color: var(--rosso); color: #fff; }
+/* Il cerchietto "indietro" delle viste a due pagine: quasi sempre solo
+   telefono (.soloTel accanto, vedi Stampa/Etichette/Ingredienti). Quello di
+   "Merce arrivata" (Guscio.tsx) e' l'opposto, .soloPC (G3, revisione
+   grafica 25/09/2026): sul telefono fa esattamente quello che fa gia' il
+   bottone "Annulla" della vista, un doppione da togliere; su PC resta, dove
+   c'e' spazio e "Annulla" e' piu' lontano. La regola sta comunque qui,
+   fuori dalla media query del telefono, cosi' vale per entrambi i casi. */
+.indietro { width: 40px; height: 40px; margin-left: -10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--tenue); }
+
+/* ---------- Ingredienti e Merce arrivata ---------- */
+/* la pastiglia di stato (elenco ingredienti e riga del lotto) */
+.stato { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.stato.aperto { background: var(--verdechiaro); color: var(--verdescuro); }
+.stato.piu { background: var(--sabbia); color: var(--tenue); border: 1px solid var(--bordo); }
+.stato.chiuso { background: none; color: var(--spento); border: 1px solid var(--riga); }
+.stato.scaduto { background: var(--rossochiaro); color: var(--rossocupo); }
+.stato.scade, .stato.manca { background: var(--ambrachiaro); color: var(--ambra); }
+
+/* la scheda di un lotto (schedaIngrediente/rigaLotto): capoLotto sempre
+   visibile, .dettagli si apre toccando la riga */
+.lotto { border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta); display: flex; flex-direction: column; }
+.lotto.aperto { border-color: var(--verdebordo); }
+.lotto.chiuso { opacity: .7; }
+.lotto.aperto2 { background: var(--crema); }
+.capoLotto { width: 100%; text-align: left; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
+.lotto .chiudiRiga { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+.lotto .riga1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lotto .codice { font-size: 16px; font-weight: 700; }
+.lotto .scad { margin-left: auto; font-size: 13px; color: var(--tenue); white-space: nowrap; }
+.lotto .riga2 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tenue); }
+.lotto .riga2 .testo { flex: 1; min-width: 0; line-height: 1.4; }
+.lotto .riga2 .icone { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.lotto .dettagli { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 14px; border-top: 1px solid var(--riga); }
+.lotto .usato { font-size: 13px; color: var(--tenue); line-height: 1.5; }
+.lotto .usato b { color: var(--testo); }
+.lotto .stato { height: 22px; font-size: 11.5px; padding: 0 8px; }
+
+/* la tendina dei nomi simili, sotto il campo "Nome" (Ingredienti e "Nuovo
+   ingrediente"): si ricostruisce mentre si scrive, senza rubare il fuoco. */
+.campo.conTendina { position: relative; }
+.tendinaSimili { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--carta); border: 1px solid var(--bordo2); border-radius: 12px; box-shadow: var(--ombra); max-height: 260px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--bordo2) transparent; }
+.tendinaSimili::-webkit-scrollbar { width: 6px; }
+.tendinaSimili::-webkit-scrollbar-track { background: transparent; }
+.tendinaSimili::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
+.tendinaSimili:empty { display: none; }
+.tendinaSimili .titoloTendina { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); padding: 4px 8px 2px; }
+/* voce della tendina: classe propria (non ".voce", quella della barra
+   laterale - altezza fissa 64px, corpo 12px grassetto, centrata - che una
+   voce qui ereditava senza volerla, difetto trovato il 23 settembre 2026).
+   Altezza libera, nome in grassetto, dettaglio normale. */
+.voceSimile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; height: auto; border-radius: 8px; padding: 6px 8px; font-weight: 400; }
+.voceSimile:hover { background: var(--sabbia); }
+.voceSimile .nome { font-weight: 700; font-size: 14px; }
+.voceSimile .stessoNome { margin-left: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ambra); }
+.voceSimile .dettaglio { font-size: 12px; font-weight: 400; color: var(--tenue); }
+
+/* il menu "Esporta l'elenco" dello Storico (EsportaElenco.tsx): stessa carta
+   della tendina dei nomi simili qui sopra, ma ancorata sotto il bottone che
+   l'apre (non sotto un campo) e allineata al SUO bordo destro. */
+.esportaMenu { position: relative; display: inline-flex; }
+.tendinaEsporta {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 250px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--carta); border: 1px solid var(--bordo2); border-radius: 12px; box-shadow: var(--ombra);
+}
+/* ".voceEsporta" (una riga di menu con icona + testo) e' condivisa: oltre a
+   qui, la usa anche ".tendinaFoto" (FotoVuota.tsx, piu' sotto nel file) per
+   le sue due voci "Scatta una foto"/"Scegli dalla galleria" - una modifica
+   qui vale per entrambe. */
+.voceEsporta { display: flex; align-items: center; gap: 10px; width: 100%; height: 44px; padding: 0 10px; border-radius: 8px; text-align: left; flex-shrink: 0; }
+.voceEsporta:hover { background: var(--sabbia); }
+.voceEsporta:disabled { opacity: .55; cursor: default; }
+.voceEsporta .t { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.voceEsporta .t b { font-size: 14px; font-weight: 700; }
+.voceEsporta .t span { font-size: 12px; font-weight: 400; color: var(--tenue); }
+.separatoreEsporta { height: 1px; background: var(--riga); margin: 4px 4px; flex-shrink: 0; }
+
+/* i gettoni degli ingredienti liberi in "Aggiungi ingrediente" (Merce arrivata) */
+.chip { height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid var(--bordo2); background: var(--carta); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chip.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+.chip.aggiungi { border-style: dashed; border-color: var(--tratteggio); color: var(--tenue); font-weight: 400; }
+.chip .x { display: flex; color: var(--spento); }
+.chip.grande { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 19px; }
+
+/* "Ingredienti collegati, per i lotti" (CampoIngredientiCollegati in
+   Etichette.tsx): ".chips" e' un div nudo (Storico ha la sua ".correggi
+   .chips" a parte) - la regola qui sotto vale solo dentro ".collegati", che
+   non lo usa nessun'altra schermata, cosi' le pastiglie vanno a capo CON uno
+   spazio vero fra loro, invece di stare incollate bordo a bordo (si notava
+   poco solo perche' ognuna ha gia' il suo bordo tondo). */
+.collegati .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* pastiglie "Nelle etichette" (Ingredienti, docs/api.md): un nome di etichetta lunghissimo si
+   tronca con i puntini invece di sforare la scheda - il title del bottone porta il testo intero.
+   L'indiretta ("tramite X e Y" di docs/api.md) e' un caso in piu', due righe invece di una,
+   con "tramite…" troncato per conto suo. */
+.chip.etichettaCollegata { max-width: 260px; }
+.chip.etichettaCollegata > .nome { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.conTramite { height: auto; align-items: center; padding: 6px 10px; }
+.chip.conTramite .testo { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.chip.conTramite .testo .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.chip.conTramite .testo .tramite { font-size: 11px; font-weight: 400; color: var(--tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* la riga di un ingrediente arrivato (Merce arrivata) */
+.rigaArrivo { border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.rigaArrivo.attesa { border-style: dashed; border-color: var(--tratteggio); background: var(--crema); }
+.rigaArrivo .capo { display: flex; align-items: center; gap: 10px; }
+.rigaArrivo .capo .nome { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 17px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rigaArrivo .campi { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
+.rigaArrivo .campi .casella { min-height: 46px; font-size: 15px; }
+.rigaArrivo .piede { display: flex; align-items: center; gap: 10px; }
+
+.dueCampi { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.capoArrivo { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+
+/* ---------- striscia dei lotti in stampa (Stampa.tsx, StrisciaLotti.tsx) ---------- */
+.lottiStampa { border: 1px solid var(--bordo); border-radius: 14px; overflow: hidden; }
+.lottiStampa .capo { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--sabbia); border-bottom: 1px solid var(--riga); }
+.lottiStampa .capo .etichettina { flex: 1; }
+.lottiStampa .riassunto { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 14px; width: 100%; text-align: left; }
+.lottiStampa .riassunto .punta { margin-left: auto; display: flex; color: var(--spento); }
+.rl { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--riga); font-size: 14px; }
+.rl:last-child { border-bottom: none; }
+.rl.attenzione { background: #FCF6E9; }
+.rl.grave { background: var(--rossochiaro); }
+.rl .testa { display: flex; align-items: center; gap: 10px; }
+.rl .ing { font-weight: 700; flex: 1; min-width: 0; }
+.rl .ing small { font-weight: 400; color: var(--tenue); font-size: 12px; margin-left: 6px; }
+.rl .lot { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; }
+.rl .lot .mono, .rl .lot small { white-space: nowrap; }
+.rl .lot small { font-size: 12.5px; color: var(--tenue); }
+.rl .lot.manca { color: var(--ambra); font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.rl .lot .quadro {
+  width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--bordo2); display: inline-flex; align-items: center;
+  justify-content: center; color: #fff; flex-shrink: 0;
+}
+.rl .lot .quadro.on { background: var(--verde); border-color: var(--verde); }
+.rl .lot.escluso .mono, .rl .lot.escluso small { color: var(--spento); text-decoration: line-through; }
+.rl .chiudi { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--spento); white-space: nowrap; padding: 2px 4px; border-radius: 6px; }
+.rl .chiudi:hover { background: var(--rossochiaro); color: var(--rosso); }
+.rl .vai { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--verdescuro); white-space: nowrap; }
+.rl .piu { font-size: 12px; color: var(--tenue); }
+.rl .nota { font-size: 12.5px; line-height: 1.4; padding-top: 2px; }
+.rl.attenzione .nota { color: var(--ambra); }
+.rl.grave .nota { color: var(--rossocupo); }
+.rl .apriChiusi { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--tenue); padding: 2px 0; width: fit-content; }
+.rl .apriChiusi .freccia { display: flex; color: var(--spento); }
+.rl .lottoChiuso { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--spento); padding: 2px 0; }
+.rl .lottoChiuso .mono { color: var(--spento); }
+.rl .lottoChiuso small { font-size: 12px; color: var(--tenue); }
+.rl .lottoChiuso .riapri { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--verdescuro); white-space: nowrap; }
+.rl .altriChiusi { font-size: 12px; color: var(--tenue); padding: 2px 0 2px 2px; }
+@media (max-width: 860px) { .rl .lot { flex-wrap: wrap; } }
+
+/* ---------- la catena nello Storico (CatenaLotti.tsx) e il foglio stampabile ---------- */
+.catena { display: flex; flex-direction: column; gap: 10px; padding: 6px 14px 14px; cursor: default; }
+.catenaLink { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; font-weight: 700; color: var(--verdescuro); }
+.nota-corretto { font-size: 12.5px; color: var(--tenue); }
+.correggi { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+.foglioStampa { padding: 28px 32px; font-size: 14px; line-height: 1.5; color: #111; background: #fff; }
+.foglioStampa h2 { font-size: 22px; margin-bottom: 4px; }
+.foglioStampa table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.foglioStampa th, .foglioStampa td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+.foglioStampa th { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #666; }
+.piedeFoglio {
+  flex-shrink: 0; padding: 14px 20px 18px; border-top: 1px solid var(--riga);
+}
+/* Il foglio stampabile (FoglioCatena.tsx) si monta con un portale diretto in
+   document.body (come il prototipo, che lo appendeva fuori da tutto il
+   resto): in stampa nascondiamo #root, non il portale. */
+@media print {
+  body { overflow: visible; }
+  #root { display: none !important; }
+  .velo.stampa { position: static; background: none; padding: 0; }
+  .velo.stampa .finestra { box-shadow: none; width: 100%; max-height: none; }
+  .piedeFoglio { display: none; }
+}
 
 /* ---------- galleria delle etichette e conferma a due tocchi ---------- */
 .galleriaEtichette { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -371,58 +642,118 @@ svg { display: block; flex-shrink: 0; }
 .cartaEtichetta.nuova { border-style: dashed; border-color: var(--tratteggio); align-items: center; justify-content: center; gap: 6px; color: #6B5A4E; }
 
 /* ---------- anteprima e lente ---------- */
-.anteprima { position: relative; }
+/* R2 (revisione grafica, seconda review, 25/09/2026): flex invece di un
+   riquadro semplice - la lente (".lupa" piu' sotto) e' tornata una sorella
+   normale della cornice, non piu' assoluta sopra di lei (copriva il
+   disegno). flex-wrap la manda subito a destra dell'angolo in alto della
+   cornice quando c'e' posto, sotto (riga propria) quando l'immagine occupa
+   gia' tutta la larghezza - nessun calcolo "c'e' posto?" in JS, lo stesso
+   meccanismo di ".testataAzioni" per le azioni di testata. justify-
+   content:center centra il gruppo cornice+lente (o la sola cornice, quando
+   la lente va a capo) nello spazio a disposizione. */
+.anteprima { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; column-gap: 8px; row-gap: 6px; }
 /* L'anteprima ancorata in cima alla scheda sul telefono (Etichette, deciso
    da Gianluca il 10 settembre): resta visibile mentre si scorrono i gruppi
    sotto. Sfondo pieno (uguale a quello della colonna che la contiene, non
    trasparente) perche' il contenuto scorso ci passa sotto; l'ombra compare
    solo quando e' davvero staccata dal suo posto naturale (la colonna e'
    scorsa: vedi anteprimaStaccata in Etichette.tsx), non sempre. */
-.anteprimaAncorata { position: sticky; top: 0; z-index: 3; background: var(--carta); padding-bottom: 8px; margin-bottom: -8px; }
+/* R1 (revisione grafica, seconda review, 25/09/2026): sfondo pagina
+   (--fondo), non --carta - da quando la scheda esterna sul telefono non ha
+   piu' il suo sfondo bianco (E2), --carta lasciava una banda bianca larga
+   quanto lo schermo dietro l'anteprima ora stretta e centrata. Resta
+   comunque un colore PIENO (mai trasparente): il contenuto sotto (i
+   gruppi) deve sparire dietro mentre la scheda scorre. */
+.anteprimaAncorata { position: sticky; top: 0; z-index: 3; background: var(--fondo); padding-bottom: 8px; margin-bottom: -8px; }
 .anteprimaAncorata.staccata { box-shadow: 0 6px 10px -8px rgba(58, 49, 40, .45); }
-/* corta o lunga, la cornice e' sempre larga quanto il posto a disposizione
-   al piu' (mai di piu': e' l'immagine dentro, non lei, a sforare quando
-   l'etichetta e' un nastro lungo - vedi useAdattaAnteprima) e alta quanto
-   la misura adattata: le dimensioni vere arrivano dallo style in linea. */
+/* Sempre larga quanto il posto a disposizione al piu' (mai di piu'), alta
+   quanto la misura adattata: le dimensioni vere arrivano dallo style in
+   linea. R8 (terza review, 25/09/2026, deciso dal cliente): l'etichetta si
+   stringe sempre fino a starci (useAdattaAnteprima, sempre "contain") - non
+   scorre mai piu' in orizzontale ("continua" non esiste piu'), quindi
+   overflow-x e' "hidden", non serve piu' ne' una barra ne' la sfumatura sul
+   bordo destro che diceva "il nastro continua oltre" (tolte insieme a lei,
+   erano solo per quel caso). */
 .cornice {
-  overflow-y: hidden; overflow-x: auto; border-radius: 2px; position: relative;
-  flex-shrink: 0; display: block; align-self: flex-start; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
-}
-.cornice::-webkit-scrollbar { height: 6px; }
-.cornice::-webkit-scrollbar-track { background: transparent; }
-.cornice.continua::-webkit-scrollbar-track { background: var(--barra); border-radius: 3px; }
-.cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
-/* il nastro continua oltre il riquadro: lo si dice sfumando il bordo destro */
-.cornice.continua {
-  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
-  mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  overflow: hidden; border-radius: 2px; position: relative;
+  /* flex-shrink:0 (R2): dentro ".anteprima", ora un contenitore flex, la
+     cornice non deve MAI restringersi per far posto alla lente - e' lei
+     (la lente) a spostarsi sotto quando non c'entra, vedi ".anteprima" qui
+     sopra. La centratura (S1/P1) e' del contenitore (justify-content), non
+     serve piu' un margine automatico qui. */
+  flex-shrink: 0; display: block; cursor: zoom-in; background: #fff; border: 1px solid #C6B7A3;
 }
 .cornice img { display: block; }
+/* La cornice "misurata" (PC, e Stampa: dimensioni vere a pixel via style in
+   linea, RiquadroAnteprima.tsx) vuole box-sizing:content-box - altrimenti
+   (di serie border-box, dal reset globale in cima al file) il bordo di 1px
+   per lato mangia 2px dalla larghezza/altezza vera: stileCornice e
+   stileImmagine usano lo STESSO numero per cornice e immagine, pensato come
+   misura del CONTENUTO, ma su un elemento border-box quel numero e' la
+   misura ESTERNA (bordo compreso) - l'immagine dentro (2px piu' larga del
+   contenuto vero disponibile) sforava sempre di un soffio, con tanto di
+   barra di scorrimento marrone SEMPRE visibile sotto l'anteprima su PC
+   (trovato in review, 25/09/2026 - c'era gia' prima di questo giro, mai
+   notato perche' un paio di pixel si vedono poco). La cornice "compatta"
+   qui sotto invece resta border-box (di serie): e' larga il 100% in CSS
+   puro, le serve cosi' per non sforare lei del bordo. */
+.cornice.misurata { box-sizing: content-box; }
+/* L'anteprima "compatta" del telefono (Etichette.tsx, RiquadroAnteprima.tsx):
+   un riquadro largo quanto lo spazio, MAI piu' alto di 300px ne' del 38%
+   dell'altezza dello schermo (un telefono basso non deve vedersi rubare piu'
+   di un terzo scarso dello schermo dall'anteprima da sola), che contiene
+   SEMPRE l'etichetta intera, corta o lunga che sia - "max-width:100%" +
+   "max-height:min(38vh,300px)" + "width/height:auto" sull'immagine e' lo
+   stesso risultato di object-fit:contain (il piu' stretto dei due vincoli
+   vince), senza calcolare niente in JS (deciso dopo la review di Gianluca,
+   25/09/2026: l'altezza calcolata a mano per "adattarsi alla larghezza"
+   lasciava un'etichetta alta tagliata in fondo, con tanto di barra di
+   scorrimento orizzontale sotto). Niente altezza fissa sulla cornice: si
+   stringe intorno all'immagine vera, cosi' un'etichetta corta non lascia
+   mezzo riquadro vuoto - min-height solo per il segnaposto "Preparo
+   l'anteprima…", che non ha un'immagine a cui aggrapparsi. overflow:hidden
+   qui e' ridondante da R8 (".cornice" e' gia' overflow:hidden su entrambi
+   gli assi), lasciato per chiarezza: l'immagine ci sta sempre per
+   costruzione, mai una barra. */
+/* E1 (revisione grafica, 25/09/2026): non piu' larga il 100% dello schermo -
+   si stringe intorno all'immagine vera (o al segnaposto, quando non c'e'
+   ancora), niente bande bianche vuote ai lati. "width:auto" con
+   "max-width:100%": la cornice non sfora mai lo spazio, ma non e' neanche
+   costretta a riempirlo; il gruppo cornice+lente si centra da solo dentro
+   ".anteprima" (justify-content:center, R2/R8 - non piu' un margine
+   automatico su ".cornice" da quando la lente e' uscita dall'immagine). */
+.cornice.compatta { width: auto; max-width: 100%; min-height: 80px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.cornice.compatta img { display: block; max-width: 100%; max-height: min(38vh, 300px); width: auto; height: auto; }
+/* La lente e' un elemento normale dentro ".anteprima" adesso (non piu'
+   assoluta sopra la cornice - R2, seconda review 25/09/2026: copriva il
+   disegno, es. "LOW" del titolo su "Base pizza low carb"): niente piu'
+   "position:absolute" ne' "top/right" calcolati sulla cornice, il posto
+   glielo trova da solo il flex-wrap di ".anteprima" qui sopra.
+   pointer-events:none: resta solo un'indicazione visiva, il tocco per
+   aprire la lente vera passa dalla cornice (tutta l'immagine), non da lei. */
 .lupa {
-  position: absolute; top: 6px; left: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88, 68, 60, .72);
   color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none;
 }
 .finestra.lente { width: 100%; height: 100%; }
 .capoLente { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--riga); }
 .capoLente .chiudi { width: 40px; height: 40px; border-radius: 20px; border: 1px solid var(--bordo); background: var(--sabbia); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); }
+.corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); scrollbar-width: thin; scrollbar-color: var(--bordo2) transparent; }
+.corpoLente::-webkit-scrollbar { width: 6px; height: 6px; }
+.corpoLente::-webkit-scrollbar-track { background: transparent; }
+.corpoLente::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
 .corpoLente .foglio { margin: auto; padding: 16px; }
 .corpoLente img { box-shadow: 0 6px 20px rgba(88, 68, 60, .14); display: block; max-width: 100%; height: auto; }
-/* "Da leggere" (revisione di questo giro): l'immagine ai suoi pixel veri,
-   niente margin:auto (si scorre da un angolo) cosi' si legge il testo
-   piccolo invece di vederlo rimpicciolito per stare tutto a schermo. */
-.corpoLente.leggibile .foglio { margin: 0; }
-.corpoLente.leggibile img { max-width: none; width: auto; }
-.segmento { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--bordo2); border-radius: 10px; background: var(--carta); flex-shrink: 0; }
-.segmento button { height: 32px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--tenue); }
-.segmento button.on { background: var(--testo); color: #fff; }
+/* "Da leggere" (ai pixel veri) e il segmento "Tutta"/"Da leggere" non ci sono
+   piu' (deciso da Gianluca, 25/09/2026: LenteEtichetta.tsx ha un modo solo) -
+   .segmento e .corpoLente.leggibile erano solo suoi, tolti con lui. */
 
 /* ---------- stampa in corso ---------- */
 .barraAvanzamento { height: 10px; border-radius: 5px; background: var(--barra); overflow: hidden; }
 .barraAvanzamento > span { display: block; height: 100%; background: var(--ambra); transition: width .25s; }
 
 /* ---------- storico ---------- */
-.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 88px 104px 104px 104px; }
+.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 88px 104px 104px 104px 28px; }
 .tabella { display: grid; gap: 10px; padding: 0 12px 6px; border-bottom: 1px solid var(--riga); }
 .vocestorico { display: grid; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--riga); }
 .giornoStorico { padding: 14px 12px 6px; }
@@ -438,7 +769,7 @@ svg { display: block; flex-shrink: 0; }
 }
 
 /* ---------- Etichette sul telefono: la scheda si apre un gruppo alla volta ---------- */
-.gruppo { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+.gruppo { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; transition: background-color .5s ease, border-color .5s ease; }
 .capoGruppo { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
 .capoGruppo .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .nomeGruppo { font-size: 16.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -446,6 +777,11 @@ svg { display: block; flex-shrink: 0; }
 .puntaGruppo { display: flex; color: var(--spento); transition: transform .16s; }
 .gruppo.aperto .puntaGruppo { transform: rotate(180deg); }
 .dentroGruppo { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; border-top: 1px solid var(--riga); }
+/* Il gruppo del blocco appena aggiunto (Etichette.tsx, evidenziaBlocco): si
+   accende di verde un paio di secondi, poi sfuma da solo (la transizione qui
+   sopra fa il resto); niente animazione con prefers-reduced-motion, la
+   regola globale piu' sotto ("* { transition: none }") vince su questa. */
+.gruppo.evidenziato { background: var(--verdechiaro); border-color: var(--verde); }
 
 /* ---------- telefoni collegati (Impostazioni) ---------- */
 .telefonoRiga { flex-wrap: wrap; }
@@ -454,29 +790,114 @@ svg { display: block; flex-shrink: 0; }
 @media (max-width: 860px) {
   .app { flex-direction: column; }
   .rail { display: none; }
-  .testata { height: auto; padding: 14px 20px 10px; flex-wrap: wrap; row-gap: 10px; }
-  .titolo { font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Bordo laterale 10px invece di 20 (deciso da Gianluca, 25/09/2026, vedi
+     ".schermo" piu' sotto): la testata usa lo stesso gutter, cosi' titolo e
+     azioni restano allineati col contenuto sotto. .titolo non ha piu' una
+     regola qui: e' ".soloPC" adesso (via il titolo sul telefono, vedi
+     Guscio.tsx), quindi sul telefono non e' mai renderizzato. */
+  .testata { height: auto; padding: 14px 10px 10px; flex-wrap: wrap; row-gap: 10px; }
+  /* Niente titolo, niente azioni, niente strumenti, niente indietro: la
+     testata sparisce del tutto invece di lasciare una fascia vuota di solo
+     padding (SENZA_AZIONI_TESTATA_TEL, Guscio.tsx). */
+  .testata.testataVuotaTel { display: none; }
+  /* G2 (revisione grafica, 25/09/2026): quando la testata sparisce del
+     tutto (regola qui sopra), il primo elemento della schermata toccava il
+     bordo in alto - stesso respiro del gutter laterale (10px), uguale in
+     tutte le schermate. Il selettore di fratello adiacente vale solo
+     quando la testata e' DAVVERO nascosta (le due classi insieme), non
+     aggiunge un doppio margine quando la testata c'e' (Etichette,
+     Ingredienti, Storico: li' il distacco lo da' gia' lei). */
+  .testata.testataVuotaTel + .schermo { padding-top: 10px; }
   /* sul telefono "strumenti" (indietro/avanti, Duplica/Elimina) va su una riga
      propria sotto; le azioni (Salva prodotto, Esporta l'elenco...) restano
      con il titolo sulla prima riga, come nel prototipo. */
   .testataAzioni { order: 2; }
   .testataStrumenti { order: 3; }
+  /* G3 (revisione grafica, 25/09/2026): quando le azioni sono l'unico
+     gruppo con dentro qualcosa di vero (non solo bottoni .soloPC, spariti
+     sul telefono - Ingredienti, Merce arrivata, Storico: titolo e strumenti
+     sono vuoti li'), ".testataAzioni" prendeva comunque solo lo spazio del
+     suo contenuto e uno "justify-content:space-between" pensato per il
+     caso "titolo a sinistra, azioni a destra" (.testata, sopra) lo
+     spingeva al CENTRO della riga invece che al bordo (i due gruppi vuoti
+     ai suoi lati restano comunque ancorati ai bordi, anche a larghezza
+     zero: lo spazio avanzato si spartiva in due gap uguali attorno a lui -
+     bug trovato in revisione). Riga intera invece di un gruppo compresso: i
+     bottoni restano dove sono (di solito a sinistra, il gap naturale fra
+     loro), l'ultimo raggiunge il bordo destro col margine automatico. */
+  .testataAzioni:has(> :not(.soloPC)) { flex: 1 1 100%; }
+  .testataAzioni:has(> :not(.soloPC)) > :last-child { margin-left: auto; }
+  /* Annulla/Registra di Merce arrivata (G3): riempiono insieme la riga
+     intera invece di restare due pillole strette, un terzo e due terzi
+     (stesso schema di Modifica/Stampa in Stampa.tsx, S3): con entrambe
+     "flex" non resta piu' spazio libero sulla riga, quindi il
+     "margin-left:auto" dell'ultimo bottone (regola qui sopra) non ha piu'
+     niente da spostare - resta innocuo invece di aprire un vuoto. */
+  .azioneAnnulla { flex: 1; }
+  .azioneRegistra { flex: 2; }
+  /* "Merce arrivata" di Ingredienti (R5, seconda review 25/09/2026): con
+     margin-left:auto (regola qui sopra) restava alla sua larghezza
+     naturale, spinta a destra con un vuoto prima di lei dopo i due tondi -
+     flex:1 le fa occupare anche quel vuoto, da subito dopo i tondi fino al
+     bordo destro. */
+  .azioneMerceArrivata { flex: 1; }
   /* vuoto (viste senza "strumenti"), non deve riservarsi una riga propria */
   .strumentiEt:has(*) { flex-basis: 100%; }
   .strumentiEt .btn.conTesto { flex: 1 1 0; }
-  .schermo { flex-direction: column; padding: 0 20px 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  /* Gutter 10px invece di 20 (deciso da Gianluca, 25/09/2026: meno margini
+     sul telefono, uno schermo gia' piccolo) - il testo resta comunque a
+     almeno 8px dal bordo (padding interno di ".prodotto"/".casella"/ecc.,
+     mai zero). ".testata" qui sopra usa lo stesso valore.
+     overflow-x:hidden (in piu' da questo giro): senza, il piede sticky di
+     Stampa (".schermo.dettaglio .azioni", che sfonda apposta fino al bordo
+     schermo con un margine negativo) faceva calcolare a Chrome uno
+     scrollWidth qualche px piu' largo del vero (misurato: nessun elemento
+     sfora davvero, getBoundingClientRect().right resta sempre <= innerWidth
+     - e' il margine negativo che confonde il calcolo), e comparita una
+     barra di scorrimento orizzontale fantasma dentro ".schermo" (visibile a
+     320px, 25 settembre 2026: non spostava niente, scorreva su un vuoto).
+     overflow-y resta scorrevole come sempre, solo l'asse orizzontale si
+     taglia al bordo. */
+  .schermo { flex-direction: column; padding: 0 10px 12px; gap: 12px; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .schermo .scorre { overflow: visible; flex: none !important; }
+  /* Niente barra di scorrimento visibile sul telefono (G1, 25/09/2026): qui
+     e' ".schermo" stesso a scorrere (la riga sopra neutralizza ".scorre" dei
+     figli), quindi la nasconde lui. Lo stesso ".scorre" (index.css, qui
+     sopra) e gli altri contenitori con scorrimento proprio ripetono la
+     stessa coppia di regole. */
+  /* ".cornice" non e' piu' in questa lista da R8: non scorre mai piu' in
+     nessuna direzione (overflow:hidden fisso), non le serve una regola per
+     nascondere una barra che non puo' comparire. */
+  .schermo, .scorre, .corpoLente, .tendinaSimili, .foglioTabellaScorre, textarea.scorre {
+    scrollbar-width: none;
+  }
+  .schermo::-webkit-scrollbar, .scorre::-webkit-scrollbar, .corpoLente::-webkit-scrollbar,
+  .tendinaSimili::-webkit-scrollbar, .foglioTabellaScorre::-webkit-scrollbar,
+  textarea.scorre::-webkit-scrollbar {
+    display: none;
+  }
   input, select, textarea { font-size: max(16px, 1em); }
   .avvisino { bottom: 84px; max-width: calc(100% - 32px); text-align: center; }
   .colonna { border: 0; background: none; padding: 0; border-radius: 0; overflow: visible; }
   .schermo > .colonna { width: auto !important; flex: none !important; }
-  .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 14px; }
-  .sezione { padding: 14px 16px !important; }
+  /* Padding interno 10px invece di 14 (stesso giro del gutter qui sopra):
+     ".schedaEtichette" (Etichette.tsx) ha gia' il suo, piu' stretto, appena
+     sotto - resta a 8px, non tocca questa regola condivisa. */
+  .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 10px; }
+  .sezione { padding: 10px 12px !important; }
   /* il lotto e' un campo che si scrive (a differenza dello span del
      prototipo): sotto i 16px iOS ingrandisce la pagina (regola qui sopra),
      e a quel corpo il numero intero non sta in meta' della griglia 2x2.
      Gli si da' tutta la riga, Copie passa sotto. */
   .campoLottoStampa { grid-column: 1 / -1; }
+  /* Copie (ContatoreCopie, Stampa.tsx) restava sola in meta' riga sotto
+     Lotto (l'altra meta' vuota, perche' Lotto occupa gia' tutta la riga
+     sopra): i suoi tre tasti (52+52px piu' il numero in mezzo, ~150px)
+     non ci stavano piu' in una mezza colonna da 320px in giu' (difetto
+     trovato dal cliente, 25 settembre 2026, dopo aver stretto il gutter a
+     10px). Tutta la riga anche per lei: stesso trucco di Lotto, e la meta'
+     vuota qui sotto viene usata invece di sprecarsi. */
+  .campoCopieStampa { grid-column: 1 / -1; }
   .riga { padding: 10px 2px; }
   .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
   .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
@@ -503,21 +924,74 @@ svg { display: block; flex-shrink: 0; }
   /* la scheda del prodotto e' una pagina a se', col bottone Stampa fermo in basso */
   .schermo.dettaglio { padding-bottom: 0; }
   .schermo.dettaglio > .colonna.scheda { border: 0; background: none; border-radius: 0; padding: 0; flex: 1 0 auto !important; }
-  .schermo.dettaglio .azioni { position: sticky; bottom: 0; margin: auto -20px 0; padding: 14px 20px 12px; background: linear-gradient(to bottom, rgba(234, 222, 206, 0), var(--fondo) 35%); }
-  .indietro { width: 40px; height: 40px; margin-left: -10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  /* la vista Stampa e' due pagine sul telefono: l'elenco, oppure la scheda del prodotto scelto */
+  .schermo.dettaglio .azioni { position: sticky; bottom: 0; margin: auto -10px 0; padding: 14px 10px 12px; background: linear-gradient(to bottom, rgba(234, 222, 206, 0), var(--fondo) 35%); }
+  /* la vista Stampa (e Ingredienti) e' due pagine sul telefono: l'elenco, oppure la scheda scelta */
   .vistaStampa:not(.dettaglio) > .pannelloProdotto { display: none; }
   .vistaStampa.dettaglio > .colonnaElenco { display: none; }
+  .dueCampi { grid-template-columns: 1fr; }
+  .chip { height: 40px; padding: 0 13px; border-radius: 20px; font-size: 14px; }
+  .rigaArrivo .campi { grid-template-columns: 1fr 1fr; }
+  .rigaArrivo .campi > .campo:first-child { grid-column: 1 / -1; }
 
   .allergene { height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; }
   .blocco { min-height: 52px; border-radius: 12px; font-size: 13.5px; padding: 0 10px; }
   .cartaEtichetta { width: 100%; }
 
+  /* Etichette sul telefono: meno bordi e padding, per recuperare spazio su
+     uno schermo gia' piccolo (deciso da Gianluca, 25/09/2026) - regole
+     limitate a questa schermata: ".schedaEtichette" e' una classe in piu' SUL
+     ".colonna.scheda" di Etichette.tsx (non tocca la regola condivisa da
+     Stampa/Ingredienti/MerceArrivata, gia' portata a 10px qui sopra nello
+     stesso giro), ".riquadro"/".gruppo" invece non li usa nessun'altra
+     schermata (Gruppo/CampiComuni.tsx sono solo di Etichette). */
+  /* E2 (revisione grafica, 25/09/2026): niente piu' sfondo/bordo/padding
+     della scheda esterna sul telefono - i gruppi (.gruppo, gia' con il
+     proprio bordo e sfondo bianco) stanno direttamente sullo sfondo della
+     pagina, come le carte degli elenchi di Stampa/Ingredienti, invece di
+     stare doppiamente incorniciati (bug trovato dal cliente: "doppia
+     cornice"). L'anteprima ancorata in cima (.anteprimaAncorata) ha gia' il
+     suo sfondo per conto proprio (index.css, riga ~567): resta visibile
+     mentre il resto scorre sotto anche senza lo sfondo della scheda. */
+  .colonna.scheda.schedaEtichette { background: none; border: 0; padding: 0; border-radius: 0; }
+  /* R9a (quarta review, 25/09/2026): stessa correzione di E2 sopra, per
+     "Consegna" di Merce arrivata (MerceArrivata.tsx) - non e' un elemento di
+     un elenco, e' la pagina stessa: titolo, etichette e campi devono stare
+     al gutter (x=10) come "Cosa e' arrivato" accanto, non 12px piu' dentro
+     per via del padding della scheda esterna. Le righe/schede degli
+     ingredienti dentro (.rigaArrivo) restano schede per conto loro, non
+     sono toccate da questa regola. */
+  .colonna.scheda.schedaConsegna { background: none; border: 0; padding: 0; border-radius: 0; }
+  .riquadro { padding: 8px 10px 10px; gap: 8px; }
+  .capoGruppo { padding: 8px 12px; min-height: 52px; }
+  .dentroGruppo { padding: 10px 12px 12px; gap: 10px; }
+
+  /* Salva/Duplica/Elimina: solo icona in testata (deciso da Gianluca,
+     25/09/2026, Etichette.tsx) - ".iconaTel" e' solo dei loro tre bottoni,
+     non tocca ".btn.conTesto"/".btn.primario" delle altre schermate. 44px di
+     lato e' l'area di tocco minima chiesta; lo span col testo resta nel DOM
+     per chi legge con lo schermo (aria-label/title coprono gli altri). */
+  .iconaTel { flex: 0 0 44px; width: 44px; padding: 0; gap: 0; justify-content: center; }
+  .iconaTel span { display: none; }
+  /* stessa specificita' di ".strumentiEt .btn.conTesto { flex: 1 1 0; }" qui
+     sopra (tre classi): senza, quella regola vincerebbe lei sul flex e
+     Duplica/Elimina tornerebbero a stirarsi su tutta la riga. */
+  .strumentiEt .btn.iconaTel { flex: 0 0 44px; }
+
   /* storico: ricerca sopra e gettoni sotto come in Stampa, poi una riga piena per stampa che si tocca per rifarla */
   .storicoTel .prima { flex-direction: column-reverse; gap: 10px; }
   .storicoTel .prima .cerca { height: 52px !important; flex: none !important; }
   .storicoTel .scorre { gap: 6px; }
-  .storicoTel .giornoStorico { padding: 8px 16px 0 !important; }
+  /* H2/R9b: niente padding orizzontale - ".schermo" da' gia' il gutter di
+     10px da solo, un padding qui in piu' spostava il testo oltre le schede
+     sotto (misurato due volte: 16px lo portava a x=26, poi corretto a 10px
+     che pero' lo portava lo stesso a x=20 contro i 10px delle schede -
+     quarta review, 25/09/2026, richiesta dal cliente). */
+  .storicoTel .giornoStorico { padding: 8px 0 0 !important; }
+  /* H1: i quattro gettoni del periodo si dividono la riga invece di andare
+     a capo (vedi il commento in Storico.tsx) - padding orizzontale ridotto
+     perche' "30 giorni" ci stia leggibile anche a 320px. */
+  .periodoStorico { flex-wrap: nowrap; }
+  .periodoStorico .gettone { flex: 1; padding: 0 6px; display: flex; align-items: center; justify-content: center; }
 
   .barrasotto {
     display: flex; background: var(--crema); border-top: 1px solid var(--bordo);
@@ -525,11 +999,406 @@ svg { display: block; flex-shrink: 0; }
   }
   .tab { flex: 1; height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--tenue); }
   .tab.on { color: var(--verdescuro); }
+  /* A 320 px le cinque schede sono larghe 64 px e «Impostazioni» in 10 px
+     grassetto non ci stava: usciva tagliato dal bordo dello schermo (visto
+     nella revisione mobile del 25/9/2026). min-width:0 lascia stringere la
+     scheda, e sotto i 360 px la scritta scende a 9 px. */
+  .tab { min-width: 0; white-space: nowrap; }
   .soloPC { display: none !important; }
   .finestra { width: 100%; max-height: 100%; border-radius: 18px; }
   .velo { padding: 12px; }
 }
+@media (max-width: 359px) {
+  .tab { font-size: 9px; letter-spacing: -0.1px; }
+  /* S3: a 320px un terzo della riga non basta piu' per icona+testo di
+     "Modifica" - resta la sola icona (il testo resta nel DOM ma non e' piu'
+     leggibile: aria-label sul bottone, Stampa.tsx, lo dice comunque). */
+  .azioneModifica span { display: none; }
+  .azioneModifica { flex: 0 0 52px; padding: 0; justify-content: center; }
+}
+/* R4 (revisione grafica, seconda review, 25/09/2026): due colonne uguali,
+   come "grid-cols-2" di Tailwind (tolto da Stampa.tsx: da li' non riuscivo
+   a spegnerlo sotto i 360px, stesso motivo del "resize-y" della textarea,
+   vedi CampiComuni.tsx). Sotto i 360px la griglia 2x2 di Peso/Scadenza
+   tagliava la data ("02/10/202", persino l'icona del calendario troncata) -
+   l'input nativo di tipo "date" ha una larghezza minima per mostrare tutti
+   i segmenti (gg/mm/aaaa) piu' l'icona che una colonna da meta' griglia
+   sotto i 360px non gli dava piu'. Una riga piena per campo, come gia' fa
+   Lotto (".campoLottoStampa" qui sopra) e Copie: sopra i 360px restano
+   affiancati (ci sta comodamente), qui vanno uno sotto l'altro. */
+.grigliaCampiStampa { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 360px) {
+  .grigliaCampiStampa { grid-template-columns: 1fr; }
+}
 @media (min-width: 861px) { .soloTel { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- ritocchi Stampa, Storico, Etichette (23 settembre 2026) ---------- */
+
+/* Stampa: la striscia "Lotti degli ingredienti" (.lottiStampa, StrisciaLotti.tsx)
+   si schiacciava a una sottile pillola quando la scheda del prodotto non
+   aveva altezza a sufficienza: era in una colonna flex ad altezza fissa
+   insieme all'anteprima e ai campi, e tutti i figli si stringevano insieme
+   (con .lottiStampa messa peggio delle altre, perche' il suo overflow:hidden
+   azzera la sua dimensione minima automatica). Ora il contenuto sopra il
+   piede vive in un riquadro a parte che scorre (.schedaCorpo, Stampa.tsx) e
+   i suoi figli diretti non si stringono mai: se non ci stanno scorre lui, il
+   piede con Stampa/matita (fuori da .schedaCorpo) resta sempre dov'era. */
+.schedaCorpo > * { flex-shrink: 0; }
+
+/* Storico: la correzione di un anello (.correggi, CatenaLotti.tsx) finiva
+   in una delle colonne della griglia .rigaAnello, perche' senza una
+   posizione esplicita l'ultimo figlio continua a riempire le celle rimaste
+   della riga invece di andare sotto tutte le colonne. */
+.correggi { grid-column: 1 / -1; }
+/* .chips (condivisa con Etichette.tsx, ne' qui ne' li' ha mai avuto una
+   regola sua) e' un div nudo: le pastiglie della correzione, senza un
+   flex/gap, finivano incollate bordo a bordo invece di stare separate - si
+   vedeva solo dentro .correggi perche' prima, schiacciata in 150px, ce ne
+   stava una per riga. Solo qui, non tocca l'uso di .chips altrove. */
+.correggi .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Etichette: il pannello "Blocchi dell'etichetta" mette tutto in una riga
+   (deciso da Gianluca: le azioni del blocco stanno sempre insieme, vedi
+   BloccoRiga.tsx) - va rispettato finche' c'e' posto, ma sotto una certa
+   larghezza al nome restavano 1-4 lettere prima dei puntini. Sotto quella
+   soglia la riga va su due: sopra maniglia/numero/interruttore/nome per
+   intero, sotto il gruppo delle azioni (corpo, allineamento/posizione,
+   cestino) allineato al bordo destro della riga - non piu' rientrato sotto
+   il nome (richiesta del cliente, 24 settembre 2026; prima il cestino era
+   una X per conto suo, fuori da questo gruppo). Container query sul blocco
+   stesso (non sul vassoio che lo contiene): cosi' la soglia vale
+   automaticamente anche per i blocchi dentro .zonaGruppo, che sono 12px
+   piu' stretti, senza un secondo calcolo. .gruppoValori e' "display:contents"
+   di serie: non genera un riquadro suo, le sue voci restano dirette di
+   .testa come oggi finche' la riga sta su una riga sola - e quindi gia'
+   allineate al bordo destro, perche' il nome e' flex:1 e assorbe lui tutto
+   lo spazio libero. */
+.blocco:not(.telefono) { container-type: inline-size; }
+.gruppoValori { display: contents; }
+@container (max-width: 440px) {
+  .blocco:not(.telefono) .testa { flex-wrap: wrap; row-gap: 6px; }
+  .blocco:not(.telefono) .nome { white-space: normal; overflow: visible; text-overflow: unset; min-width: 90px; }
+  .blocco:not(.telefono) .gruppoValori {
+    order: 2; display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------- ritocchi carte, Stampa e Ingredienti (secondo giro, 23 settembre 2026) ---------- */
+
+/* 1a. Le carte dell'elenco (griglia di .prodotto, Stampa e Ingredienti): con
+   un nome che va su piu' righe, la riga della griglia restava ferma a
+   min-height (118px) invece di allargarsi quanto la carta piu' alta -
+   fornitore e pastiglia finivano disegnati fuori dal riquadro, coperti
+   dalle carte della riga dopo (misurato con Playwright: carta con nome
+   lungo, altezza vera 165px, ma "getComputedStyle(griglia).gridTemplateRows"
+   per quella riga tornava 135.656px, MENO della carta piu' alta - non un
+   arrotondamento). Causa vera, isolata spostando lo scorrimento su un
+   elemento a parte (vedi Ingredienti.tsx/Stampa.tsx, il div ".griglia"
+   stesso non ha piu' ne' flex ne' overflow): un elemento che e' insieme
+   griglia CSS, figlio flessibile a altezza vincolata ("flex-1 min-h-0") e
+   contenitore che scorre ("overflow-y:auto") fa si' che Chromium comprima
+   le righe "auto" dentro l'altezza che il flex gli ha imposto, invece di
+   lasciarle crescere quanto serve e scorrere con overflow. Staccando i due
+   ruoli su due elementi (il wrapper scorre/vincola l'altezza, ".griglia"
+   dentro e' solo grid, senza altezza propria) la riga torna ad allargarsi
+   alla carta piu' alta - verificato a 1280/900/1920px, nessuna carta con
+   scrollHeight > clientHeight. Nessuna regola CSS nuova serve qui: la
+   correzione e' tutta nel markup. */
+
+/* 1b. Il nome si ferma comunque a 3 righe con i puntini (il valore intero
+   resta nel title, CartaIngrediente/RigaProdotto) - senza, una carta con un
+   nome fuori misura crescerebbe comunque quanto vuole. Una parola piu'
+   larga della colonna va a capo invece di sforare il bordo arrotondato
+   della carta (crop-mozzarella-900.png). */
+.prodotto .n {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+
+/* 1c. Fra 861 e 1150px (la stessa fascia gia' usata per .strumentiEt qui
+   sopra) la griglia a 3 colonne fisse lascia troppo poco spazio ai nomi, che
+   sforavano dal bordo della carta ("Mozzare|lla"): in quella fascia 2
+   colonne invece di 3. */
+@media (min-width: 861px) and (max-width: 1150px) {
+  .griglia { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 860px) {
+  /* 1d. Sul telefono la pagina con il solo elenco (.vistaStampa:not(.dettaglio),
+     Stampa e Ingredienti) non ha nessuna vista doppia: l'ultima carta
+     aperta non deve restare con bordo e ombra verde da "selezionata" (la
+     regola mobile di riga ~660 toglie solo l'ombra e riduce il padding, non
+     il bordo). Qui tornano quelli di una carta normale. */
+  .vistaStampa:not(.dettaglio) .prodotto.on {
+    border: 1px solid var(--bordo);
+    padding: 10px 12px 10px 16px;
+  }
+}
+
+/* Striscia dei lotti in stampa: un lotto aperto ma non spuntato per questa
+   stampa era barrato come se fosse annullato - unico punto di tutto il CSS
+   con line-through (grep -rn "line-through"), fuorviante in un'app di
+   tracciabilita' (non e' un lotto invalido, solo non scelto per questo
+   giro). Resta solo l'attenuazione del colore, gia' presente. */
+.rl .lot.escluso .mono, .rl .lot.escluso small { text-decoration: none; }
+
+/* La riga d'avviso ambra nel piede di Stampa (Stampa.tsx, PannelloProdotto),
+   a qualunque larghezza (non piu' solo telefono: su PC e tablet la scheda
+   scorre dentro ".schedaCorpo", e un'anteprima alta puo' spingere la
+   striscia fuori dalla parte visibile allo stesso modo): compare SOLO
+   quando la striscia "Lotti degli ingredienti" ha qualcosa da segnalare e
+   non e' (tutta) visibile nel contenitore che scorre davvero a quella
+   larghezza - un tocco la porta in vista. Stesso ambra usato dagli avvisi
+   di scadenza/sacco nella striscia stessa (.rl.attenzione). */
+.avvisoLottiPiede {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
+  padding: 0 12px; border-radius: 10px; border: 1px solid var(--ambrabordo);
+  background: var(--ambrachiaro); color: var(--ambra); font-size: 13px; font-weight: 700;
+  text-align: left; flex-shrink: 0;
+}
+.avvisoLottiPiede .punta { margin-left: auto; display: flex; }
+
+/* ---------- ritocchi finali Stampa e blocchi (23 settembre 2026) ---------- */
+
+/* Editor Etichette, blocchi (rapporto-editor 2.1, poi corretta il 24
+   settembre 2026 su richiesta del cliente): qui era stata data al nome una
+   colonna a larghezza fissa (160px) perche' con "flex:1" i controlli
+   (corpo, allineamento/posizione, cestino) restavano ancorati al bordo
+   destro della riga invece di seguire subito il testo del nome, lasciando
+   un vuoto in mezzo. Il cliente pero' li vuole ancorati la', al bordo
+   destro - non appena dopo il nome: tolta la colonna fissa, "flex:1" (qui
+   sopra) torna a valere, i controlli restano sempre al bordo destro della
+   riga a qualunque larghezza, allineati in colonna fra tutte le righe (le
+   loro larghezze sono le stesse ovunque) comprese quelle dentro il gruppo
+   "Due colonne" (.zonaGruppo, 12px piu' stretto: essendo l'allineamento
+   relativo al bordo di ogni riga, non a una posizione fissa in pagina, vale
+   automaticamente anche li'). */
+
+/* Stampa, fascia 861-1150px (stessa gia' usata sopra per .strumentiEt e per
+   .griglia): "Nuova etichetta" accanto alla ricerca (Stampa.tsx) si
+   prendeva meta' della riga col testo, schiacciando il campo di ricerca a
+   mostrare "Cerca et…" (screenshot stampa-pc900.png). In quella fascia
+   resta solo l'icona +, quadrata (52px, come l'altezza della riga) invece
+   che coi 44px di .strumentiEt .btn.conTesto, che qui e' piu' basso; il
+   title/aria-label sul bottone (Stampa.tsx) resta "Nuova etichetta" per
+   chi non vede l'icona. */
+@media (min-width: 861px) and (max-width: 1150px) {
+  .btnNuovaEtichetta { width: 52px; padding: 0; gap: 0; flex-shrink: 0; }
+  .btnNuovaEtichetta > span { display: none; }
+}
+
+/* ---------- foto (componenti/foto/, allineamento al prototipo del 22
+   settembre 2026 sera): la miniatura cliccabile e la finestra ingrandita
+   (MiniaturaFoto.tsx), il riquadro vuoto da cui si carica un file
+   (FotoVuota.tsx). Stesse dimensioni del prototipo (.foto/.foto.vuota),
+   ma con l'immagine vera dentro (GET /api/foto/{id}.jpg) al posto delle
+   righe disegnate che fingevano una foto nella demo. ---------- */
+.foto {
+  width: 58px; height: 74px; border-radius: 6px; border: 1px solid var(--bordo2); background: #fff;
+  position: relative; overflow: hidden; flex-shrink: 0; cursor: zoom-in;
+  box-shadow: 0 2px 6px rgba(88, 68, 60, .12); display: flex; flex-direction: column; justify-content: flex-end;
+}
+.foto img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* didascalia unificata con quella del riquadro vuoto sotto (.foto.vuota
+   span): stessa dimensione e peso, niente maiuscolo forzato (difetto
+   trovato il 23 settembre 2026: le due stonavano affiancate). */
+.foto span { position: relative; font-size: 10px; font-weight: 700; color: var(--tenue); background: var(--sabbia); padding: 3px 4px; line-height: 1.1; }
+.foto.vuota { border-style: dashed; background: var(--crema); box-shadow: none; cursor: pointer; justify-content: center; align-items: center; color: var(--tenue); gap: 2px; }
+.foto.vuota span { background: none; text-transform: none; letter-spacing: 0; text-align: center; font-size: 10px; }
+/* l'input file resta invisibile ma sopra tutto il riquadro (non
+   display:none: su alcuni browser un <label> non apre piu' il selettore
+   di un input nascosto cosi'), cosi' tutto il riquadro e' toccabile. */
+.foto.vuota input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.fotoGrande { width: 100%; max-height: 70vh; display: flex; }
+.fotoGrande img { display: block; max-width: 100%; max-height: 70vh; margin: auto; border-radius: 10px; }
+
+/* Il menu "Scatta una foto"/"Scegli dalla galleria" sul telefono
+   (FotoVuota.tsx, deciso da Gianluca, 25/09/2026): il riquadro che l'apre
+   puo' stare ovunque in un vassoio di foto (non sempre vicino a un bordo,
+   a differenza del bottone "Esporta l'elenco" di ".tendinaEsporta", sempre
+   nello stesso angolo) - ancorarlo con "left"/"right" relativi al riquadro
+   (come la prima versione) lo mandava fuori schermo quando il riquadro
+   stava verso destra (difetto misurato a 320px, 25 settembre 2026: il menu
+   sforava di quasi 50px). "position:fixed", stesso gutter da 10px di
+   ".schermo" e "sopra la barra in basso: sempre nello stesso punto,
+   qualunque sia la posizione del riquadro che lo apre. Mostrato solo sul
+   telefono (il bottone che lo apre e' ".soloTel"): niente da adattare per
+   il PC. */
+.tendinaFoto {
+  position: fixed; left: 10px; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom, 0px)); z-index: 30;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--carta); border: 1px solid var(--bordo2); border-radius: 12px; box-shadow: var(--ombra);
+}
+
+/* ---------- Impostazioni come il prototipo (22 settembre 2026 sera):
+   tre schede invece di sei (Stampante, Telefoni e tablet, Programma) -
+   Impostazioni.tsx. La scheda Programma occupa le due colonne della
+   griglia, come nel prototipo (vistaImpostazioni: "programma.classList.
+   add('larga')"); le altre due restano una colonna ciascuna. ---------- */
+@media (min-width: 1024px) {
+  .schermo.grigliaImpostazioni > .sezione.larga { grid-column: 1 / -1; }
+}
+
+/* ---------- Righe di Impostazioni: un valore lungo non deve MAI sforzare
+   la scheda (difetto da telefono a 414px, 22/23 settembre 2026: il
+   percorso della cartella dati mandava il titolo a una parola per riga,
+   le due scritte si accavallavano, e il percorso di backup sforava lo
+   schermo con una barra orizzontale). La regola vale a QUALSIASI
+   larghezza (niente soglia fissa: e' .riga che si stringe da sola quando
+   serve, non un breakpoint sotto cui "diventa mobile"), quindi vale anche
+   per una finestra PC stretta o un percorso piu' lungo di questi esempi.
+   .riga e .riga .v sono definite sopra (righe ~217-224): qui si
+   sovrascrivono, in coda al file, come da confini di questo agente.
+
+   .riga { flex-wrap: wrap }: quando titolo e valore non ci stanno
+   affiancati, il valore va SOTTO su tutta la riga invece di schiacciare
+   il titolo (che ha una base minima, .riga>.basis-[160px] nel markup di
+   Impostazioni.tsx, cosi' va a capo TUTTO insieme invece che parola per
+   parola). .riga .v { min-width: 0 }: senza, un valore .v resta largo
+   quanto il suo contenuto e basta, ignorando lo spazio disponibile -
+   e' la causa diretta dello sforamento.
+
+   Per il testo lungo vero e proprio (i percorsi in Programma), la scelta
+   e' TRONCARE con i puntini (classe Tailwind "truncate" nel markup, non
+   "va a capo"): un percorso spezzato a caso in mezzo a una cartella e'
+   piu' difficile da leggere di uno troncato in fondo, l'altezza della
+   riga resta fissa e prevedibile a ogni larghezza, e la riga ha gia' un
+   bottone "Copia" apposta per chi serve il percorso intero - andare a
+   capo l'avrebbe reso ridondante. Il valore intero resta comunque nel
+   title (Riga: prop titoloValore), per chi preferisce il tooltip.
+
+   .riga .t { overflow-wrap: anywhere }: per i valori senza bottone Copia
+   che potrebbero essere lunghi e senza spazi (un nome di dispositivo
+   accoppiato in un solo blocco) - qui SI' meglio andare a capo che
+   troncare, non c'e' un modo per recuperare il resto del nome. */
+.riga { flex-wrap: wrap; }
+.riga .v { min-width: 0; }
+.riga .t { overflow-wrap: anywhere; }
+
+/* Stesso principio per la pastiglia di stato (es. l'intestazione della
+   scheda Stampante quando lo stato e' "errore": il messaggio del servizio,
+   non piu' corto di una parola come "Pronta"): l'altezza fissa a 36px e il
+   nowrap andavano bene per le pastiglie brevi, ma un messaggio d'errore
+   lungo sforerebbe la scheda allo stesso modo del percorso. min-height
+   invece di height la lascia crescere se il testo va a capo, restando
+   compatta quando (quasi sempre) non serve. */
+.pastiglia { white-space: normal; height: auto; min-height: 36px; }
+
+/* ---------- ritocchi Ingredienti e finestre (23 settembre 2026) ----------
+   Un controllo visivo ha trovato difetti nella finestra "Fornitori" (il
+   cliente: "e' terribile graficamente"), nelle carte dell'elenco Ingredienti
+   e in qualche finestra/conferma in giro. ---------- */
+
+/* Una finestra "piccola" ma un po' piu' larga (Fornitori): ne' i 440px di
+   ".piccola" da sola (righe strette, doppio tocco che traboccava), ne' i
+   1120px di ".larga" (troppo per un semplice elenco nome+azioni). */
+.finestra.piccola.media { width: min(540px, 100%); }
+
+/* Bottone compatto per le righe di una finestra (Fornitori: Annulla/Salva,
+   No/Si elimina) - niente da confondere con ".btn" normale da 48px, che
+   resta quello di Impostazioni e delle altre finestre. */
+.btn.compatto { height: 40px; padding: 0 14px; font-size: 14px; border-radius: 10px; gap: 7px; }
+
+/* La riga di un fornitore (FinestraFornitori.tsx): come le righe dei
+   telefoni in Impostazioni (testo semplice + azione a destra), non piu' un
+   campo sempre in modifica con un bottone "Elimina" da 48px. */
+/* padding orizzontale 0: nomi allineati al titolo della finestra e bottoni
+   al bordo destro di "Chiudi". */
+.riga.fornitore { min-height: 60px; padding: 10px 0; }
+
+/* I due bottoni-icona quadrati della riga (Rinomina/Elimina). */
+.bottoneQuadro {
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--bordo2); background: var(--carta);
+  display: flex; align-items: center; justify-content: center; color: var(--tenue); flex-shrink: 0;
+}
+.bottoneQuadro.rosso { color: var(--rosso); }
+.bottoneQuadro:disabled { opacity: .55; cursor: default; }
+
+/* La pastiglia di stato dell'elenco Ingredienti (CartaIngrediente, es.
+   "Nessun lotto aperto"): ".prodotto" e' flex-colonna, quindi si allargava a
+   tutta la carta invece di stare larga quanto il suo testo. */
+.prodotto .stato { align-self: flex-start; }
+@media (max-width: 860px) {
+  /* sul telefono ".prodotto" e' una griglia: la pastiglia va nella prima
+     colonna (sotto nome/dettaglio), larga quanto il suo testo. */
+  .prodotto .stato { grid-column: 1; justify-self: start; }
+}
+
+/* ---------- ritocchi Storico, Merce arrivata, Impostazioni (secondo giro, 23 settembre 2026) ---------- */
+
+/* Foglio della catena (FoglioCatena.tsx): solo la tabella scorre in
+   orizzontale sul telefono, non piu' tutto il foglio insieme (titolo e
+   paragrafi restavano tagliati a meta' scorrendo). Sfumatura ai bordi con
+   un doppio sfondo, senza JavaScript: quello "locale" si muove col
+   contenuto e copre la sfumatura "fissa" (background-attachment: scroll)
+   appena si e' arrivati in fondo da quel lato, cosi' sparisce da sola a
+   fine corsa. */
+.foglioTabellaScorre {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--carta) 40%, rgba(255, 255, 255, 0)) left,
+    linear-gradient(to left, var(--carta) 40%, rgba(255, 255, 255, 0)) right,
+    linear-gradient(to right, rgba(20, 15, 10, .16), rgba(20, 15, 10, 0)) left,
+    linear-gradient(to left, rgba(20, 15, 10, .16), rgba(20, 15, 10, 0)) right;
+  background-repeat: no-repeat;
+  background-color: var(--carta);
+  background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+@media print {
+  /* In stampa la tabella resta intera (il foglio e' pensato per il
+     formato di stampa, non per lo schermo stretto): niente sfumature ne'
+     barra di scorrimento. */
+  .foglioTabellaScorre { overflow-x: visible; background: none; }
+}
+
+/* ---------- catena dello Storico ridisegnata (23 settembre 2026) ---------- */
+
+/* Tutta la riga apre/chiude la catena adesso (Storico.tsx, RigaStoricoPC e
+   RigaStoricoTel): cursore a mano e sfondo al passaggio del mouse solo sulle
+   righe che hanno davvero una catena da aprire ("apribile" - stessa regola
+   di RiassuntoCatena, niente senza ingredienti tracciati). Sul telefono
+   toccare la riga non fa piu' partire una ristampa: quella e' solo il
+   ".ristampino", un vero bottone che ferma la propagazione. */
+.vocestorico.apribile { cursor: pointer; }
+.vocestorico.apribile:hover:not(.aperta) { background: var(--sabbia); }
+
+/* La riga aperta e la sua catena formano un unico blocco (GruppoRigaStorico,
+   classe "storicoBlocco"): sfondo e bordo arrotondato stanno sul blocco, non
+   sulla riga o sulla catena separatamente, cosi' non c'e' una linea di
+   separazione fra le due e si vede bene dove il blocco finisce rispetto alle
+   righe chiuse vicine (senza bordo). */
+.storicoBlocco.aperta { background: var(--crema); border: 1px solid var(--bordo); border-radius: 14px; margin: 3px 0; }
+.storicoBlocco.aperta .vocestorico.grigliaStorico { border-bottom: none; border-radius: 14px 14px 0 0; }
+.storicoBlocco.aperta .vocestorico.tel { border: 0; border-radius: 0; background: none; }
+
+/* La testa della catena (sostituisce la vecchia fascia verde ".capoCatena",
+   che ripeteva quello che la riga gia' dice): solo l'etichettina "Fatta
+   con", l'eventuale nota di correzione, e il bottone del foglio stampabile,
+   spostato qui da fondo pagina - vedi CatenaLotti.tsx. */
+.testaCatena { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 2px 2px 0; }
+
+/* Gli anelli (ingredienti): non piu' riquadri bianchi separati e bordati
+   pesanti (sul telefono si confondevano con le righe dello storico), ma le
+   righe di un'unica carta bianca - cinque colonne: ingrediente,
+   lotto+scadenza, provenienza, foto, «Correggi». */
+.cartaAnelli { display: flex; flex-direction: column; background: var(--carta); border: 1px solid var(--bordo); border-radius: 12px; overflow: hidden; }
+.rigaAnello { display: grid; grid-template-columns: 150px 190px minmax(0, 1fr) auto auto; column-gap: 14px; row-gap: 4px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--riga); }
+.rigaAnello:last-child { border-bottom: none; }
+.rigaAnello .ing { font-weight: 700; }
+.rigaAnello .lottoInfo, .rigaAnello .provenienza { font-size: 13px; line-height: 1.4; min-width: 0; }
+.rigaAnello .lottoInfo { color: var(--testo); }
+.rigaAnello .provenienza { color: var(--tenue); }
+.rigaAnello .fotos { display: flex; gap: 6px; flex-wrap: wrap; }
+.rigaAnello .mancaTesto { grid-column: 2 / 4; font-size: 13px; color: var(--ambra); }
+.rigaAnello.manca { background: #FCF6E9; }
+@media (max-width: 860px) {
+  .rigaAnello { grid-template-columns: minmax(0, 1fr) auto; }
+  .rigaAnello .ing { grid-column: 1; grid-row: 1; }
+  .rigaAnello .correggiCella { grid-column: 2; grid-row: 1; justify-self: end; }
+  .rigaAnello .lottoInfo, .rigaAnello .provenienza, .rigaAnello .fotos, .rigaAnello .mancaTesto { grid-column: 1 / -1; }
+}
 
 } /* fine @layer components */

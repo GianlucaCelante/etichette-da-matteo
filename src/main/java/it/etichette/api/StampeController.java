@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /** {@code /api/stampe} (docs/api.md): avvio di una stampa, ristampa dell'ultima, annullamento. */
@@ -37,7 +38,9 @@ public class StampeController {
         this.dispositivi = dispositivi;
     }
 
-    private record RichiestaStampa(Long prodottoId, Integer copie, String quantita, String scadenza, String lotto) {
+    /** {@code lotti} (docs/api.md): facoltativo, chiave ingredienteId -> lotti scelti a mano; assente = regola di serie. */
+    private record RichiestaStampa(Long prodottoId, Integer copie, String quantita, String scadenza, String lotto,
+                                    Map<Long, List<Long>> lotti) {
     }
 
     private record RichiestaCopie(Integer copie) {
@@ -49,7 +52,8 @@ public class StampeController {
     @PostMapping
     public Map<String, Object> stampa(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
         RichiestaStampa r = json.converti(corpo, RichiestaStampa.class);
-        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), dispositivi.nomePerStampa(request));
+        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), r.lotti(),
+                dispositivi.nomePerStampa(request));
         return corpoRisposta(risposta);
     }
 

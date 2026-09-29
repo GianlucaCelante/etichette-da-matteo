@@ -46,29 +46,41 @@ class MigrazioneEtichettaNelProdottoTest {
     @Test
     void ilPrimoProdottoHaLetichettaCompletaConNoveBlocchi() throws Exception {
         // "Base pizza low carb" (id=1) aveva etichetta_id=1 ("Completa", 9 blocchi): la
-        // migrazione deve averli copiati per intero dentro prodotti.etichetta.
+        // migrazione deve averli copiati per intero dentro prodotti.etichetta. In LETTURA sono
+        // pero' 10: "Completa" ha "scadenza" e una conservazione non vuota, ma nessun blocco
+        // "conservazione" esplicito (arrivato dopo, il 24/09/2026) - ProdottiConversioni ne
+        // aggiunge uno da sola subito dopo "scadenza" (indice 4), vedi
+        // ProdottiConversioni#conConservazioneSeManca.
         mockMvc.perform(get("/api/prodotti/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nome").value("Base pizza low carb"))
                 .andExpect(jsonPath("$.etichetta").exists())
-                .andExpect(jsonPath("$.etichetta.blocchi.length()").value(9))
+                .andExpect(jsonPath("$.etichetta.blocchi.length()").value(10))
                 .andExpect(jsonPath("$.etichetta.blocchi[0].tipo").value("titolo"))
+                .andExpect(jsonPath("$.etichetta.blocchi[4].tipo").value("scadenza"))
+                .andExpect(jsonPath("$.etichetta.blocchi[5].tipo").value("conservazione"))
                 .andExpect(jsonPath("$.etichetta.zona.larghezzaDestra").value("1/3"))
                 .andExpect(jsonPath("$.etichetta.produttore.ragioneSociale").exists());
     }
 
     @Test
-    void impastoClassicoHaLetichettaCucinaConDataProduzioneESigla() throws Exception {
+    void impastoClassicoHaLetichettaCucinaConDataProduzione() throws Exception {
         // "Impasto classico 24h" (id=2) aveva etichetta_id=2 ("Cucina", 5 blocchi coi due
         // "testo" scritti a mano gia' sostituiti da dataProduzione/sigla, v2-semi.yaml 18): la
         // migrazione deve averli copiati cosi' come sono ORA (non lo stato originale della fase 1).
+        // In LETTURA sono 5, non 6: "sigla" non e' piu' un tipo di blocco dal 25/09/2026 (deciso
+        // dal cliente) e sparisce da solo (ProdottiConversioni#normalizzaEtichetta, come "qr"), e
+        // "conservazione" si aggiunge da sola subito dopo "scadenza" (indice 2).
         mockMvc.perform(get("/api/prodotti/2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nome").value("Impasto classico 24h"))
                 .andExpect(jsonPath("$.etichetta.blocchi.length()").value(5))
                 .andExpect(jsonPath("$.etichetta.blocchi[1].tipo").value("dataProduzione"))
-                .andExpect(jsonPath("$.etichetta.blocchi[4].tipo").value("sigla"))
+                .andExpect(jsonPath("$.etichetta.blocchi[2].tipo").value("scadenza"))
+                .andExpect(jsonPath("$.etichetta.blocchi[3].tipo").value("conservazione"))
+                .andExpect(jsonPath("$.etichetta.blocchi[4].tipo").value("lotto"))
                 .andExpect(jsonPath("$.etichetta.zona.larghezzaDestra").value("1/2"))
+                // il campo resta (deprecato, docs/api.md: non ha piu' alcun effetto sulla stampa).
                 .andExpect(jsonPath("$.siglaOperatore").value("M.C."));
     }
 

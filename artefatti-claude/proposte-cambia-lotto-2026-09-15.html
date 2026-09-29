@@ -1,0 +1,187 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quattro modi per Cambia</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  :root {
+    --fondo: #EADECE; --testo: #58443C; --tenue: #7A6A5E; --spento: #9C8C7C; --carta: #ffffff; --crema: #FBF5EC; --sabbia: #F7F0E4; --riga: #EDE3D5; --bordo: #DCCFBB; --bordo2: #CFC0AA; --tratteggio: #C0AF9B;
+    --verde: #5E7B18; --verdescuro: #4B6313; --verdechiaro: #E3EAD1; --verdebordo: #B9C89A; --ambra: #A97514; --ambrachiaro: #F7EBD3; --ambrabordo: #E5CB93; --rosso: #a3301a; --rossochiaro: #fbe4e0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--testo); font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; font-size: 15px; line-height: 1.5; padding: 32px 20px 56px; }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-weight: 600; margin: 0; text-wrap: balance; }
+  .pagina { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  .intro { max-width: 640px; }
+  .intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .intro p { margin: 0; color: var(--tenue); }
+  .oggi { background: var(--crema); border: 1px dashed var(--bordo2); border-radius: 14px; padding: 14px 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 18px; align-items: center; }
+  .oggi p { margin: 0; font-size: 14px; color: var(--tenue); }
+  .oggi b { color: var(--testo); }
+  .griglia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .carta { background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .carta.consigliata { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); }
+  .capo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .lettera { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 30px; font-weight: 700; color: var(--verde); line-height: 1; }
+  .capo h2 { font-size: 20px; flex: 1; min-width: 0; }
+  .tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; background: var(--verde); color: #fff; border-radius: 8px; padding: 3px 8px; }
+  .carta p { margin: 0; font-size: 14px; }
+  .prorio { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13.5px; }
+  .prorio > div { background: var(--sabbia); border-radius: 12px; padding: 10px 12px; }
+  .prorio .k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--tenue); margin-bottom: 4px; }
+  .prorio ul { margin: 0; padding-left: 16px; }
+  .prorio li + li { margin-top: 3px; }
+  .conclusione { background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 20px 22px; }
+  .conclusione h2 { font-size: 20px; margin-bottom: 8px; }
+  .conclusione p { margin: 0 0 8px; font-size: 14.5px; }
+
+  /* ---- gli schizzi: la striscia «Lotti degli ingredienti» com'e' nel prototipo ---- */
+  .striscia { border: 1px solid var(--bordo); border-radius: 14px; overflow: hidden; background: var(--carta); font-size: 14px; }
+  .striscia .capoS { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--sabbia); border-bottom: 1px solid var(--riga); font-size: 12px; font-weight: 700; color: var(--tenue); letter-spacing: .04em; text-transform: uppercase; }
+  .rl { display: flex; flex-direction: column; gap: 4px; padding: 9px 14px; border-bottom: 1px solid var(--riga); }
+  .rl:last-child { border-bottom: none; }
+  .rl.attenzione { background: #FCF6E9; }
+  .testa { display: flex; align-items: center; gap: 10px; }
+  .ing { font-weight: 700; flex: 1; }
+  .cambia { font-size: 13px; font-weight: 700; color: var(--verdescuro); }
+  .lot { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+  .lot small { font-size: 12.5px; color: var(--tenue); }
+  .mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .b { font-weight: 700; }
+  .manca { color: var(--ambra); font-weight: 700; }
+  .nota { font-size: 12.5px; color: var(--ambra); }
+  .link { font-size: 13px; font-weight: 700; color: var(--verdescuro); }
+  .quadro { width: 17px; height: 17px; border-radius: 5px; border: 2px solid var(--bordo2); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .quadro.on { background: var(--verde); border-color: var(--verde); color: #fff; font-size: 12px; font-weight: 700; }
+  .x { color: var(--spento); font-size: 15px; margin-left: auto; padding: 0 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: 14px; border: 1px solid var(--bordo2); font-size: 12.5px; font-weight: 700; }
+  .chip.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+  .chip .cx { opacity: .7; font-weight: 400; }
+  .chip.piu { border-style: dashed; color: var(--tenue); font-weight: 400; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* pannello di oggi */
+  .pannello { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+  .opz { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--bordo); border-radius: 10px; font-size: 13.5px; }
+  .opz.on { border-color: var(--verde); box-shadow: 0 0 0 3px var(--verdechiaro); }
+  .opz .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .opz small { color: var(--tenue); font-size: 12px; }
+  .btnp { height: 28px; padding: 0 9px; border: 1px solid var(--bordo2); border-radius: 8px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; }
+  .casella { border: 1px solid var(--bordo2); border-radius: 10px; padding: 8px 12px; color: var(--spento); font-family: Consolas, monospace; font-size: 13px; }
+  /* foglio dal basso */
+  .telefono { border: 1px solid var(--bordo2); border-radius: 18px; background: var(--fondo); padding: 10px; position: relative; overflow: hidden; }
+  .foglio { background: var(--carta); border-radius: 14px 14px 0 0; padding: 14px 14px 10px; margin: 60px -10px -10px; box-shadow: 0 -8px 24px rgba(88,68,60,.15); display: flex; flex-direction: column; gap: 10px; }
+  .foglio .maniglia { width: 36px; height: 4px; border-radius: 2px; background: var(--bordo2); margin: 0 auto 2px; }
+  .foglio h3 { font-size: 16px; }
+  .foglio .sez { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--tenue); margin-top: 4px; }
+  .fatto { align-self: flex-end; background: var(--verde); color: #fff; border-radius: 10px; padding: 8px 16px; font-weight: 700; font-size: 14px; }
+  .dietro { position: absolute; left: 14px; top: 14px; right: 14px; font-size: 13px; color: var(--tenue); }
+  @media (max-width: 760px) { .griglia { grid-template-columns: 1fr; } .oggi { grid-template-columns: 1fr; } .prorio { grid-template-columns: 1fr; } }
+</style>
+
+<div class="pagina">
+  <div class="intro">
+    <h1>Quattro modi per «Cambia»</h1>
+    <p>In Stampa, sotto quantità e lotto, la striscia dice quali lotti degli ingredienti finiscono nello storico. Oggi l'eccezione passa da «Cambia», un pannello che prova a coprire tre casi diversi. Ecco quattro modi di rifarlo, sulla stessa riga della farina con due sacchi aperti e quella del rosmarino senza lotto.</p>
+  </div>
+
+  <div class="oggi">
+    <p><b>Com'è oggi.</b> «Cambia» apre sotto la riga un pannello con una spiegazione, una casella per ogni lotto, «Chiudi lotto» accanto agli aperti e una riga per scrivere un lotto al volo. Tre cose diverse nello stesso posto: il lotto mancante, il sacco finito, il sacco usato ma non registrato.</p>
+    <div class="striscia">
+      <div class="capoS">Lotti degli ingredienti</div>
+      <div class="rl"><div class="testa"><span class="ing">Farina tipo 0</span><span class="cambia">Chiudi</span></div>
+        <div class="lot"><span class="mono b">L 24263</span><small>scade 31/03/2027</small></div>
+        <div class="lot"><span class="mono b">L 24290</span><small>scade 30/04/2027</small></div>
+        <div class="pannello">
+          <small style="color:var(--tenue)">Tocca i lotti usati in questa preparazione: se ne tocchi due, la stampa li registra tutti e due…</small>
+          <div class="opz on"><span class="quadro on">✓</span><span class="testi"><span class="mono b">L 24263</span><small>scade 31/03/2027 · DDT 4471 · 10 sacchi</small></span><span class="btnp">Chiudi lotto</span></div>
+          <div class="opz on"><span class="quadro on">✓</span><span class="testi"><span class="mono b">L 24290</span><small>scade 30/04/2027 · DDT 4471 · 10 sacchi</small></span><span class="btnp">Chiudi lotto</span></div>
+          <div class="casella">Oppure scrivi il lotto del sacco…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="griglia">
+    <div class="carta">
+      <div class="capo"><span class="lettera">A</span><h2>Caselle direttamente nella striscia</h2></div>
+      <div class="striscia">
+        <div class="capoS">Lotti degli ingredienti</div>
+        <div class="rl"><div class="testa"><span class="ing">Farina tipo 0</span></div>
+          <div class="lot"><span class="quadro on">✓</span><span class="mono b">L 24263</span><small>scade 31/03/2027</small><span class="x">×</span></div>
+          <div class="lot"><span class="quadro on">✓</span><span class="mono b">L 24290</span><small>scade 30/04/2027</small><span class="x">×</span></div>
+          <div class="lot"><span class="link">Altro lotto…</span></div></div>
+        <div class="rl attenzione"><div class="testa"><span class="ing">Rosmarino</span></div><div class="lot"><span class="manca">nessun lotto aperto</span></div><div class="lot"><span class="link">Altro lotto…</span></div></div>
+      </div>
+      <p>Niente pannello e niente «Cambia». Ogni lotto ha la spunta, tutti spuntati di serie: quello che vedi è quello che si registra. La × sul lotto è «Chiudi lotto». «Altro lotto…» apre solo la casella per scriverlo e i chiusi di recente.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Un livello solo, si legge come una lista della spesa</li><li>Chiudere un sacco è un tocco</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>Spunta tolta per sbaglio con le mani sporche</li><li>La striscia si fa fitta con cinque ingredienti</li></ul></div>
+      </div>
+    </div>
+
+    <div class="carta">
+      <div class="capo"><span class="lettera">B</span><h2>Gettoni per lotto</h2></div>
+      <div class="striscia">
+        <div class="capoS">Lotti degli ingredienti</div>
+        <div class="rl"><div class="testa"><span class="ing">Farina tipo 0</span></div>
+          <div class="chips"><span class="chip on mono">L 24263 <span class="cx">×</span></span><span class="chip on mono">L 24290 <span class="cx">×</span></span><span class="chip piu">+</span></div></div>
+        <div class="rl attenzione"><div class="testa"><span class="ing">Rosmarino</span></div>
+          <div class="chips"><span class="manca" style="font-size:13px">nessun lotto aperto</span><span class="chip piu">+</span></div></div>
+        <div class="rl"><div class="testa"><span class="ing">Sale iodato</span></div><div class="chips"><span class="chip on mono">S-2211 <span class="cx">×</span></span><span class="chip piu">+</span></div></div>
+      </div>
+      <p>I lotti sono gettoni sulla riga: pieno si registra, vuoto no, un tocco li scambia. La × dentro il gettone chiude il lotto. Il «+» serve a scriverne uno o a ripescare un chiuso.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Compattissimo: cinque ingredienti in cinque righe, sul telefono sta sopra Stampa</li><li>Scrivere un lotto al volo resta a un tocco</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>Il gesto va imparato: toccare il gettone, e la × dentro</li><li>Il gettone non ha posto per la scadenza</li></ul></div>
+      </div>
+    </div>
+
+    <div class="carta">
+      <div class="capo"><span class="lettera">C</span><h2>Foglio dal basso per ingrediente</h2></div>
+      <div class="telefono">
+        <div class="dietro">Farina tipo 0 · L 24263 + L 24290 · tocca per cambiare</div>
+        <div class="foglio">
+          <div class="maniglia"></div>
+          <h3>Farina tipo 0 in questa preparazione</h3>
+          <div class="sez">Aperti</div>
+          <div class="opz on"><span class="quadro on">✓</span><span class="testi"><span class="mono b">L 24263</span><small>scade 31/03/2027 · 10 sacchi</small></span><span class="btnp">Chiudi lotto</span></div>
+          <div class="opz on"><span class="quadro on">✓</span><span class="testi"><span class="mono b">L 24290</span><small>scade 30/04/2027 · 10 sacchi</small></span><span class="btnp">Chiudi lotto</span></div>
+          <div class="sez">Chiusi di recente</div>
+          <div class="opz"><span class="quadro"></span><span class="testi"><span class="mono b">L 24211</span><small>chiuso il 03/09/2026</small></span></div>
+          <div class="sez">Scrivi un lotto</div>
+          <div class="casella">come sul sacco…</div>
+          <span class="fatto">Fatto</span>
+        </div>
+      </div>
+      <p>La striscia è sola lettura; toccando l'ingrediente sale un foglio con tre parti: aperti, chiusi di recente, scrivi un lotto. Su PC è una finestra.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>C'è spazio per spiegare e per la scadenza</li><li>Il gesto è quello delle app del telefono</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>Un livello in più per un'eccezione settimanale</li><li>Su PC è l'ennesima finestra</li></ul></div>
+      </div>
+    </div>
+
+    <div class="carta consigliata">
+      <div class="capo"><span class="lettera">D</span><h2>La stampa non sceglie niente</h2><span class="tag">consigliata</span></div>
+      <div class="striscia">
+        <div class="capoS">Lotti degli ingredienti</div>
+        <div class="rl"><div class="testa"><span class="ing">Farina tipo 0</span></div>
+          <div class="lot"><span class="mono b">L 24263</span><small>scade 31/03/2027</small><span class="x">×</span></div>
+          <div class="lot"><span class="mono b">L 24290</span><small>scade 30/04/2027</small><span class="x">×</span></div></div>
+        <div class="rl attenzione"><div class="testa"><span class="ing">Rosmarino</span></div>
+          <div class="lot"><span class="manca">nessun lotto aperto</span><span class="link" style="margin-left:auto">Registra la merce</span></div>
+          <div class="nota">Si stampa lo stesso: nello storico resta «non registrato».</div></div>
+        <div class="rl"><div class="testa"><span class="ing">Sale iodato</span></div><div class="lot"><span class="mono b">S-2211</span><small>scade 31/12/2028</small><span class="x">×</span></div></div>
+      </div>
+      <p>Via «Cambia». La striscia è sola lettura e registra i lotti aperti. Due sole azioni, e compaiono solo quando servono: «Registra la merce» sulla riga senza lotto, che apre Merce arrivata già sull'ingrediente e poi torna alla stampa; la × su ogni lotto, che lo chiude. Il lotto sbagliato si sistema dopo, dallo storico, com'è già previsto.</p>
+      <div class="prorio">
+        <div><div class="k">A favore</div><ul><li>Coerente con «la stampa non fa domande»</li><li>Registrare, chiudere e correggere restano ognuno al suo posto</li><li>Niente da spiegare</li></ul></div>
+        <div><div class="k">Contro</div><ul><li>Il sacco usato ma non registrato costa due schermate invece del lotto scritto al volo</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conclusione">
+    <h2>Cosa consiglio</h2>
+    <p>La <b>D</b>. Il pannello di oggi cerca di risolvere tre casi diversi nello stesso posto: lotto mancante, sacco finito, sacco usato ma non registrato. La D li rimanda ai tre strumenti che esistono già, e la striscia torna a essere quello per cui è nata: una conferma da guardare e basta.</p>
+    <p>Se il caso «ho scritto il lotto al volo» ti sembra frequente, la <b>B</b> è il compromesso: gettoni, niente pannello, il «+» per scriverlo.</p>
+  </div>
+</div>

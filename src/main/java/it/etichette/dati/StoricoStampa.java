@@ -15,7 +15,11 @@ import java.time.LocalDateTime;
  * senza lavoro dell'utente (docs/funzionalita-prima-versione.md).
  */
 @Entity
-@Table(name = "storico_stampe", indexes = @Index(name = "idx_storico_stampato_il", columnList = "stampato_il"))
+@Table(name = "storico_stampe", indexes = {
+        @Index(name = "idx_storico_stampato_il", columnList = "stampato_il"),
+        // v11-indici-storico.yaml: l'elenco a pagine e l'ultima stampa valida di un semilavorato.
+        @Index(name = "idx_storico_prodotto_stampato_il", columnList = "prodotto_id, stampato_il"),
+        @Index(name = "idx_storico_lavoro_id", columnList = "lavoro_id")})
 public class StoricoStampa {
 
     @Id
@@ -23,6 +27,7 @@ public class StoricoStampa {
     @Column(name = "id")
     private Long id;
 
+    /** Quando il lavoro e' stato ACCETTATO (la riga nasce li', docs/api.md "Storico"), non quando e' finito. */
     @Column(name = "stampato_il", nullable = false)
     private LocalDateTime stampatoIl;
 
@@ -50,9 +55,26 @@ public class StoricoStampa {
     @Column(name = "dispositivo_nome")
     private String dispositivoNome;
 
-    /** "completata", "annullata", "errore"... */
+    /**
+     * "in_stampa" (la riga nasce cosi' quando il lavoro viene accettato, docs/api.md "Storico"),
+     * poi "completata", "annullata", "errore" o "prova" a fine lavoro; "interrotta" se all'avvio
+     * del servizio era ancora "in_stampa" (il servizio si e' fermato a meta' lavoro).
+     */
     @Column(name = "esito", nullable = false)
     private String esito;
+
+    /** {@code PUT /api/storico/{id}/catena} (docs/api.md): quando i lotti di questa stampa sono stati corretti a mano. */
+    @Column(name = "corretto_il")
+    private LocalDateTime correttoIl;
+
+    /**
+     * L'id del lavoro di stampa (docs/api.md, "Storico") che ha scritto questa riga: la schermata
+     * Stampa lo usa per trovare la riga del lavoro appena finito invece di prendere sempre la piu'
+     * recente (difetto del 23/09/2026, due stampe quasi simultanee). {@code null} per le righe
+     * scritte prima di questa colonna (v9-pulizia-collegamenti-e-lavoro-id.yaml).
+     */
+    @Column(name = "lavoro_id")
+    private String lavoroId;
 
     protected StoricoStampa() {
         // per JPA
@@ -121,6 +143,10 @@ public class StoricoStampa {
         return copie;
     }
 
+    public void setCopie(int copie) {
+        this.copie = copie;
+    }
+
     public String getDispositivoNome() {
         return dispositivoNome;
     }
@@ -131,5 +157,25 @@ public class StoricoStampa {
 
     public String getEsito() {
         return esito;
+    }
+
+    public void setEsito(String esito) {
+        this.esito = esito;
+    }
+
+    public LocalDateTime getCorrettoIl() {
+        return correttoIl;
+    }
+
+    public void setCorrettoIl(LocalDateTime correttoIl) {
+        this.correttoIl = correttoIl;
+    }
+
+    public String getLavoroId() {
+        return lavoroId;
+    }
+
+    public void setLavoroId(String lavoroId) {
+        this.lavoroId = lavoroId;
     }
 }

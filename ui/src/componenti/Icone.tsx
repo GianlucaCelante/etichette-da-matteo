@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 // banco-etichette-2026-09-08.html), scritte come JSX invece che come
 // stringa SVG: niente dangerouslySetInnerHTML, niente libreria da scaricare.
 
-interface ProprietaIcona {
+// Esportata: EsportaElenco.tsx (menu "Esporta l'elenco" dello Storico) la
+// usa per tipizzare le icone dei formati senza ripetere la stessa forma.
+export interface ProprietaIcona {
   larghezza?: number;
   spessoreTratto?: number;
   className?: string;
@@ -44,6 +46,45 @@ export function IconaStampa({ larghezza, spessoreTratto, className }: ProprietaI
   );
 }
 
+// Il barattolo del menu Ingredienti, stesso tracciato del prototipo (I.ingredienti).
+export function IconaIngredienti({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M9 3h6l-1 3h-4z" />
+      <path d="M10 6c-4 3-6 7-6 11a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3c0-4-2-8-6-11" />
+      <path d="M9 14c1-2 5-2 6 0" />
+    </IconaBase>
+  );
+}
+
+// Il camioncino di "Merce arrivata" (I.camion nel prototipo).
+export function IconaCamion({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M3 7h11v9H3z" />
+      <path d="M14 10h4l3 3v3h-7" />
+      <circle cx="7" cy="18" r="2" />
+      <circle cx="17" cy="18" r="2" />
+    </IconaBase>
+  );
+}
+
+// Un edificio/azienda: la finestra della gestione fornitori dentro
+// Ingredienti (docs/api.md, "Gestire i fornitori", 23 settembre 2026). Non
+// piu' la casetta di prima (deciso da Gianluca, 25/09/2026: si confondeva
+// con una casa, non diceva "fornitore/azienda") - ne' il camioncino, gia' di
+// IconaCamion ("Merce arrivata"): un palazzo a finestre, per non confondersi
+// con nessuno dei due.
+export function IconaFornitore({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="5" y="3" width="14" height="18" rx="1" />
+      <path d="M9 21v-5h6v5" />
+      <path d="M8.5 7.5h1.5M14 7.5h1.5M8.5 11.5h1.5M14 11.5h1.5" />
+    </IconaBase>
+  );
+}
+
 export function IconaEtichette({ larghezza, spessoreTratto, className }: ProprietaIcona) {
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
@@ -59,6 +100,17 @@ export function IconaStorico({ larghezza, spessoreTratto, className }: Proprieta
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
+    </IconaBase>
+  );
+}
+
+// L'anello di catena del riassunto "N lotti ingrediente" nello Storico
+// (I.catena del prototipo, stesso tracciato).
+export function IconaCatena({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M10 14a4 4 0 0 0 5.6.4l3-3a4 4 0 0 0-5.6-5.6l-1.5 1.5" />
+      <path d="M14 10a4 4 0 0 0-5.6-.4l-3 3a4 4 0 0 0 5.6 5.6l1.5-1.5" />
     </IconaBase>
   );
 }
@@ -106,6 +158,28 @@ export function IconaSpunta({ larghezza, spessoreTratto, className }: ProprietaI
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <path d="M5 13l4 4L19 7" />
+    </IconaBase>
+  );
+}
+
+// L'orologio di "in stampa" nel pannello di avanzamento (design/StampaInCorso.dc.html,
+// PannelloInCorso in PannelliStampa.tsx): non IconaStorico, che resta legata
+// al menu Storico - stesso tracciato del disegno (cerchio + lancette a
+// mezz'asta), colorato in ambra da chi la usa.
+export function IconaOrologio({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4l3 2" />
+    </IconaBase>
+  );
+}
+
+// Il cerchio vuoto di "in attesa", stesso pannello: nessuna lancetta, solo il contorno.
+export function IconaCerchioVuoto({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="12" cy="12" r="8" />
     </IconaBase>
   );
 }
@@ -285,6 +359,31 @@ export function IconaImmagine({ larghezza, spessoreTratto, className }: Propriet
   );
 }
 
+// La fotocamera, per la scelta "Scatta una foto" (FotoVuota.tsx, deciso da
+// Gianluca il 25/09/2026: su Android il riquadro foto apriva solo la
+// galleria, mai la fotocamera - qui e' una delle due scelte esplicite).
+export function IconaFotocamera({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+      <circle cx="12" cy="14" r="3.5" />
+    </IconaBase>
+  );
+}
+
+// Non nel prototipo (che aveva "Apri la cartella", vietato qui: il servizio
+// gira come servizio di Windows e non puo' aprire una finestra sul desktop
+// di chi guarda - docs/api.md, "Impostazioni come il prototipo"): serve al
+// bottone "Copia il percorso" della scheda Programma.
+export function IconaCopia({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="8" y="8" width="13" height="13" rx="2" />
+      <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+    </IconaBase>
+  );
+}
+
 // Le stesse frecce curve del prototipo per "Annulla" e "Ripristina" nella
 // scheda del prodotto (Ctrl+Z / Ctrl+Y).
 export function IconaAnnulla({ larghezza, spessoreTratto, className }: ProprietaIcona) {
@@ -301,6 +400,32 @@ export function IconaRipristina({ larghezza, spessoreTratto, className }: Propri
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <path d="M15 14l5-5-5-5" />
       <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </IconaBase>
+  );
+}
+
+// Il dischetto di "Salva etichetta" (deciso da Gianluca, 25/09/2026: sul
+// telefono Salva/Duplica/Elimina restano solo icona, serve un'icona anche a
+// Salva - prima era testo puro): stessa famiglia lineare delle altre.
+export function IconaSalva({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M5 4h11l3 3v13H5z" />
+      <path d="M8 4v6h7V4" />
+      <path d="M8 14h8v6H8z" />
+    </IconaBase>
+  );
+}
+
+// La stellina delle proposte "da creare" (CampoIngredientiCollegati in
+// Etichette.tsx, deciso dal cliente il 25/09/2026): una pastiglia
+// tratteggiata col "+" gia' vive per collegare un ingrediente esistente,
+// qui serve un segno diverso a colpo d'occhio per "nuovo, da creare" - una
+// stella a quattro punte (sparkle), non il solito "+".
+export function IconaStellina({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z" />
     </IconaBase>
   );
 }
@@ -328,6 +453,39 @@ export function IconaAllineaDestra({ larghezza, spessoreTratto, className }: Pro
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <path d="M4 7h16M10 12h10M7 17h13" />
+    </IconaBase>
+  );
+}
+
+/* ---- il menu "Esporta l'elenco" dello Storico (EsportaElenco.tsx) ---- */
+
+// Un foglio a griglia: la voce "Excel".
+export function IconaFoglio({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
+    </IconaBase>
+  );
+}
+
+// Una pagina con l'angolo piegato: la voce "PDF".
+export function IconaDocumento({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v5h5" />
+      <path d="M8 13h8M8 17h5" />
+    </IconaBase>
+  );
+}
+
+// Righe di testo separate: la voce "CSV".
+export function IconaLista({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
     </IconaBase>
   );
 }

@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #f7f4ef; color: #221f1b; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #d5482a; } a:hover { color: #b23a20; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .nav { width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6b655c; font-size: 12px; font-weight: 700; }
+    .nav.active { background: #fbe9e3; color: #b23a20; }
+    .sec { background: #ffffff; border: 1px solid #e4dfd6; border-radius: 18px; padding: 22px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .lab { font-size: 13px; font-weight: 700; color: #6b655c; letter-spacing: 0.02em; text-transform: uppercase; }
+    .in { height: 52px; border: 1px solid #d9d3c8; border-radius: 12px; background: #ffffff; display: flex; align-items: center; padding: 0 16px; font-size: 17px; box-sizing: border-box; }
+    .opt { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 6px 0; border-bottom: 1px solid #eee9e0; font-size: 16px; }
+    .opt .d { font-size: 13px; color: #6b655c; margin-top: 2px; }
+    .sw { width: 48px; height: 28px; border-radius: 14px; background: #2a9a5f; position: relative; flex-shrink: 0; }
+    .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; }
+    .sw.off { background: #cfc9be; }
+    .sw.off::after { right: auto; left: 3px; }
+    .btn2 { height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid #d9d3c8; background: #ffffff; display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }
+    .kv { display: flex; justify-content: space-between; font-size: 15px; padding: 6px 0; border-bottom: 1px solid #eee9e0; }
+    .kv span:last-child { font-weight: 700; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; overflow: hidden; background: #f7f4ef; box-sizing: border-box;">
+
+  <div style="width: 88px; background: #fffdf9; border-right: 1px solid #e4dfd6; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; box-sizing: border-box; flex-shrink: 0;">
+    <div style="width: 44px; height: 44px; border-radius: 12px; background: #d5482a; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8L3 12z"></path><circle cx="8" cy="9" r="1.5"></circle></svg>
+    </div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Prodotti</span></div>
+    <div class="nav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg><span>Modelli</span></div>
+    <div class="nav active"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="height: 76px; display: flex; align-items: center; padding: 0 32px; box-sizing: border-box;">
+      <div class="h" style="font-size: 28px; font-weight: 700; letter-spacing: -0.01em;">Impostazioni</div>
+    </div>
+
+    <div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 0 32px 28px 32px; box-sizing: border-box; min-height: 0;">
+
+      <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+        <div class="sec">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div class="h" style="font-size: 20px; font-weight: 600;">Stampante</div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 18px; background: #e6f4ea; color: #1c6b3f; font-weight: 700; font-size: 14px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #2a9a5f;"></span><span>Pronta</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <div class="kv"><span>Modello</span><span>Brother QL-1100c (USB)</span></div>
+            <div class="kv"><span>Firmware</span><span>V2.17</span></div>
+            <div class="kv"><span>Rotolo caricato</span><span>62 mm continuo</span></div>
+            <div class="kv" style="border-bottom: none;"><span>Ultimo controllo</span><span>2 secondi fa</span></div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div class="btn2"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa etichetta di prova</span></div>
+            <div class="btn2"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg><span>Cerca di nuovo</span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="h" style="font-size: 20px; font-weight: 600;">Stampa</div>
+          <div style="display: flex; flex-direction: column;">
+            <div class="opt"><div><div>Taglia ogni etichetta</div><div class="d">Se spento, taglia solo alla fine della serie</div></div><div class="sw"></div></div>
+            <div class="opt"><div><div>Riconosci il rotolo da solo</div><div class="d">Usa il formato letto dalla stampante (62 o 102 mm)</div></div><div class="sw"></div></div>
+            <div class="opt"><div><div>Chiedi conferma prima di stampare più di 5 copie</div></div><div class="sw"></div></div>
+            <div class="opt" style="border-bottom: none;"><div><div>Margine iniziale e finale</div><div class="d">Minimo consentito dalla stampante: 3 mm</div></div><div style="display: flex; align-items: center; gap: 8px;"><div class="in" style="width: 88px; height: 44px; justify-content: flex-end; font-weight: 700;">3</div><span style="color: #6b655c;">mm</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+        <div class="sec">
+          <div class="h" style="font-size: 20px; font-weight: 600;">Produttore (sulle etichette)</div>
+          <div class="field"><div class="lab">Ragione sociale</div><div class="in" style="font-weight: 700;">Michi s.n.c. di Michele Alberto Crivellari</div></div>
+          <div class="field"><div class="lab">Sede legale</div><div class="in">Via Brigata Marche 257 - 31030 Carbonera (TV)</div></div>
+          <div class="field"><div class="lab">Sede di produzione (facoltativa)</div><div class="in">Via Trieste 4/II - 31020 Fontane di Villorba (TV)</div></div>
+        </div>
+
+        <div class="sec">
+          <div class="h" style="font-size: 20px; font-weight: 600;">Date e lotto</div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+            <div class="field"><div class="lab">Dicitura scadenza</div><div class="in" style="justify-content: space-between; font-size: 15px;"><span>da consumare entro</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+            <div class="field"><div class="lab">Formato data</div><div class="in" style="justify-content: space-between; font-size: 15px;"><span>GG/MM/AAAA</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+          </div>
+          <div class="field"><div class="lab">Lotto automatico</div><div class="in" style="justify-content: space-between;"><span style="font-family: Consolas, 'Courier New', monospace;">L AAAAMMGG-NNN</span><span style="font-size: 13px; color: #6b655c;">oggi: L 20260903-001</span></div><div style="font-size: 13px; color: #6b655c;">Data di produzione + progressivo del giorno. Modificabile a mano prima di stampare.</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

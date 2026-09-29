@@ -1,0 +1,2108 @@
+<title>Banco etichette</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+  :root {
+    --fondo: #EADECE;
+    --testo: #58443C;
+    --tenue: #7A6A5E;
+    --spento: #9C8C7C;
+    --carta: #ffffff;
+    --crema: #FBF5EC;
+    --sabbia: #F7F0E4;
+    --riga: #EDE3D5;
+    --bordo: #DCCFBB;
+    --bordo2: #CFC0AA;
+    --tratteggio: #C0AF9B;
+    --verde: #5E7B18;
+    --verdescuro: #4B6313;
+    --verdechiaro: #E3EAD1;
+    --verdebordo: #B9C89A;
+    --ambra: #A97514;
+    --ambrachiaro: #F7EBD3;
+    --rosso: #a3301a;
+    --rossocupo: #8c3520;
+    --rossochiaro: #fbe4e0;
+    --rossobordo: #f0b5a8;
+    --barra: #E4DACA;
+    --ombra: 0 8px 24px rgba(88,68,60,0.10);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* Safari su iPhone non gonfi i testi quando la pagina e' piu' larga dello schermo */
+  body {
+    margin: 0; background: var(--fondo); color: var(--testo);
+    font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  h1, h2, h3, .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; margin: 0; font-weight: 600; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+  button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--verde); outline-offset: 2px; border-radius: 8px; }
+  input { font: inherit; color: inherit; background: none; border: 0; width: 100%; }
+  input:focus { outline: none; }
+  svg { display: block; flex-shrink: 0; }
+
+  /* ---------- impianto ---------- */
+  .app { display: flex; height: 100dvh; }
+  .rail { width: 88px; flex-shrink: 0; background: var(--crema); border-right: 1px solid var(--bordo);
+          display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; }
+  .marchio { width: 44px; height: 44px; border-radius: 12px; background: var(--verde); color: #fff;
+             display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .voce { width: 72px; height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 4px; color: var(--tenue); font-size: 12px; font-weight: 700; }
+  .voce.on { background: var(--verdechiaro); color: var(--verdescuro); }
+  .corpo { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .testata { height: 76px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+             gap: 16px; padding: 0 32px; }
+  .titolo { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  .schermo { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 0 32px 28px; }
+  .colonna { background: var(--carta); border: 1px solid var(--bordo); border-radius: 18px; padding: 16px;
+             display: flex; flex-direction: column; min-height: 0; }
+  .schermo > .colonna[style*="flex-shrink:0"], .schermo > .colonna[style*="flex-shrink: 0"] { flex-shrink: 0; }
+  .scorre { overflow-y: auto; overscroll-behavior: contain; }
+  .scorre::-webkit-scrollbar { width: 8px; }
+  .scorre::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
+  .barrasotto { display: none; }
+
+  /* ---------- pezzi ---------- */
+  .btn { height: 48px; padding: 0 22px; border-radius: 12px; display: inline-flex; align-items: center;
+         justify-content: center; gap: 9px; font-size: 16px; font-weight: 700; white-space: nowrap;
+         border: 1px solid var(--bordo2); background: var(--carta); }
+  .btn.primario { background: var(--verde); border-color: var(--verde); color: #fff; }
+  .btn.primario:disabled, .btn:disabled { opacity: .55; cursor: default; }
+  .btn.grande { height: 60px; font-size: 19px; border-radius: 14px; }
+  /* in testata, prima di "Stampa di prova": indietro e avanti sulle modifiche, poi duplica ed elimina */
+  .strumentiEt { display: flex; align-items: center; gap: 8px; }
+  .strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }
+  .strumentiEt .btn.tondo { width: 44px; padding: 0; gap: 0; border-radius: 22px; }
+  .strumentiEt .sep { width: 1px; height: 28px; background: var(--bordo); margin: 0 4px; flex-shrink: 0; }
+  .btn.elimina { color: var(--rosso); }
+  .btn.elimina.forte { background: var(--rosso); border-color: var(--rosso); color: #fff; }
+  /* schermo stretto ma non telefono: duplica ed elimina restano con la sola icona */
+  @media (min-width: 861px) and (max-width: 1150px) {
+    .strumentiEt .btn.conTesto { width: 44px; padding: 0; gap: 0; }
+    .strumentiEt .btn.conTesto > span { display: none; }
+  }
+  .pastiglia { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 12px;
+               border-radius: 18px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .punto { width: 9px; height: 9px; border-radius: 50%; }
+  .pronta { background: var(--verdechiaro); color: var(--verdescuro); }
+  .pronta .punto { background: var(--verde); }
+  .incorso { background: var(--ambrachiaro); color: var(--ambra); }
+  .incorso .punto { background: var(--ambra); }
+  .guasta { background: var(--rossochiaro); color: var(--rosso); }
+  .guasta .punto { background: var(--rosso); }
+  .cerca { height: 52px; border: 1px solid var(--bordo2); border-radius: 14px; background: var(--carta);
+           display: flex; align-items: center; gap: 10px; padding: 0 14px; color: var(--spento); font-size: 16px; }
+  .cerca input { color: var(--testo); }
+  .cerca input::placeholder { color: var(--spento); }
+  .gettone { height: 40px; padding: 0 18px; border-radius: 20px; border: 1px solid var(--bordo2);
+             background: var(--carta); font-size: 14px; font-weight: 700; color: #6B5A4E; white-space: nowrap; }
+  .gettone.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+  .etichettina { font-size: 12px; font-weight: 700; color: var(--tenue); letter-spacing: .04em; text-transform: uppercase; }
+  .campo { display: flex; flex-direction: column; gap: 6px; }
+  .casella { min-height: 52px; border: 1px solid var(--bordo2); border-radius: 12px; background: var(--carta);
+             display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 17px; }
+  .casella .unita { margin-left: auto; font-size: 14px; color: var(--spento); }
+  .scheda { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+  .sep { height: 1px; background: var(--riga); }
+
+  .prodotto { text-align: left; border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta);
+              padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-height: 118px; justify-content: flex-start; }
+  .prodotto.on { padding: 17px 19px; }
+  .prodotto .n { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 19px; font-weight: 600; line-height: 1.15; }
+  .prodotto .d { font-size: 13px; color: var(--tenue); margin-top: auto; }
+  .prodotto.on { border: 2px solid var(--verde); box-shadow: 0 0 0 4px var(--verdechiaro); padding: 11px 15px; }
+  .griglia { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; }
+
+  .riga { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px;
+          border-bottom: 1px solid var(--riga); }
+  .riga:last-child { border-bottom: none; }
+  .riga .t { font-size: 16px; font-weight: 700; }
+  .riga .s { font-size: 13px; color: var(--tenue); }
+  .riga .v { margin-left: auto; font-size: 15px; color: var(--tenue); white-space: nowrap; }
+
+  .interruttore { width: 52px; height: 30px; border-radius: 15px; background: var(--verde); position: relative; flex-shrink: 0; }
+  .interruttore::after { content: ""; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+                         border-radius: 50%; background: #fff; transition: all .16s; }
+  .interruttore.off { background: #C6B7A3; }
+  .interruttore.off::after { right: calc(100% - 26px); }
+  .cerchio { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #C6B7A3; flex-shrink: 0; }
+  .cerchio.on { border-color: var(--verde); background: var(--verde); box-shadow: inset 0 0 0 3px #fff; }
+
+  .allergene { height: 32px; padding: 0 9px; border-radius: 16px; border: 1px solid var(--bordo2);
+               background: var(--carta); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  @media (max-width: 860px) { .allergene { height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; } }
+  .allergene.on { background: var(--testo); color: #fff; border-color: var(--testo); }
+  .allergene.aggiungi { border-style: dashed; border-color: var(--tratteggio); color: var(--tenue); font-weight: 400; }
+
+  /* ---------- blocchi dell'etichetta ---------- */
+  /* le righe stanno su un vassoio color sabbia: ogni blocco e' una carta bianca staccata dalle altre,
+     con il suo numero d'ordine e un bordo a sinistra che dice a colpo d'occhio se si stampa */
+  .vassoio { display: flex; flex-direction: column; gap: 8px; padding: 8px 6px; flex-shrink: 0;
+             background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+  .vassoio .tavolozza.usato { background: transparent; }
+  .riquadro { display: flex; flex-direction: column; gap: 12px; padding: 12px 12px 14px; flex-shrink: 0;
+              background: var(--sabbia); border: 1px solid var(--riga); border-radius: 14px; }
+  .capoRiquadro { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 20px; }
+  .nomeRiquadro { font-size: 14px; font-weight: 700; }
+  .sottoRiquadro { font-weight: 400; font-size: 12.5px; color: var(--spento); }
+  .riquadro .campoLotto > .etichettina { display: none; }
+  .fuoriEtichetta { font-size: 12.5px; color: var(--spento); line-height: 1.45; padding: 0 6px; flex-shrink: 0; }
+  .blocco { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+            border: 1px solid var(--bordo); border-left: 4px solid var(--verde); border-radius: 9px; background: var(--carta);
+            box-shadow: 0 1px 3px rgba(58,49,40,.07); font-size: 12.5px; font-weight: 700; }
+  @media (max-width: 860px) { .blocco { min-height: 52px; border-radius: 12px; font-size: 13.5px; padding: 0 10px; } }
+  .blocco.acceso { background: var(--verdechiaro); border-color: var(--verdebordo); border-left-color: var(--verde); }
+  .blocco.spento { border-left-color: #C6B7A3; }
+  .blocco.trascina { opacity: .4; }
+  .blocco > .nome, .blocco .nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blocco.spento .nome { color: var(--spento); }
+  .maniglia { width: 16px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
+              color: var(--tratteggio); cursor: grab; padding: 3px 0; touch-action: none; }
+  .posto { font-size: 10px; line-height: 11px; font-weight: 700; color: var(--spento); font-variant-numeric: tabular-nums; }
+  .sw { width: 40px; height: 22px; border-radius: 11px; background: var(--verde); position: relative; flex-shrink: 0; }
+  .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .sw.off { background: #C6B7A3; }
+  .sw.off::after { right: calc(100% - 19px); }
+  .misura { height: 26px; min-width: 62px; padding: 0 4px 0 9px; border: 1px solid var(--bordo2); border-radius: 8px;
+            background: var(--carta); font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--testo);
+            appearance: none; -webkit-appearance: none; cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239C8C7C' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 7px center; padding-right: 22px; }
+  .lato { width: 26px; height: 26px; border: 1px solid var(--bordo2); border-radius: 8px; background: var(--carta);
+          display: flex; align-items: center; justify-content: center; color: #B0A08E; flex-shrink: 0; }
+  .lato.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+  .via { color: var(--tratteggio); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+  .zona { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 2px 2px; }
+  .corsia { height: 28px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--bordo2); background: var(--carta);
+            display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--tenue); white-space: nowrap; }
+  .corsia.on { background: var(--testo); border-color: var(--testo); color: #fff; }
+  .quote { margin-left: auto; display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2);
+           border-radius: 9px; background: var(--carta); }
+  .quote button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+  .quote button.on { background: var(--verde); color: #fff; }
+  .tavolozza { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--bordo);
+               border-radius: 10px; background: var(--carta); font-size: 13.5px; font-weight: 700; white-space: nowrap; width: 100%; }
+  .tavolozza.usato { background: var(--sabbia); color: #B0A08E; border-style: dashed; }
+  .tavolozza .piu { margin-left: auto; color: var(--verde); font-size: 18px; }
+
+  /* ---------- anteprima dell'etichetta ---------- */
+  .francobollo { width: 160px; flex-shrink: 0; display: flex; align-items: center; }
+  @media (max-width: 860px) {
+    .finestra .scorre { grid-template-columns: 1fr !important; }
+    .finestra .scorre > button { height: auto !important; min-height: 82px; padding: 10px !important; }
+    .finestra .scorre > button[style*="2px solid"] { padding: 9px !important; }
+    .francobollo { width: 104px; }
+  }
+  .mini { width: 160px; height: 87px; overflow: hidden; border: 1px solid #C6B7A3;
+          background: #fff; position: relative; }
+  /* l'etichetta continua sotto il taglio: si sfuma invece di troncare netto */
+  .mini.alta::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+                      background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 85%); }
+  .mini.lunga::before { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 16px; z-index: 1;
+                        background: linear-gradient(to right, rgba(255,255,255,0), #fff 85%); }
+  .cornice { overflow-x: auto; overflow-y: hidden; border-radius: 2px; position: relative; flex-shrink: 0; align-self: flex-start; }
+  .cornice::-webkit-scrollbar { height: 6px; }
+  .cornice::-webkit-scrollbar-track { background: transparent; }
+  .cornice.continua::-webkit-scrollbar-track { background: var(--barra); border-radius: 3px; }
+  .cornice::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 3px; }
+  /* il nastro continua oltre il riquadro: lo si dice sfumando il bordo */
+  .cornice.continua { -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+                      mask-image: linear-gradient(to right, #000 88%, transparent 100%); }
+  .anteprima { position: relative; }
+  .cornice { cursor: zoom-in; }
+  .lupa { position: absolute; top: 6px; left: 0; width: 30px; height: 30px; border-radius: 8px; background: rgba(88,68,60,.72);
+          color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .finestra.lente { width: 100%; height: 100%; }
+  .capoLente { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--riga); }
+  .capoLente .chiudi { width: 40px; height: 40px; border-radius: 20px; border: 1px solid var(--bordo); background: var(--sabbia);
+                       display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .corpoLente { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--sabbia); }
+  .corpoLente .foglio { margin: auto; padding: 16px; }
+  .corpoLente::-webkit-scrollbar { width: 8px; height: 8px; }
+  .corpoLente::-webkit-scrollbar-thumb { background: var(--bordo2); border-radius: 4px; }
+  .corpoLente .etichetta { box-shadow: 0 6px 20px rgba(88,68,60,.14); }
+  .segmento { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--bordo2); border-radius: 10px; background: var(--carta); flex-shrink: 0; }
+  .segmento button { height: 32px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--tenue); }
+  .segmento button.on { background: var(--testo); color: #fff; }
+  @media (max-width: 860px) { .capoLente { padding: 12px 14px; } .segmento button { padding: 0 9px; } }
+  .nastro { display: flex; flex-direction: column; gap: 4px; }
+  .nastro .righello { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--spento); }
+  .nastro .righello .filo { flex: 1; height: 1px; background: var(--bordo2); }
+  .etichetta { background: #fff; border: 1px solid #C6B7A3; color: #111; transform-origin: top left;
+               font-family: "Segoe UI", Arial, Helvetica, sans-serif; overflow-wrap: break-word; }
+  .etichetta .filo { border-bottom: 1px solid #111; }
+  .etichetta .colonne { display: flex; }
+  .etichetta .colonne > .dx { border-left: 1px solid #111; }
+
+  /* ---------- finestra ---------- */
+  .velo { position: fixed; inset: 0; background: rgba(58,49,40,.42); display: flex; align-items: center;
+          justify-content: center; padding: 24px; z-index: 20; }
+  .finestra { background: var(--carta); border-radius: 22px; box-shadow: 0 24px 60px rgba(58,49,40,.3);
+              width: min(1120px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  .avviso { border: 1px solid var(--rossobordo); background: var(--rossochiaro); border-radius: 16px;
+            padding: 14px 16px; display: flex; gap: 12px; color: var(--rosso); }
+
+  .avvisino { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--testo); color: #fff;
+              padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; box-shadow: var(--ombra); z-index: 40;
+              pointer-events: none; /* l'avviso non deve rubare i tocchi a quello che c'e' sotto */ }
+  .kv { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0;
+        font-size: 14px; color: var(--tenue); }
+  .kv b { font-size: 15px; color: var(--testo); }
+  .mono { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
+
+  /* la finta cornice di un telefono: dentro ci sta quello che vede chi inquadra il codice */
+  .telaio { width: min(320px, 100%); height: min(640px, 100%); border: 10px solid #2B241D; border-radius: 40px;
+            background: var(--fondo); overflow: hidden; display: flex; flex-direction: column; position: relative;
+            box-shadow: 0 24px 60px rgba(58,49,40,.38); }
+  .telaio .tacca { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 108px; height: 22px;
+                   background: #2B241D; border-radius: 0 0 12px 12px; }
+  .telaio .dentro { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
+                    gap: 16px; padding: 40px 22px 24px; text-align: center; align-items: center; }
+
+  /* ---------- telefono ---------- */
+  @media (max-width: 860px) {
+    .tabella { display: none !important; }
+    /* storico: ricerca sopra e gettoni sotto come in Stampa, poi una riga piena per stampa che si tocca per rifarla */
+    .storicoTel .prima { flex-direction: column-reverse; gap: 10px; }
+    .storicoTel .prima .cerca { height: 52px !important; flex: none !important; }
+    .storicoTel .scorre { gap: 6px; }
+    .storicoTel .giornoStorico { padding: 8px 16px 0 !important; }
+    .vocestorico.tel { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center;
+                       width: 100%; min-height: 62px; padding: 10px 12px 10px 16px;
+                       border: 1px solid var(--bordo); border-radius: 14px; background: var(--carta); }
+    .vocestorico.tel .n { grid-column: 1; font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 16.5px; font-weight: 600; line-height: 1.15; }
+    .vocestorico.tel .d { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); }
+    .vocestorico.tel .ristampino { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+                                   border-radius: 18px; border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro);
+                                   font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .app { flex-direction: column; }
+    .rail { display: none; }
+    .testata { height: auto; padding: 14px 20px 10px; flex-wrap: wrap; row-gap: 10px; }
+    .strumentiEt { flex-basis: 100%; }
+    .strumentiEt .btn.conTesto { flex: 1 1 0; }
+    .titolo { font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .schermo { flex-direction: column; padding: 0 20px 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .schermo .scorre { overflow: visible; flex: none !important; }
+    /* iOS ingrandisce la pagina se il campo ha un corpo sotto i 16px */
+    input, select, textarea { font-size: max(16px, 1em); }
+    .avvisino { bottom: 84px; max-width: calc(100% - 32px); text-align: center; }
+    .colonna { border: 0; background: none; padding: 0; border-radius: 0; overflow: visible; }
+    /* le colonne del PC hanno larghezze fisse scritte sull'elemento: sul telefono vanno sciolte */
+    .schermo > .colonna { width: auto !important; flex: none !important; }
+    .colonna.scheda { border: 1px solid var(--bordo); background: var(--carta); border-radius: 16px; padding: 14px; }
+    /* stampa: una riga piena per prodotto, con la freccia che dice che si apre */
+    .griglia { grid-template-columns: 1fr; gap: 6px; }
+    .prodotto { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px;
+                min-height: 62px; padding: 10px 12px 10px 16px; border-radius: 14px; }
+    .prodotto.on { padding: 9px 11px 9px 15px; box-shadow: none; }
+    .prodotto .n { font-size: 16.5px; }
+    .prodotto .d { font-size: 13px; margin-top: 0; }
+    .prodotto .n, .prodotto .d { grid-column: 1; }
+    .prodotto .freccia { grid-column: 2; grid-row: 1 / span 2; display: flex; color: var(--tratteggio); }
+    .ristampaTel { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 14px;
+                   border: 1px solid var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); width: 100%; }
+    .ristampaTel .testo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .ristampaTel .testo b { font-size: 15px; }
+    .ristampaTel .testo span { font-size: 13px; color: var(--verde); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* la scheda del prodotto e' una pagina a se', col bottone Stampa fermo in basso */
+    .schermo.dettaglio { padding-bottom: 0; }
+    .schermo.dettaglio > .colonna.scheda { border: 0; background: none; border-radius: 0; padding: 0; flex: 1 0 auto !important; }
+    .schermo.dettaglio .azioni { position: sticky; bottom: 0; margin: auto -20px 0; padding: 14px 20px 12px;
+                                 background: linear-gradient(to bottom, rgba(234,222,206,0), var(--fondo) 35%); }
+    .indietro { width: 40px; height: 40px; margin-left: -10px; border-radius: 20px; display: flex; align-items: center;
+                justify-content: center; flex-shrink: 0; }
+    /* etichette: la scheda e' lunga, la si apre un gruppo alla volta */
+    .gruppo { background: var(--carta); border: 1px solid var(--bordo); border-radius: 16px; }
+    .capoGruppo { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+    .capoGruppo .testi, .rigaEt .testi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .nomeGruppo { font-size: 16.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sottoGruppo { font-size: 13px; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .puntaGruppo { display: flex; color: var(--spento); transition: transform .16s; }
+    .gruppo.aperto .puntaGruppo { transform: rotate(180deg); }
+    .dentroGruppo { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; border-top: 1px solid var(--riga); }
+    .etTel .capoValori .etichettina { display: none; }
+    /* nel gruppo Lotto il titolo lo da' gia' il capo del gruppo */
+    .etTel .campoLotto > .etichettina { display: none; }
+    .etTel .capoValori { justify-content: flex-end; }
+    .rigaEt { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--carta);
+              border: 1px solid var(--bordo); border-radius: 16px; }
+    .rigaEt .cambia { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 700; color: var(--verdescuro); }
+    /* impostazioni: le righe respirano e non vanno a capo a pezzi */
+    .sezione { padding: 14px 16px !important; }
+    .riga { padding: 10px 2px; }
+    .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
+    .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
+    .riga.rotolo { flex-wrap: wrap; }
+    .riga.rotolo > .rotoli { flex-basis: 100%; height: 44px; }
+    .riga.rotolo > .rotoli button { flex: 1; justify-content: center; }
+    .barrasotto { display: flex; background: var(--crema); border-top: 1px solid var(--bordo);
+                  padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0; }
+    .tab { flex: 1; height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           gap: 3px; font-size: 10px; font-weight: 700; color: var(--tenue); }
+    .tab.on { color: var(--verdescuro); }
+    .soloPC { display: none !important; }
+    .finestra { width: 100%; max-height: 100%; border-radius: 18px; }
+    /* il QR sopra e i passi sotto: di lato non ci starebbero */
+    .collegaCorpo { flex-direction: column; align-items: center !important; }
+    .telefonoRiga { flex-wrap: wrap; }
+    .velo { padding: 12px; }
+  }
+  @media (min-width: 861px) { .soloTel { display: none !important; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (t, p = {}, ...f) => { const n = Object.assign(document.createElement(t), p); for (const c of f.flat()) if (c != null) n.append(c.nodeType ? c : String(c)); return n; };
+const ico = (d, w = 22, sw = 1.75) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  stampa: '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>',
+  etichette: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
+  storico: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  impostazioni: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  cerca: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  giu: '<path d="M6 9l6 6 6-6"/>', destra: '<path d="M9 6l6 6-6 6"/>', sinistra: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+  piu: '<path d="M12 5v14M5 12h14"/>', meno: '<path d="M5 12h14"/>', via: '<path d="M6 6l12 12M18 6L6 18"/>',
+  lupa: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/><path d="M8 11h6M11 8v6"/>',
+  ferma: '<rect x="6" y="6" width="12" height="12" rx="2"/>', spunta: '<path d="M5 13l4 4L19 7"/>',
+  allarme: '<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".6" fill="currentColor"/><path d="M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+  marchio: '<path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="8" cy="9" r="1.5"/>',
+  maniglia: '<circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.6" fill="currentColor" stroke="none"/>',
+  duplica: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  cestino: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>',
+  annulla: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  ripristina: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+};
+const larghezzaLato = { piena: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/>',
+  sx: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><rect x="2.6" y="3.6" width="5.1" height="8.8" rx=".5" fill="currentColor" stroke="none"/>',
+  dx: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><rect x="8.3" y="3.6" width="5.1" height="8.8" rx=".5" fill="currentColor" stroke="none"/>' };
+const icoLato = k => `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">${larghezzaLato[k]}</svg>`;
+
+/* ============================ i dati ============================ */
+const SCALETTA = [7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48];
+const ALLERGENI = ["Glutine", "Crostacei", "Uova", "Pesce", "Arachidi", "Soia", "Latte", "Frutta a guscio", "Sedano", "Senape", "Sesamo", "Solfiti", "Lupini", "Molluschi"];
+const NOMIBLOCCO = {
+  titolo: "Titolo prodotto", ingredienti: "Ingredienti", puoContenere: "Può contenere", modoUso: "Modo d'uso",
+  scadenza: "Scadenza e conservazione", lotto: "Lotto", quantita: "Quantità", valori: "Valori nutrizionali",
+  produttore: "Produttore", testo: "Testo libero", testoGrande: "Testo grande", riga: "Riga separatrice",
+  spazio: "Spazio vuoto", qr: "QR del lotto", logo: "Logo",
+};
+const DATI = {
+  titolo: ["titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "lotto", "quantita", "valori", "produttore"],
+  liberi: ["testo", "testoGrande", "riga", "spazio", "qr", "logo"],
+};
+
+const b = (tipo, corpo, colonna = "piena", acceso = true, testo = "") => ({ tipo, corpo, colonna, acceso, testo });
+
+// le etichette di partenza della demo: ognuna viene copiata addosso al suo prodotto e da li' vive per conto suo
+const MICHI = () => ({ ragione: "Michi s.n.c.", sede: "Carbonera (TV)", produzione: "" });
+const ETDEMO = {
+  vendita: () => ({ quota: 3, dicitura: "da consumare entro", formato: "GG/MM/AAAA",
+    produttore: { ragione: "Michi s.n.c. di Michele Alberto Crivellari", sede: "Via Brigata Marche 257 - 31030 Carbonera (TV)", produzione: "Via Trieste 4/II - 31020 Fontane di Villorba (TV)" },
+    blocchi: [b("titolo", 18), b("ingredienti", 7), b("puoContenere", 7), b("modoUso", 7, "piena", false),
+      b("scadenza", 8, "sx"), b("lotto", 7, "sx"), b("quantita", 28, "sx"), b("valori", 7, "dx"), b("produttore", 7, "sx")] }),
+  cucina: () => ({ quota: 2, dicitura: "Scade il", formato: "GG/MM/AAAA", produttore: MICHI(),
+    blocchi: [b("titolo", 14), b("testo", 8, "piena", true, "Prodotto il 03/09/2026"), b("scadenza", 8), b("lotto", 7), b("testo", 7, "piena", true, "Preparato da M.C.")] }),
+  senzaLotto: () => ({ quota: 2, dicitura: "Scade il", formato: "GG/MM/AAAA", produttore: MICHI(),
+    blocchi: [b("titolo", 14), b("scadenza", 8), b("testo", 7, "piena", true, "Preparato da M.C.")] }),
+  aperto: () => ({ quota: 2, dicitura: "Scade il", formato: "GG/MM/AAAA", produttore: MICHI(),
+    blocchi: [b("testoGrande", 10, "piena", true, "APERTO IL"), b("scadenza", 20), b("lotto", 8)] }),
+  banco: () => ({ quota: 2, dicitura: "da consumare entro", formato: "GG/MM/AAAA", produttore: MICHI(),
+    blocchi: [b("titolo", 28), b("testo", 8, "piena", true, "Servire caldo. Da consumare in giornata."), b("riga", 7), b("quantita", 28), b("scadenza", 8)] }),
+};
+// l'etichetta che nasce con un prodotto nuovo: il minimo che serve al banco
+const etichettaNuova = () => ({ quota: 2, dicitura: "Scade il", formato: "GG/MM/AAAA", produttore: MICHI(),
+  blocchi: [b("titolo", 14), b("scadenza", 8), b("lotto", 7)] });
+
+const partenza = () => ({
+  vista: "stampa", prodotto: "base", filtro: "usati", cerca: "", copie: 1,
+  fase: null, copia: 0, lato: "sx", tavolozzaAperta: false,
+  storicoFiltro: "oggi", storicoCerca: "", coperchio: false, apertoValori: false, altriAllergeni: false,
+  lottoMano: "", cercaEt: "", elimina: null, versione: 5,
+  dettaglio: false, gruppi: { prodotto: true },
+  prodotti: [
+    { id: "base", nome: "Base pizza low carb", etichetta: ETDEMO.vendita(), nomeStampa: "BASE PIZZA LOW CARB ARTIGIANALE", giorni: 7, quantita: 2148,
+      ingredienti: "Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di FRUMENTO, Fibra di FRUMENTO, Lievito madre di farina di FRUMENTO in polvere, Lievito disattivato, Proteina di AVENA], Olio di girasole, Sale iodato, Lievito di birra compresso, Coadiuvante in polvere per panificazione [Farina di GRANO tenero tipo 0, Enzimi], Miscela per spolvero [SEMOLA rimacinata di GRANO duro, Farina di riso, Farina di mais].",
+      allergeni: ["Latte", "Lupini", "Senape", "Sesamo", "Soia", "Uova"], conservazione: "Fuori dal frigo",
+      modoUso: "3 modi per prepararle al meglio: 1. Infornare a 250° per circa 5 minuti; 2. Mettere in padella a fuoco medio per circa 7 minuti; 3. Riscaldare in friggitrice ad aria.",
+      valori: [["Energia", "385 kJ / 91 kcal"], ["Grassi", "2,6 g"], ["di cui acidi grassi saturi", "0,5 g"], ["Carboidrati", "2 g"], ["di cui zuccheri", "0,7 g"], ["Fibre", "3,1 g"], ["Proteine", "15 g"], ["Sale", "1,5 g"]] },
+    { id: "classico", nome: "Impasto classico 24h", etichetta: ETDEMO.cucina(), nomeStampa: "IMPASTO CLASSICO 24H", giorni: 3, quantita: 250,
+      ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Sale, Lievito di birra.", allergeni: ["Soia"], conservazione: "In frigo", modoUso: "", valori: [] },
+    { id: "integrale", nome: "Impasto integrale", etichetta: ETDEMO.cucina(), nomeStampa: "IMPASTO INTEGRALE", giorni: 3, quantita: 250,
+      ingredienti: "Farina integrale di GRANO tenero, Acqua, Sale, Lievito di birra.", allergeni: [], conservazione: "In frigo", modoUso: "", valori: [] },
+    { id: "focaccia", nome: "Focaccia al rosmarino", etichetta: ETDEMO.banco(), nomeStampa: "FOCACCIA AL ROSMARINO", giorni: 2, quantita: 400,
+      ingredienti: "Farina di GRANO tenero tipo 0, Acqua, Olio extravergine di oliva, Rosmarino, Sale, Lievito di birra.", allergeni: [], conservazione: "Fuori dal frigo", modoUso: "", valori: [] },
+    { id: "salsa", nome: "Salsa di pomodoro", etichetta: ETDEMO.vendita(), nomeStampa: "SALSA DI POMODORO", giorni: 4, quantita: 1000,
+      ingredienti: "Pomodoro, Olio extravergine di oliva, Basilico, Sale.", allergeni: [], conservazione: "In frigo", modoUso: "",
+      valori: [["Energia", "160 kJ / 38 kcal"], ["Grassi", "1,8 g"], ["Carboidrati", "4,1 g"], ["Proteine", "1,2 g"], ["Sale", "0,8 g"]] },
+    { id: "pesto", nome: "Pesto di basilico", etichetta: ETDEMO.vendita(), nomeStampa: "PESTO DI BASILICO", giorni: 5, quantita: 500,
+      ingredienti: "Basilico, Olio extravergine di oliva, ANACARDI, Sale, Aglio.", allergeni: ["Frutta a guscio", "Latte"], conservazione: "In frigo", modoUso: "",
+      valori: [["Energia", "1980 kJ / 480 kcal"], ["Grassi", "48 g"], ["Carboidrati", "3 g"], ["Proteine", "5 g"], ["Sale", "1,9 g"]] },
+    { id: "zucca", nome: "Crema di zucca", etichetta: ETDEMO.cucina(), nomeStampa: "CREMA DI ZUCCA", giorni: 3, quantita: 500,
+      ingredienti: "Zucca, Patate, Cipolla, Olio extravergine di oliva, Sale.", allergeni: [], conservazione: "In frigo", modoUso: "", valori: [] },
+    { id: "ragu", nome: "Ragù bianco", etichetta: ETDEMO.senzaLotto(), nomeStampa: "RAGÙ BIANCO", giorni: 3, quantita: 800,
+      ingredienti: "Carne di manzo, SEDANO, Carota, Cipolla, Olio extravergine di oliva, Sale.", allergeni: ["Sedano"], conservazione: "In frigo", modoUso: "", valori: [] },
+    { id: "mozzarella", nome: "Mozzarella tagliata", etichetta: ETDEMO.aperto(), nomeStampa: "MOZZARELLA TAGLIATA", giorni: 2, quantita: 1000,
+      ingredienti: "LATTE vaccino, Sale, Caglio.", allergeni: ["Latte"], conservazione: "In frigo", modoUso: "", valori: [] },
+  ],
+  usi: { base: 12, classico: 8, integrale: 7, salsa: 6, zucca: 5, mozzarella: 4, pesto: 3, focaccia: 2, ragu: 1 },
+  storico: [
+    { ora: "18:32", giorno: "Oggi · giovedì 3 settembre", prodotto: "Base pizza low carb", copie: 2, lotto: "L 20260903-004", quantita: "2148 g", scadenza: "10/09/2026", da: "PC" },
+    { ora: "17:05", giorno: "Oggi · giovedì 3 settembre", prodotto: "Crema di zucca", copie: 1, lotto: "L 20260903-003", quantita: "500 g", scadenza: "06/09/2026", da: "Telefono" },
+    { ora: "16:48", giorno: "Oggi · giovedì 3 settembre", prodotto: "Mozzarella tagliata", copie: 3, lotto: "L 20260903-002", quantita: "1000 g", scadenza: "05/09/2026", da: "Telefono" },
+    { ora: "09:12", giorno: "Oggi · giovedì 3 settembre", prodotto: "Impasto classico 24h", copie: 6, lotto: "L 20260903-001", quantita: "250 g", scadenza: "06/09/2026", da: "PC" },
+    { ora: "19:40", giorno: "Ieri · mercoledì 2 settembre", prodotto: "Salsa di pomodoro", copie: 2, lotto: "L 20260902-005", quantita: "1000 g", scadenza: "06/09/2026", da: "Telefono" },
+    { ora: "18:22", giorno: "Ieri · mercoledì 2 settembre", prodotto: "Base pizza low carb", copie: 1, lotto: "L 20260902-004", quantita: "2148 g", scadenza: "09/09/2026", da: "PC" },
+  ],
+  impostazioni: { rotolo: "62 mm continuo", schemaLotto: "data", taglia: true, margine: 3 },
+  telefoni: [
+    { id: "t1", nome: "Telefono della cucina", tipo: "telefono", quando: "Collegato da stamattina · ha stampato alle 17:05" },
+    { id: "t2", nome: "Tablet del banco", tipo: "tablet", quando: "Collegato da ieri · ha stampato alle 16:48" },
+  ],
+  progressivo: 5, continuo: 4312,
+});
+
+let S = partenza();
+try {
+  const salvato = JSON.parse(localStorage.getItem("banco-etichette") || "null");
+  // una demo salvata da una versione precedente riparte pulita: i dati di prova sono cambiati
+  if (salvato && salvato.versione === S.versione) S = Object.assign(S, salvato);
+} catch (e) {}
+// quello che era a meta' quando si e' chiusa la pagina non ha senso al riavvio
+if (S.fase === "stampa" || S.fase === "errore") S.fase = null;
+S.tavolozzaAperta = false; S.altriAllergeni = false; S.dettaglio = false; S.collega = null; S.scollega = null; S.telSchermo = null; S.elimina = null;
+if (!S.gruppi) S.gruppi = { prodotto: true };
+const salva = () => { try { localStorage.setItem("banco-etichette", JSON.stringify(S)); } catch (e) {} registraPasso(); };
+
+/* ============================ calcoli ============================ */
+const OGGI = new Date(2026, 8, 3);
+const due = n => String(n).padStart(2, "0");
+const dataIt = d => `${due(d.getDate())}/${due(d.getMonth() + 1)}/${d.getFullYear()}`;
+const piuGiorni = n => { const d = new Date(OGGI); d.setDate(d.getDate() + n); return d; };
+const giornoDellAnno = d => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 86400000);
+const SCHEMI_LOTTO = [["data", "Data e progressivo del giorno", "L AAAAMMGG-NNN"], ["giorno", "Giorno dell'anno", "L GGG/AA"],
+  ["continuo", "Progressivo continuo", "L NNNNNN"], ["mano", "Lo scrive chi stampa", "a mano"]];
+function nomeSchemaLotto() { return (SCHEMI_LOTTO.find(x => x[0] === S.impostazioni.schemaLotto) || SCHEMI_LOTTO[0])[1]; }
+function riassuntoLotto() {
+  const aMano = S.impostazioni.schemaLotto === "mano";
+  return nomeSchemaLotto() + " · " + (aMano && !S.lottoMano.trim() ? "da scrivere" : lottoDiOggi());
+}
+function lottoDiOggi() {
+  const s = S.impostazioni.schemaLotto, y = OGGI.getFullYear();
+  if (s === "data") return `L ${y}${due(OGGI.getMonth() + 1)}${due(OGGI.getDate())}-${String(S.progressivo).padStart(3, "0")}`;
+  if (s === "giorno") return `L ${String(giornoDellAnno(OGGI)).padStart(3, "0")}/${String(y).slice(2)}`;
+  if (s === "continuo") return `L ${String(S.continuo).padStart(6, "0")}`;
+  return S.lottoMano.trim() ? "L " + S.lottoMano.trim().replace(/^L\s*/i, "") : "L ————";
+}
+// la data come la vuole l'etichetta: 03/09/2026, 03/09/26 oppure 03 set 2026
+const MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+const dataFmt = (d, f) => f === "GG/MM/AA" ? `${due(d.getDate())}/${due(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`
+  : f === "GG MMM AAAA" ? `${due(d.getDate())} ${MESI[d.getMonth()]} ${d.getFullYear()}` : dataIt(d);
+const giornoDemo = () => "Oggi · " + OGGI.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+const prod = id => S.prodotti.find(p => p.id === id);
+const etichettaDi = p => p.etichetta;
+
+/* ---------- indietro e avanti ----------
+   Ogni salvataggio del prodotto aperto lascia una foto del prodotto: "Indietro" torna alla foto prima,
+   "Avanti" a quella dopo. La storia vive in memoria, per prodotto, e si azzera ricaricando la pagina:
+   serve a rimediare a un tocco sbagliato, non ad archiviare. Le battute di seguito nella stessa casella
+   fanno un passo solo, se no per annullare una parola ci vorrebbero venti tocchi. */
+const storie = new Map();
+let ripristinando = false;
+function storiaDi(p) {
+  let s = storie.get(p.id);
+  if (!s) { s = { passi: [{ stato: JSON.stringify(p), cosa: "", quando: 0, fuoco: null }], indice: 0 }; storie.set(p.id, s); }
+  return s;
+}
+function registraPasso() {
+  if (ripristinando) return;
+  const p = prod(S.prodotto); if (!p) return;
+  const s = storiaDi(p), stato = JSON.stringify(p), corrente = s.passi[s.indice];
+  if (stato === corrente.stato) return;
+  const fuoco = document.activeElement?.dataset?.fuoco || null, ora = Date.now();
+  s.passi.length = s.indice + 1;   // una modifica nuova cancella gli "avanti" rimasti
+  if (s.indice > 0 && fuoco && corrente.fuoco === fuoco && ora - corrente.quando < 1200) {
+    corrente.stato = stato; corrente.quando = ora;
+    corrente.cosa = cosaCambia(JSON.parse(s.passi[s.indice - 1].stato), p);
+  } else {
+    s.passi.push({ stato, cosa: cosaCambia(JSON.parse(corrente.stato), p), quando: ora, fuoco });
+    if (s.passi.length > 60) s.passi.shift();
+    s.indice = s.passi.length - 1;
+  }
+  aggiornaIndietroAvanti();
+}
+const NOMICAMPO = { nome: "il nome del prodotto", nomeStampa: "il nome sull'etichetta", ingredienti: "gli ingredienti", allergeni: "gli allergeni",
+  giorni: "la scadenza", conservazione: "la conservazione", quantita: "la quantità", modoUso: "il modo d'uso", valori: "i valori nutrizionali" };
+// che cosa e' cambiato fra due foto, detto come lo direbbe chi lavora: finisce nell'avviso e nel titolo del tasto
+function cosaCambia(a, b) {
+  for (const k in NOMICAMPO) if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return NOMICAMPO[k];
+  const ea = a.etichetta, eb = b.etichetta;
+  if (JSON.stringify(ea.produttore) !== JSON.stringify(eb.produttore)) return "il produttore";
+  if (ea.dicitura !== eb.dicitura || ea.formato !== eb.formato) return "la dicitura della scadenza";
+  if (ea.quota !== eb.quota) return "le colonne";
+  const ba = ea.blocchi, bb = eb.blocchi;
+  if (bb.length > ba.length) return "il blocco aggiunto";
+  if (bb.length < ba.length) return "il blocco tolto";
+  if (ba.map(x => x.tipo).join() !== bb.map(x => x.tipo).join()) return "l'ordine dei blocchi";
+  for (let i = 0; i < ba.length; i++) {
+    const x = ba[i], y = bb[i], nome = "“" + (NOMIBLOCCO[y.tipo] || y.tipo) + "”";
+    if (x.acceso !== y.acceso) return "il blocco " + nome + (y.acceso ? " acceso" : " spento");
+    if (x.corpo !== y.corpo) return "il corpo di " + nome;
+    if (x.colonna !== y.colonna) return "la larghezza di " + nome;
+    if (x.testo !== y.testo) return "il testo di " + nome;
+  }
+  return "una modifica";
+}
+function annulla(avanti) {
+  const p = prod(S.prodotto); if (!p) return;
+  const s = storiaDi(p), a = s.indice + (avanti ? 1 : -1);
+  if (a < 0 || a >= s.passi.length) { avvisa(avanti ? "Niente da ripristinare." : "Niente da annullare."); return; }
+  const cosa = avanti ? s.passi[a].cosa : s.passi[s.indice].cosa;
+  s.indice = a; s.passi[a].quando = 0;   // quel che si scrive dopo e' un passo nuovo, non si somma a questo
+  S.prodotti[S.prodotti.indexOf(p)] = JSON.parse(s.passi[a].stato);
+  ripristinando = true; salva(); ripristinando = false;
+  S.elimina = null; disegna();
+  avvisa((avanti ? "Ripristinato: " : "Annullato: ") + cosa + ".");
+}
+// i due tasti in testata si aggiornano senza ridisegnare: scrivendo in una casella non si deve perdere il posto
+function aggiornaIndietroAvanti() {
+  const p = prod(S.prodotto); if (!p) return;
+  const s = storiaDi(p), inStampa = S.fase === "stampa" || S.fase === "errore";
+  const ind = document.querySelector(".btn.annulla"), av = document.querySelector(".btn.ripristina");
+  if (ind) { ind.disabled = inStampa || s.indice === 0; ind.title = s.indice > 0 ? "Indietro (Ctrl+Z): " + s.passi[s.indice].cosa : "Indietro: niente da annullare"; }
+  if (av) { av.disabled = inStampa || s.indice >= s.passi.length - 1; av.title = s.indice < s.passi.length - 1 ? "Avanti (Ctrl+Y): " + s.passi[s.indice + 1].cosa : "Avanti: niente da ripristinare"; }
+}
+const plurale = (n, uno, molti) => n + " " + (n === 1 ? uno : molti);
+// gli accenti scritti come sequenze di fuga: cosi' la regex regge anche se la
+// pagina arriva con una codifica diversa da UTF-8
+const grassetta = t => t.replace(/\b([A-ZÀ-Ý]{4,})\b/g, "<b>$1</b>");
+
+/* ============================ resa dell'etichetta ============================ */
+const K = 8;                       // px per mm nel disegno interno
+const ALTEZZE = { "62": 58.9, "102": 98.6 };   // mm utili, per rotolo
+const altezzaRotolo = () => ALTEZZE[S.impostazioni.rotolo.split(" ")[0]] || 58.9;
+const LUNGH = { min: 20, max: 280 };  // mm di nastro tagliato: mai meno di 20, mai piu' di 280
+const pt2px = pt => pt * 0.3528 * K;
+
+function corpoBlocco(bl, p, et) {
+  const s = pt2px(bl.corpo), st = `font-size:${s.toFixed(2)}px;line-height:1.3`;
+  const scad = dataFmt(piuGiorni(p.giorni), et.formato);
+  switch (bl.tipo) {
+    case "titolo": return `<div style="${st};font-weight:700;line-height:1.1">${p.nomeStampa}</div>`;
+    case "ingredienti": return `<div style="${st}"><b>INGREDIENTI:</b> ${grassetta(p.ingredienti)}</div>`;
+    case "puoContenere": return p.allergeni.length ? `<div style="${st}"><u>Può contenere</u>: ${p.allergeni.map(a => `<b>${a}</b>`).join(", ")}</div>` : "";
+    case "modoUso": return p.modoUso ? `<div style="${st}">${p.modoUso}</div>` : "";
+    case "scadenza": return `<div style="${st}">${et.dicitura} <b>${scad}</b></div><div style="${st};font-size:${(s * .9).toFixed(2)}px">CONSERVAZIONE ${p.conservazione.toUpperCase()}</div>`;
+    case "lotto": return `<div style="${st}">${lottoDiOggi()}</div>`;
+    case "quantita": return `<div style="${st};font-size:${(s * .45).toFixed(2)}px;font-weight:700">Quantità</div><div style="${st};font-weight:700;line-height:1.08">${p.quantita} g</div>`;
+    // voce a sinistra e valore a destra; se non ci stanno in riga il valore scende sotto, invece di finire
+    // stampato sopra la voce. Lo spazio fra i due cresce col corpo, se no a corpi alti sembrano attaccati.
+    case "valori": {
+      if (!p.valori.some(([k]) => String(k).trim())) return "";
+      const sp = (s * .35).toFixed(2), riga = `display:flex;flex-wrap:wrap;column-gap:${sp}px;align-items:baseline`;
+      return `<div style="${st}"><div style="${riga};font-weight:700;border-bottom:1px solid #111"><span>VALORI NUTRIZIONALI</span><span style="margin-left:auto">(100 g)</span></div>` +
+        p.valori.filter(([k]) => String(k).trim()).map(([k, v]) => `<div style="${riga}"><span>${k.replace("di cui acidi grassi saturi", "di cui saturi").toUpperCase()}</span><span style="margin-left:auto">${v}</span></div>`).join("") + `</div>`;
+    }
+    case "produttore": return `<div style="${st}">${et.produttore.ragione} · ${et.produttore.sede}</div>`;
+    case "testo": return `<div style="${st}">${bl.testo || "Testo libero"}</div>`;
+    case "testoGrande": return `<div style="${st};font-weight:700;line-height:1.05">${bl.testo || "TESTO GRANDE"}</div>`;
+    case "riga": return `<div style="border-top:1px solid #111;margin:${(s * .2).toFixed(1)}px 0"></div>`;
+    case "spazio": return `<div style="height:${s.toFixed(1)}px"></div>`;
+    case "qr": return `<div style="width:${(s * 3).toFixed(1)}px;height:${(s * 3).toFixed(1)}px;border:1px solid #111;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr)">${Array.from({ length: 25 }, (_, i) => `<span style="background:${[0,1,2,4,5,6,9,10,12,14,16,18,20,22,24].includes(i) ? "#111" : "#fff"}"></span>`).join("")}</div>`;
+    case "logo": return `<div style="${st};font-weight:700;letter-spacing:.08em">MICHI</div>`;
+    default: return "";
+  }
+}
+
+function rendiEtichetta(p, et, larghezzaMm, altezzaMm = 0) {
+  const attivi = et.blocchi.filter(x => x.acceso);
+  const pezzi = []; let zona = null;
+  for (const bl of attivi) {
+    const html = corpoBlocco(bl, p, et);
+    if (!html) continue;
+    if (bl.colonna === "piena") { zona = null; pezzi.push({ tipo: "piena", html }); }
+    else {
+      if (!zona) { zona = { tipo: "zona", sx: [], dx: [] }; pezzi.push(zona); }
+      zona[bl.colonna].push(html);
+    }
+  }
+  const gap = (1.4 * K).toFixed(1), quota = et.quota === 2 ? 50 : et.quota === 4 ? 25 : et.quota === 32 ? 66 : 33;
+  const dentro = pezzi.map(z => z.tipo === "piena" ? z.html :
+    `<div class="colonne" style="gap:${gap}px;margin-top:${(0.8 * K).toFixed(1)}px">
+       <div class="sx" style="flex:${100 - quota};min-width:0">${z.sx.join("")}</div>
+       ${z.dx.length ? `<div class="dx" style="flex:${quota};min-width:0;padding-left:${gap}px">${z.dx.join("")}</div>` : ""}
+     </div>`).join("");
+  return `<div class="etichetta" style="width:${(larghezzaMm * K).toFixed(0)}px;${altezzaMm ? `min-height:${(altezzaMm * K).toFixed(0)}px;` : ""}padding:${(2 * K).toFixed(0)}px;display:flex;flex-direction:column;gap:${(0.9 * K).toFixed(1)}px">${dentro}</div>`;
+}
+// L'etichetta com'e' misurata: a tutta larghezza di nastro e lunga quanto il contenuto,
+// oppure lungo il nastro e alta quanto il rotolo.
+function rendiMisurata(p, et, m = misuraEtichetta(p, et)) {
+  const ALT = altezzaRotolo();
+  return m.lungo ? rendiEtichetta(p, et, m.larghezza, ALT) : rendiEtichetta(p, et, ALT, LUNGH.min);
+}
+
+// Che etichetta esce dal rotolo. Il nastro e' largo quanto il rotolo (58,9 o 98,6 mm utili) e la
+// stampante taglia alla lunghezza che serve. Prima si prova col testo a tutta larghezza di nastro:
+// se il contenuto sta in un'etichetta non piu' alta che larga, si taglia li'. Se no l'etichetta corre
+// lungo il nastro, alta quanto il rotolo, e si cerca per bisezione la lunghezza minima che la contiene,
+// come farebbe il renderer prima di mandare il job. Le misure dette sono quelle dell'etichetta in mano:
+// il lato sul nastro e' il rotolo nominale (62 o 102).
+const misureViste = new Map();
+// Guardare solo il contenitore non basta: una parola che invade la colonna accanto non lo fa sbordare.
+const sborda = e => e.scrollWidth > e.clientWidth + 1
+  || [...e.querySelectorAll("div,span")].some(x => x.clientWidth > 0 && x.scrollWidth > x.clientWidth + 1);
+// senza layout (frame nascosto) nessuna misura e' vera: si segna e si rifa' appena si vede
+let misuraIncerta = false;
+const senzaLayout = () => !document.documentElement.clientWidth;
+function misuraEtichetta(p, et) {
+  const ALT = altezzaRotolo(), nominale = +S.impostazioni.rotolo.split(" ")[0] || 62;
+  const chiave = ALT + "|" + p.id + "|" + JSON.stringify(et) + "|" + p.quantita + "|" + p.giorni + "|" + p.nomeStampa + "|" + p.ingredienti + "|" + p.allergeni.join() + "|" + p.conservazione + "|" + JSON.stringify(p.valori) + "|" + lottoDiOggi();
+  if (misureViste.has(chiave)) return misureViste.get(chiave);
+  if (senzaLayout()) { misuraIncerta = true; return { larghezza: LUNGH.max, altezza: nominale, lungo: true }; }
+  const banco = el("div", { style: "position:absolute;visibility:hidden;left:-9999px;top:0" });
+  document.body.append(banco);
+  // sta se non supera il rotolo in altezza e nessuna parola sborda di lato
+  const prova = mm => { banco.innerHTML = rendiEtichetta(p, et, mm); const e = banco.firstElementChild; return { h: e.offsetHeight / K, sta: !sborda(e) }; };
+  const corta = prova(ALT);
+  if (!corta.h) { banco.remove(); misuraIncerta = true; return { larghezza: nominale, altezza: nominale, lungo: false }; }   // non si ricorda una misura a vuoto
+  let misura;
+  if (corta.sta && corta.h <= ALT) {
+    misura = { larghezza: nominale, altezza: Math.round(Math.max(LUNGH.min, corta.h)), lungo: false };
+  } else {
+    let basso = ALT, alto = LUNGH.max, larghezza = LUNGH.max;
+    for (let i = 0; i < 9; i++) {
+      const meta = (basso + alto) / 2, t = prova(meta);
+      if (t.sta && t.h <= ALT) { larghezza = meta; alto = meta; } else basso = meta;
+    }
+    misura = { larghezza: Math.ceil(larghezza), altezza: nominale, lungo: true };
+  }
+  banco.remove();
+  misureViste.set(chiave, misura);
+  return misura;
+}
+// L'etichetta si disegna a misura vera e poi si riduce per stare nella larghezza data.
+// Si usa zoom e non transform perche' zoom entra nel calcolo del layout: cosi' il
+// riquadro sa quanto e' alta davvero e scorre della misura giusta.
+function adatta(box) {
+  const e = box.firstElementChild; if (!e) return;
+  if (senzaLayout() || !e.offsetHeight) { misuraIncerta = true; return; }
+  const maxH = +box.dataset.h;
+  box.style.width = "auto";
+  const maxW = box.parentElement.clientWidth || +box.dataset.w;
+  box.style.width = maxW + "px";
+  e.style.zoom = 1;
+  let f = Math.min(1, maxH / e.offsetHeight);
+  let r;
+  for (let giro = 0; giro < 4; giro++) {
+    e.style.zoom = f;
+    r = e.getBoundingClientRect();
+    if (r.height <= maxH) break;
+    f *= (maxH - 1) / r.height;
+  }
+  // sfora di poco in larghezza, o stringendola alla larghezza resta comunque leggibile: meglio
+  // stringerla che farla scorrere sfumata. Il nastro lungo del rotolo da 62 invece scorre.
+  const stretta = f * maxW / r.width;
+  if (r.width > maxW && (r.width <= maxW * 1.15 || stretta >= 0.4)) { f = stretta; e.style.zoom = f; r = e.getBoundingClientRect(); }
+  const larga = Math.ceil(r.width), continua = larga > maxW + 1;
+  box.style.width = Math.min(maxW, larga) + "px";
+  box.style.height = Math.ceil(r.height) + 2 + "px";
+  box.classList.toggle("continua", continua);
+  // la barra di scorrimento sta sotto il nastro, non sopra l'ultima riga
+  const barra = box.offsetHeight - box.clientHeight;
+  if (barra > 0) box.style.height = Math.ceil(r.height) + 2 + barra + "px";
+  const lupa = box.parentElement.querySelector(".lupa");
+  if (lupa) lupa.style.left = Math.min(maxW, larga) - 36 + "px";
+  const cap = box.parentElement.nextElementSibling;
+  if (cap && cap.dataset.misura)
+    cap.textContent = `Anteprima rotolo ${S.impostazioni.rotolo.split(" ")[0]} mm · ${box.dataset.larghezza} × ${box.dataset.altezza} mm`
+      + (continua ? " · scorri o tocca per vederla tutta" : " · tocca per ingrandirla");
+}
+const SCALA_MINI = 0.18;   // il francobollo del canvas: corpo minuscolo ma ancora leggibile
+function adattaMini(m) {
+  const e = m.firstElementChild; if (!e) return;
+  if (senzaLayout() || !e.offsetHeight) { misuraIncerta = true; return; }
+  e.style.border = "0";
+  e.style.zoom = 1;
+  e.style.zoom = SCALA_MINI;
+  const l = e.offsetWidth * SCALA_MINI, a = e.offsetHeight * SCALA_MINI;
+  const posto = m.parentElement.clientWidth || 160, altoMax = posto > 120 ? 87 : 62;
+  m.style.width = Math.min(posto, Math.ceil(l)) + "px";
+  m.style.height = Math.min(altoMax, Math.ceil(a)) + "px";
+  m.classList.toggle("lunga", l > posto + 1);
+  m.classList.toggle("alta", a > altoMax + 1);
+}
+function anteprima(p, et, maxW, maxH) {
+  const m = misuraEtichetta(p, et);
+  // maxH e' pensata per il nastro del rotolo da 62; sul 102 l'etichetta e' larga e quasi quadrata,
+  // e l'anteprima si alza quanto la colonna del PC concede a 800 px di schermo
+  if (altezzaRotolo() > 60) maxH = Math.round(maxH * 1.38);
+  const box = el("div", { className: "cornice", tabIndex: 0, role: "button", title: "Ingrandisci l'anteprima" });
+  box.setAttribute("aria-label", "Ingrandisci l'anteprima dell'etichetta");
+  box.dataset.w = maxW; box.dataset.h = maxH;
+  box.dataset.larghezza = m.larghezza; box.dataset.altezza = m.altezza;
+  box.innerHTML = rendiMisurata(p, et, m);
+  box.onclick = apriLente;
+  box.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); apriLente(); } };
+  const lupa = el("span", { className: "lupa", innerHTML: ico(I.lupa, 16, 2.2) });
+  return el("div", { className: "anteprima" }, box, lupa);
+}
+
+/* ---- l'etichetta a tutto schermo: intera, oppure grande da leggere scorrendo il nastro ---- */
+let ingrandita = null;   // { modo: "intera" | "leggibile" } finche' e' aperta
+function apriLente() { ingrandita = { modo: null }; disegna(); }
+function chiudiLente() { ingrandita = null; disegna(); }
+function etichettaInVista() { const p = prod(S.prodotto); return [p, etichettaDi(p)]; }
+function lente() {
+  const [p, et] = etichettaInVista();
+  const m = misuraEtichetta(p, et);
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) chiudiLente(); };
+  const f = el("div", { className: "finestra lente" });
+  const capo = el("div", { className: "capoLente" });
+  capo.append(el("div", { style: "flex:1;min-width:0" },
+    el("div", { className: "h", style: "font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, p.nome),
+    el("div", { style: "font-size:13px;color:var(--tenue);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" },
+      `Rotolo ${S.impostazioni.rotolo.split(" ")[0]} mm · etichetta ${m.larghezza} × ${m.altezza} mm`)));
+  const modi = el("div", { className: "segmento", role: "group" });
+  for (const [k, t] of [["intera", "Tutta"], ["leggibile", "Da leggere"]]) {
+    const b = el("button", {}, t);
+    b.dataset.modo = k;
+    b.onclick = () => { ingrandita.modo = k; adattaLente(); };
+    modi.append(b);
+  }
+  const x = el("button", { className: "chiudi", title: "Chiudi" });
+  x.innerHTML = ico(I.via, 18, 2);
+  x.onclick = chiudiLente;
+  capo.append(modi, x);
+  const corpo = el("div", { className: "corpoLente" });
+  const foglio = el("div", { className: "foglio" });
+  foglio.innerHTML = rendiMisurata(p, et, m);
+  corpo.append(foglio);
+  f.append(capo, corpo);
+  velo.append(f);
+  return velo;
+}
+function adattaLente() {
+  const corpo = document.querySelector(".corpoLente"), e = corpo?.querySelector(".etichetta");
+  if (!e || !ingrandita) return;
+  if (senzaLayout() || !e.offsetHeight) { misuraIncerta = true; return; }
+  e.style.zoom = 1;
+  const w = e.offsetWidth, h = e.offsetHeight;
+  const spazioW = corpo.clientWidth - 32, spazioH = corpo.clientHeight - 32;
+  const tutta = Math.min(spazioW / w, spazioH / h);
+  // intera se resta leggibile; se e' un nastro lungo su uno schermo stretto, grande e si scorre
+  if (!ingrandita.modo) ingrandita.modo = tutta >= 0.5 ? "intera" : "leggibile";
+  e.style.zoom = Math.min(2.5, ingrandita.modo === "intera" ? tutta : (spazioH - 10) / h);
+  corpo.scrollLeft = 0;
+  for (const b of document.querySelectorAll(".segmento button")) b.classList.toggle("on", b.dataset.modo === ingrandita.modo);
+}
+/* ============================ pezzi comuni ============================ */
+// un QR che non si legge davvero: serve a far capire che si inquadra col telefono
+function qrFinto(lato, px) {
+  const aggancio = (x, y, ax, ay) => {
+    const dx = x - ax, dy = y - ay;
+    if (dx < 0 || dx > 6 || dy < 0 || dy > 6) return null;
+    const bordo = dx === 0 || dx === 6 || dy === 0 || dy === 6;
+    const cuore = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4;
+    return bordo || cuore;
+  };
+  const acceso = (x, y) => {
+    for (const [ax, ay] of [[0, 0], [lato - 7, 0], [0, lato - 7]]) {
+      if (x >= ax - 1 && x <= ax + 7 && y >= ay - 1 && y <= ay + 7) return aggancio(x, y, ax, ay) === true;
+    }
+    return ((x * 7919) ^ (y * 104729) ^ ((x + y) * 31)) % 8 < 4;
+  };
+  const celle = [];
+  for (let y = 0; y < lato; y++) for (let x = 0; x < lato; x++)
+    celle.push(`<span style="background:${acceso(x, y) ? "#2B241D" : "transparent"}"></span>`);
+  return `<div style="display:grid;grid-template-columns:repeat(${lato},${px}px);grid-template-rows:repeat(${lato},${px}px);background:#fff;padding:${px * 2}px;border-radius:14px;border:1px solid var(--bordo)">${celle.join("")}</div>`;
+}
+function svgSpan(d, w, sw) { const s = el("span"); s.innerHTML = ico(d, w, sw); return s; }
+function bottone(testo, opz = {}) {
+  const b = el("button", { className: "btn " + (opz.classe || "") });
+  if (opz.icona) b.innerHTML = ico(opz.icona, opz.iw || 20, 2);
+  b.append(el("span", {}, testo));
+  if (opz.onclick) b.onclick = opz.onclick;
+  if (opz.disabilitato) b.disabled = true;
+  return b;
+}
+function avvisa(testo) {
+  document.querySelector(".avvisino")?.remove();
+  const a = el("div", { className: "avvisino" }, testo);
+  // sul telefono, nella pagina del prodotto, l'avviso sta sopra il bottone Stampa e non ci si mette davanti
+  const azioni = document.querySelector(".schermo.dettaglio .azioni");
+  if (azioni && innerWidth <= 860) a.style.bottom = Math.round(innerHeight - azioni.getBoundingClientRect().top + 10) + "px";
+  document.body.append(a);
+  setTimeout(() => a.remove(), 3200);
+}
+
+function esportaStorico() {
+  const righe = [["Ora", "Prodotto", "Copie", "Lotto", "Quantità", "Scadenza", "Da"].join("\t")]
+    .concat(S.storico.map(x => [x.ora, x.prodotto, x.copie, x.lotto, x.quantita, x.scadenza, x.da].join("\t")))
+    .join("\n");
+  navigator.clipboard?.writeText(righe)
+    .then(() => avvisa("Elenco copiato: incollalo in un foglio di calcolo."))
+    .catch(() => avvisa("Il browser non mi lascia copiare l'elenco."));
+}
+
+// gli strumenti dell'etichetta aperta: indietro e avanti sulle modifiche, poi duplica ed elimina.
+// Stanno in testata accanto a "Stampa di prova"; mentre una prova sta uscendo restano fermi.
+function strumentiEtichetta() {
+  const p = prod(S.prodotto), inStampa = S.fase === "stampa" || S.fase === "errore";
+  const c = el("div", { className: "strumentiEt" });
+  const ind = bottone("", { classe: "tondo annulla", icona: I.annulla, onclick: () => annulla(false) });
+  const av = bottone("", { classe: "tondo ripristina", icona: I.ripristina, onclick: () => annulla(true) });
+  ind.setAttribute("aria-label", "Indietro"); av.setAttribute("aria-label", "Avanti");
+  c.append(ind, av, el("div", { className: "sep" }),
+    bottone("Duplica", { classe: "conTesto", icona: I.duplica, iw: 17, disabilitato: inStampa, onclick: () => duplicaProdotto(p) }),
+    // l'ultima etichetta non si elimina, se no non resta niente: il tasto lo dice invece di sparire
+    bottone("Elimina", { classe: "conTesto elimina", icona: I.cestino, iw: 17, disabilitato: inStampa,
+      onclick: () => { if (S.prodotti.length === 1) avvisa("È l'ultima etichetta: per eliminarla creane prima un'altra."); else { S.elimina = p.id; disegna(); } } }));
+  return c;
+}
+function comandiDiTestata() {
+  const out = [];
+  if (S.vista === "etichette") {
+    // la prova si stampa restando dove si e': il pannello compare al posto dei blocchi
+    out.push(bottone("Stampa di prova", { classe: "soloPC", icona: I.stampa, disabilitato: !!S.fase, onclick: () => { S.copie = 1; avviaStampa(); } }));
+    out.push(bottone("Salva prodotto", { classe: "primario", onclick: salvaETorna }));
+  }
+  if (S.vista === "storico") out.push(bottone("Esporta l'elenco", { classe: "soloPC", icona: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>', onclick: esportaStorico }));
+  return out;
+}
+
+// salvato, si torna alla schermata Stampa con il prodotto gia' scelto: e' quasi sempre il passo dopo
+function salvaETorna() {
+  const p = prod(S.prodotto);
+  salva();
+  S.vista = "stampa"; S.dettaglio = true; S.elimina = null; S.altriAllergeni = false; S.tavolozzaAperta = false;
+  if (S.fase === "fatta") S.fase = null;
+  disegna();
+  document.querySelector(".griglia .prodotto.on")?.scrollIntoView({ block: "nearest" });
+  avvisa(`Salvato. “${p.nome}” è pronto da stampare.`);
+}
+
+function statoStampante() {
+  const largo = innerWidth > 900;
+  if (S.fase === "errore") return el("span", { className: "pastiglia guasta", innerHTML: `<span class="punto"></span><b>Coperchio aperto</b>${largo ? '<span style="font-weight:400">la stampa si è fermata</span>' : ""}` });
+  if (S.fase === "stampa") return el("span", { className: "pastiglia incorso", innerHTML: `<span class="punto"></span><b>In stampa</b><span style="font-weight:400">${largo ? `rotolo ${S.impostazioni.rotolo.split(" ")[0]} mm · ` : ""}${S.copia} di ${S.copie}</span>` });
+  return el("span", { className: "pastiglia pronta", innerHTML: `<span class="punto"></span>${largo ? "<b>Brother QL-1100c</b>" : ""}<span style="font-weight:400">${largo ? "rotolo " : ""}${S.impostazioni.rotolo.split(" ")[0]} mm · pronta</span>` });
+}
+
+/* ============================ schermata: stampa ============================ */
+function vistaStampa() {
+  const p = prod(S.prodotto), et = etichettaDi(p);
+  const schermo = el("div", { className: "schermo" + (S.fase ? " inFase" : "") });
+
+  // colonna di sinistra: niente pannello, le schede stanno sul fondo come sul canvas
+  const sx = el("div", { style: "flex:1;min-width:0;display:flex;flex-direction:column;gap:12px" });
+  const prima = el("div", { style: "display:flex;gap:12px" });
+  const cerca = el("div", { className: "cerca", style: "flex:1" });
+  cerca.innerHTML = ico(I.cerca, 20, 2);
+  const inp = el("input", { placeholder: "Cerca prodotto…", value: S.cerca });
+  inp.dataset.fuoco = "cerca";
+  inp.oninput = e => { S.cerca = e.target.value; disegna(); };
+  cerca.append(inp);
+  prima.append(cerca);
+  if (S.storico.length && !S.fase) {
+    const u = S.storico[0];
+    const b = el("button", { className: "btn soloPC", style: "flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;height:52px;padding:0 16px" });
+    b.innerHTML = `<span style="display:flex;align-items:center;gap:8px;font-size:15px">${ico('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>', 18, 2)}Ristampa ultima</span>
+      <span style="font-size:12px;font-weight:400;color:var(--tenue);padding-left:26px">${u.prodotto} · ${u.ora}</span>`;
+    b.onclick = () => { const q = S.prodotti.find(x => x.nome === u.prodotto); if (q) { S.prodotto = q.id; S.copie = u.copie; avviaStampa(); } else avvisa("Quel prodotto non c'è più."); };
+    prima.append(b);
+  }
+  sx.append(prima);
+
+  const filtri = el("div", { style: "display:flex;gap:8px" });
+  for (const [k, t] of [["usati", "Più usati"], ["tutti", "Tutti"]]) {
+    const g = el("button", { className: "gettone" + (S.filtro === k ? " on" : "") }, t);
+    g.onclick = () => { S.filtro = k; disegna(); };
+    filtri.append(g);
+  }
+  sx.append(filtri);
+  // sul telefono il bottone accanto alla ricerca non ci sta: la ristampa e' una riga sopra l'elenco
+  if (S.storico.length && !S.fase) {
+    const u = S.storico[0];
+    const r = el("button", { className: "ristampaTel soloTel" });
+    r.innerHTML = ico('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>', 22, 2);
+    r.append(el("div", { className: "testo" }, el("b", {}, "Ristampa l'ultima"), el("span", {}, `${u.prodotto} · ${plurale(u.copie, "copia", "copie")} · ${u.ora}`)),
+      el("span", { style: "display:flex;color:var(--verdebordo)", innerHTML: ico(I.destra, 20, 2) }));
+    r.onclick = () => { const q = S.prodotti.find(x => x.nome === u.prodotto); if (q) { S.prodotto = q.id; S.copie = u.copie; avviaStampa(); } else avvisa("Quel prodotto non c'è più."); };
+    sx.append(r);
+  }
+
+  let lista = S.prodotti.filter(x => x.nome.toLowerCase().includes(S.cerca.toLowerCase()));
+  if (S.filtro === "usati") lista = [...lista].sort((a, c) => (S.usi[c.id] || 0) - (S.usi[a.id] || 0));
+  const griglia = el("div", { className: "griglia scorre", style: "flex:1;min-height:0" + (S.fase === "stampa" || S.fase === "errore" ? ";opacity:.45;pointer-events:none" : "") });
+  for (const x of lista) {
+    const b = el("button", { className: "prodotto" + (x.id === S.prodotto ? " on" : "") });
+    if (S.fase === "fatta") b.addEventListener("click", () => { S.fase = null; }, true);
+    b.append(el("div", { className: "n" }, x.nome),
+      el("div", { className: "d" }, el("span", {}, "Scade dopo "), el("b", {}, x.giorni + " giorni"), el("span", {}, " · " + x.quantita + " g")),
+      el("span", { className: "freccia soloTel", innerHTML: ico(I.destra, 20, 2) }));
+    // sul telefono si apre la scheda; sul PC e' gia' li' a destra
+    b.onclick = () => { S.prodotto = x.id; S.fase = null; S.dettaglio = true; disegna(); };
+    griglia.append(b);
+  }
+  if (!lista.length) griglia.append(el("div", { style: "color:var(--tenue);padding:8px 2px" }, "Nessun prodotto con questo nome."));
+  sx.append(griglia);
+
+  const dx = el("div", { className: "colonna scheda", style: "width:420px;flex-shrink:0;min-width:0;gap:12px" });
+  if (S.fase) dx.append(...pannelloStampa(p, et));
+  else dx.append(...pannelloProdotto(p, et));
+  let avviso = null;
+  if (S.fase === "errore") {
+    avviso = el("div", { className: "avviso" });
+    avviso.innerHTML = `<span style="flex-shrink:0">${ico(I.allarme, 22, 2)}</span>
+      <div><div style="font-size:16px;font-weight:700;color:var(--rossocupo)">Il coperchio della stampante è aperto</div>
+      <div style="font-size:13.5px;line-height:1.4;margin-top:3px">Si è fermata sulla copia ${S.copia} di ${S.copie}, che non è uscita. Chiudi il coperchio: le copie che mancano riprendono da sole, senza rifare tutto.</div></div>`;
+  }
+  // sul telefono le due colonne sono due pagine: l'elenco, e la scheda del prodotto scelto
+  if (innerWidth <= 860) {
+    if (!S.dettaglio) return schermo.append(sx), schermo;
+    schermo.classList.add("dettaglio");
+    if (avviso) schermo.append(avviso);
+    return schermo.append(dx), schermo;
+  }
+  if (avviso) {
+    const fuori = el("div", { style: "display:flex;flex-direction:column;gap:14px;flex:1;min-width:0" });
+    fuori.append(avviso, sx);
+    schermo.append(fuori, dx);
+  } else schermo.append(sx, dx);
+  return schermo;
+}
+function pannelloProdotto(p, et) {
+  const out = [];
+  out.push(el("div", { className: "h", style: "font-size:19px;font-weight:600" }, p.nome));
+  out.push(anteprima(p, et, 376, 232));
+  const cap = el("div", { style: "font-size:12px;color:var(--spento)" });
+  cap.dataset.misura = "1"; cap.textContent = "…";
+  out.push(cap);
+
+  const griglia = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  const aMano = S.impostazioni.schemaLotto === "mano";
+  const stampa = tipo => et.blocchi.some(b => b.tipo === tipo && b.acceso);
+  const nonCe = "Non compare su questa etichetta";
+  const qta = campoTesto("Quantità", p.quantita, "g", v => { p.quantita = parseInt(v) || 0; }, "quantita");
+  if (!stampa("quantita")) qta.append(el("div", { style: "font-size:12px;color:var(--spento)" }, nonCe));
+  griglia.append(
+    qta,
+    campoLetto("Scadenza", dataFmt(piuGiorni(p.giorni), et.formato), `Oggi + ${p.giorni} giorni`),
+    aMano ? campoLottoAMano() : campoLetto("Lotto", lottoDiOggi(), stampa("lotto") ? null : nonCe, true, true),
+    contatoreCopie());
+  out.push(griglia);
+  const manca = aMano && !S.lottoMano.trim();
+  if (aMano) out.push(el("div", { className: "mancaLotto", hidden: !manca, style: "font-size:13px;color:var(--ambra);font-weight:700" }, "Scrivi il lotto prima di stampare."));
+  out.push(el("div", { style: "flex:1" }));
+
+  const azioni = el("div", { className: "azioni", style: "display:flex;gap:10px" });
+  const matita = el("button", { className: "btn", style: "width:52px;padding:0;flex-shrink:0;justify-content:center", title: "Modifica il prodotto" });
+  matita.innerHTML = ico('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 20, 2);
+  matita.onclick = () => { S.vista = "etichette"; disegna(); };
+  const st = bottone(S.copie > 1 ? `Stampa ${S.copie} copie` : "Stampa", { classe: "primario grande", icona: I.stampa, disabilitato: manca, onclick: () => avviaStampa() });
+  st.style.flex = "1";
+  azioni.append(matita, st);
+  out.push(azioni);
+  return out;
+}
+// col lotto "a mano" la casella e' da scrivere, e resta quello che si e' scritto
+function campoLottoAMano() {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, "Lotto"));
+  const box = el("div", { className: "casella mono", style: "font-size:13px" });
+  const i = el("input", { value: S.lottoMano, placeholder: "es. 20260903-A", style: "font-weight:700;min-width:0;flex:1" });
+  i.dataset.fuoco = "lottoMano";
+  i.oninput = e => { S.lottoMano = e.target.value; salva(); aggiornaAnteprime();
+    const st = document.querySelector(".btn.primario.grande"); if (st) st.disabled = !S.lottoMano.trim();
+    const av = document.querySelector(".mancaLotto"); if (av) av.hidden = !!S.lottoMano.trim(); };
+  box.append(i); c.append(box);
+  return c;
+}
+function campoTesto(nome, valore, unita, onchange, chiave) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const box = el("div", { className: "casella" });
+  const i = el("input", { value: valore, inputMode: "numeric", style: "font-weight:700" });
+  i.dataset.fuoco = chiave;
+  i.oninput = e => { onchange(e.target.value); salva(); aggiornaAnteprime(); };
+  box.append(i);
+  if (unita) box.append(el("span", { className: "unita" }, unita));
+  c.append(box);
+  return c;
+}
+function campoLetto(nome, valore, nota, mono, auto) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const box = el("div", { className: "casella" + (mono ? " mono" : ""), style: mono ? "font-size:13px;white-space:nowrap" : "" },
+    el("span", { style: "font-weight:700" }, valore));
+  if (auto) box.append(el("span", { style: "margin-left:auto;font-size:10px;font-weight:700;background:var(--riga);color:#6B5A4E;padding:2px 6px;border-radius:5px;letter-spacing:.04em" }, "AUTO"));
+  c.append(box);
+  if (nota) c.append(el("div", { style: "font-size:12px;color:var(--spento)" }, nota));
+  return c;
+}
+function contatoreCopie() {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, "Copie"));
+  const r = el("div", { style: "display:flex;gap:6px;height:52px" });
+  const meno = el("button", { className: "casella", style: "width:52px;justify-content:center" }); meno.innerHTML = ico(I.meno, 20, 2.4);
+  const piu = el("button", { className: "casella", style: "width:52px;justify-content:center" }); piu.innerHTML = ico(I.piu, 20, 2.4);
+  meno.onclick = () => { S.copie = Math.max(1, S.copie - 1); disegna(); };
+  piu.onclick = () => { S.copie = Math.min(99, S.copie + 1); disegna(); };
+  r.append(meno, el("div", { className: "casella", style: "flex:1;justify-content:center;font-weight:700" }, String(S.copie)), piu);
+  c.append(r);
+  return c;
+}
+
+// "Copia 3" · "Copie 1 e 2" · "Copie 4, 5 e 6"
+function elencaCopie(da, a) {
+  const n = [];
+  for (let i = da; i <= a; i++) n.push(i);
+  if (n.length === 1) return "Copia " + n[0];
+  return "Copie " + n.slice(0, -1).join(", ") + " e " + n.at(-1);
+}
+
+function pannelloStampa(p, et) {
+  const out = [];
+  if (S.fase === "stampa") {
+    out.push(el("div", { className: "h", style: "font-size:20px;font-weight:600" }, "Stampa in corso"));
+    out.push(el("div", { style: "font-size:15px;color:var(--tenue);margin-top:-6px" }, p.nome));
+    out.push(el("div", { style: "display:flex;align-items:baseline;gap:8px" },
+      el("div", { className: "h", style: "font-size:44px;font-weight:700;line-height:1;color:var(--ambra)" }, String(S.copia)),
+      el("div", { style: "font-size:17px;color:var(--tenue)" }, `di ${S.copie} copie`)));
+    const barra = el("div", { style: "height:10px;border-radius:5px;background:var(--barra);overflow:hidden" });
+    barra.append(el("div", { style: `width:${Math.round((S.copia - .5) / S.copie * 100)}%;height:100%;background:var(--ambra);transition:width .25s` }));
+    out.push(barra);
+    const st = el("div", { style: "display:flex;flex-direction:column;gap:10px;font-size:14px;padding-top:4px" });
+    const segni = { tagliate: ['<path d="M5 13l4 4L19 7"/>', "var(--verde)"], "in stampa": ['<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', "var(--ambra)"], "in attesa": ['<circle cx="12" cy="12" r="9"/>', "#C6B7A3"] };
+    for (const [da, a, testo] of [[1, S.copia - 1, "tagliate"], [S.copia, S.copia, "in stampa"], [S.copia + 1, S.copie, "in attesa"]]) {
+      if (a < da || da < 1 || da > S.copie) continue;
+      const [d, colore] = segni[testo];
+      out.push();
+      st.append(el("div", { style: "display:flex;align-items:center;gap:10px" },
+        el("span", { style: `color:${colore};display:flex`, innerHTML: ico(d, 17, 2.4) }),
+        el("span", { style: "font-weight:700" }, elencaCopie(da, a)),
+        el("span", { style: "margin-left:auto;color:var(--tenue)" }, da === a && testo === "tagliate" ? "tagliata" : testo)));
+    }
+    out.push(st);
+    out.push(el("div", { style: "font-size:13px;color:var(--tenue);line-height:1.4" },
+      "Le copie partono una alla volta: fermando la serie, quella in corso finisce e le altre non vengono stampate."));
+    out.push(el("div", { style: "flex:1" }));
+    out.push(bottone("Ferma la serie", { classe: "grande", icona: I.via, iw: 20, onclick: () => fermaStampa() }));
+    return out;
+  }
+
+  if (S.fase === "fatta") {
+    // quello che si mostra e' quello che e' uscito davvero: lo dice la riga dello storico
+    const u = S.storico[0], fatte = S.copia, volute = S.copie, fermata = fatte < volute;
+    const sotto = fermata ? `${fatte === 1 ? "Uscita 1 copia" : "Uscite " + fatte + " copie"} su ${volute}: ${fatte === 1 ? "prendila" : "prendile"} dalla stampante`
+      : fatte === 1 ? "Prendila dalla stampante" : fatte + " copie: prendile dalla stampante";
+    const c = el("div", { style: "display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0" });
+    c.innerHTML = `<div style="width:96px;height:96px;border-radius:48px;background:var(--verdechiaro);display:flex;align-items:center;justify-content:center;color:var(--verde)">${ico(I.spunta, 52, 2.6)}</div>
+      <div style="text-align:center"><div class="h" style="font-size:28px;font-weight:700">${fermata ? "Serie fermata" : fatte === 1 ? "Stampata" : "Stampate"}</div>
+      <div style="font-size:16px;color:var(--tenue);margin-top:4px">${sotto}</div></div>`;
+    out.push(c);
+    if (u) out.push(el("div", { style: "font-size:13px;color:var(--tenue);text-align:center;line-height:1.4" },
+      `Registrata nello storico alle ${u.ora}, da questo ${u.da === "PC" ? "PC" : "telefono"}.`));
+    const dati = el("div", { className: "scheda", style: "padding:12px 16px" });
+    for (const [k, v] of [["Prodotto", u?.prodotto || p.nome], ["Quantità", u?.quantita || p.quantita + " g"],
+      ["Scadenza", u?.scadenza || dataFmt(piuGiorni(p.giorni), et.formato)], ["Lotto", u?.lotto || lottoDiOggi()]])
+      dati.append(el("div", { className: "kv" }, el("span", {}, k), el("b", { className: k === "Lotto" ? "mono" : "" }, v)));
+    out.push(dati);
+    out.push(el("div", { style: "flex:1" }));
+    const azioni = el("div", { style: "display:flex;flex-direction:column;gap:10px" });
+    if (fermata) {
+      const n = volute - fatte;
+      azioni.append(bottone(n === 1 ? "Stampa la copia che manca" : `Stampa le ${n} che mancano`, { classe: "primario grande", icona: I.stampa, onclick: () => { S.copie = n; avviaStampa(); } }));
+    } else azioni.append(bottone(fatte === 1 ? "Stampane un'altra" : `Stampane altre ${fatte}`, { classe: "primario grande", icona: I.piu, onclick: () => avviaStampa() }));
+    azioni.append(bottone(S.vista === "stampa" ? "Torna all'elenco" : "Chiudi", { icona: I.sinistra, onclick: () => { S.fase = null; S.dettaglio = false; disegna(); } }));
+    out.push(azioni);
+    return out;
+  }
+
+  /* errore: la scheda resta quella del prodotto, con le copie che restano */
+  out.push(el("div", { className: "h", style: "font-size:19px;font-weight:600" }, p.nome));
+  const griglia = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  const rimaste = el("div", { className: "campo" });
+  rimaste.append(el("div", { className: "etichettina" }, "Copie rimaste"));
+  // la copia S.copia era in corso e non e' uscita: fuori ci sono quelle prima
+  const uscite = S.copia - 1;
+  rimaste.append(el("div", { className: "casella" }, el("span", { style: "font-weight:700;font-size:20px" }, String(S.copie - uscite)),
+    el("span", { className: "unita" }, "di " + S.copie)));
+  griglia.append(campoLetto("Quantità", p.quantita + " g"), campoLetto("Scadenza", dataFmt(piuGiorni(p.giorni), et.formato)),
+    campoLetto("Lotto", lottoDiOggi(), null, true), rimaste);
+  out.push(griglia);
+  out.push(el("div", { style: "background:var(--sabbia);border:1px solid var(--riga);border-radius:12px;padding:12px 14px;font-size:13px;color:var(--tenue);line-height:1.45" },
+    `${uscite === 1 ? "La prima copia è già uscita e tagliata" : "Le prime " + uscite + " copie sono già uscite e tagliate"}. Nessuna etichetta viene sprecata: quando riprendi, la stampa riparte dalla ${S.copia}ª.`));
+  out.push(el("div", { style: "flex:1" }));
+  const finto = el("div", { className: "btn grande", style: "background:var(--barra);color:var(--spento);border-color:var(--barra);cursor:default" });
+  finto.innerHTML = ico(I.stampa, 20, 2) + "<span>Prima chiudi il coperchio</span>";
+  out.push(finto);
+  const riprendi = el("button", { style: "font-size:13.5px;font-weight:700;color:var(--verdescuro);text-align:center;padding:4px" }, "Nella demo: ho chiuso il coperchio, riprendi");
+  riprendi.onclick = () => { S.fase = "stampa"; S.coperchio = false; disegna(); avanza(); };
+  const annulla = el("button", { style: "font-size:13.5px;color:var(--tenue);text-align:center;padding:2px" }, "Annulla le copie che restano");
+  annulla.onclick = () => { S.coperchio = false; concludi(S.copia - 1); };
+  out.push(riprendi, annulla);
+  return out;
+}
+let timer = null;
+// S.copia e' la copia in corso. Si stampa e basta: la serie si ferma dal pannello.
+function avviaStampa() {
+  // col lotto scritto a mano si stampa solo dopo averlo scritto: vale anche per Ristampa e Stampa di prova
+  if (S.impostazioni.schemaLotto === "mano" && !S.lottoMano.trim()) {
+    S.vista = "stampa"; S.fase = null; S.dettaglio = true;
+    disegna(); avvisa("Scrivi il lotto prima di stampare."); portaInCima();
+    document.querySelector('[data-fuoco="lottoMano"]')?.focus();
+    return;
+  }
+  S.fase = "stampa"; S.copia = 1; S.dettaglio = true; disegna(); avanza(); portaInCima();
+}
+function portaInCima() { if (innerWidth <= 860) document.querySelector(".schermo")?.scrollTo({ top: 0, behavior: "smooth" }); }
+function avanza() {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    if (S.fase !== "stampa") return;
+    // la copia in corso e' uscita: o si passa alla prossima o si chiude la serie
+    if (S.copia >= S.copie) { concludi(S.copie); return; }
+    S.copia++;
+    if (S.coperchio && S.copia === 3) { S.fase = "errore"; disegna(); return; }
+    disegna(); avanza();
+  }, 850);
+}
+function fermaStampa() { clearTimeout(timer); concludi(S.copia); }
+function concludi(copie) {
+  clearTimeout(timer);
+  const [p, et] = etichettaInVista();
+  if (copie > 0) {
+    S.storico.unshift({ ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
+      giorno: giornoDemo(), prodotto: p.nome, copie,
+      lotto: lottoDiOggi(), quantita: p.quantita + " g", scadenza: dataFmt(piuGiorni(p.giorni), et.formato), da: innerWidth < 861 ? "Telefono" : "PC" });
+    S.usi[p.id] = (S.usi[p.id] || 0) + 1;
+    if (S.impostazioni.schemaLotto === "data") S.progressivo++;
+    if (S.impostazioni.schemaLotto === "continuo") S.continuo += copie;
+  }
+  S.fase = copie > 0 ? "fatta" : null; S.copia = copie; salva(); disegna();
+}
+
+/* ============================ schermata: etichette ============================ */
+function vistaEtichette() {
+  const p = prod(S.prodotto), et = etichettaDi(p);
+  const tel = innerWidth <= 860;
+  // la domanda "eliminare?" vale per un prodotto solo: cambiando prodotto decade
+  if (S.elimina && S.elimina !== p.id) S.elimina = null;
+  // mentre una prova sta uscendo il prodotto non si cambia: la stampa e' di quello
+  const inStampa = S.fase === "stampa" || S.fase === "errore";
+  const schermo = el("div", { className: "schermo" + (tel ? " etTel" : "") });
+
+  const elenco = el("div", { className: "colonna soloPC", style: "flex:0 1 240px;min-width:190px;gap:4px" });
+  const cerca = el("div", { className: "cerca", style: "height:44px;font-size:15px" });
+  cerca.innerHTML = ico(I.cerca, 18, 2);
+  const ci = el("input", { placeholder: "Cerca…", value: S.cercaEt });
+  ci.dataset.fuoco = "cercaEt";
+  ci.oninput = e => { S.cercaEt = e.target.value; disegna(); };
+  cerca.append(ci);
+  elenco.append(cerca);
+  const nuovo = el("button", { style: "height:44px;border:1px dashed var(--tratteggio);border-radius:12px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;color:#6B5A4E;margin-bottom:4px" });
+  nuovo.innerHTML = ico(I.piu, 17, 2.2) + "<span>Nuovo prodotto</span>";
+  nuovo.onclick = nuovoProdotto;
+  nuovo.disabled = inStampa;
+  elenco.append(nuovo);
+  const dentro = el("div", { className: "scorre", style: "display:flex;flex-direction:column;gap:4px;flex:1;min-height:0" + (inStampa ? ";opacity:.45;pointer-events:none" : "") });
+  const trovati = S.prodotti.filter(x => x.nome.toLowerCase().includes(S.cercaEt.toLowerCase()));
+  for (const x of trovati) {
+    const scelto = x.id === S.prodotto;
+    const b = el("button", { className: scelto ? "scelto" : "", style: `min-height:58px;padding:8px 14px;border-radius:12px;display:flex;flex-direction:column;justify-content:center;gap:2px;font-weight:700;font-size:15px;text-align:left;${scelto ? "background:var(--verdechiaro);color:var(--verdescuro)" : ""}` });
+    // sotto il nome, di quanti blocchi e' fatta la sua etichetta
+    const sotto = plurale(x.etichetta.blocchi.filter(y => y.acceso).length, "blocco acceso", "blocchi accesi");
+    b.append(el("span", {}, x.nome), el("span", { style: `font-size:12px;font-weight:400;color:${scelto ? "#5E7B18" : "var(--tenue)"}` }, sotto));
+    b.onclick = () => { S.prodotto = x.id; S.altriAllergeni = false; S.fase = null; disegna(); };
+    dentro.append(b);
+  }
+  if (!trovati.length) dentro.append(el("div", { style: "color:var(--tenue);padding:8px 4px;font-size:14px" }, "Nessun prodotto con questo nome."));
+  elenco.append(dentro);
+
+  /* --- i pezzi della scheda del prodotto: si mettono insieme dopo, in modo diverso su PC e telefono --- */
+  const pezzi = [];
+  const scheda = { append: (...x) => pezzi.push(...x) };
+  // sul telefono non c'e' l'elenco a sinistra: il prodotto si sceglie da qui
+  const scelta = el("div", { className: "campo soloTel" });
+  scelta.append(el("div", { className: "etichettina" }, "Prodotto"));
+  const sbox = el("div", { className: "casella", style: "padding:0" });
+  const sel = el("select", { style: "flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;font-weight:700;color:inherit;padding:0 12px;height:50px" });
+  for (const x of S.prodotti) sel.append(el("option", { value: x.id, selected: x.id === p.id }, x.nome));
+  sel.append(el("option", { value: "+" }, "+ Nuovo prodotto…"));
+  sel.disabled = inStampa;
+  sel.onchange = e => { if (e.target.value === "+") nuovoProdotto(); else { S.prodotto = e.target.value; S.altriAllergeni = false; S.fase = null; disegna(); } };
+  sbox.append(sel); scelta.append(sbox);
+  scheda.append(scelta);
+  // il nome in elenco e quello stampato vanno insieme finche' non li si separa apposta
+  scheda.append(campoScritto("Nome del prodotto", p.nome, v => { const insieme = p.nomeStampa === p.nome.toUpperCase(); p.nome = v; if (insieme) p.nomeStampa = v.toUpperCase(); }, "nomeProdotto", false, true));
+  scheda.append(campoScritto("Nome sull'etichetta", p.nomeStampa, v => p.nomeStampa = v, "nome", true));
+  scheda.append(campoArea("Ingredienti", p.ingredienti, v => p.ingredienti = v, "ingr"));
+
+  const all = el("div", { className: "campo" });
+  all.append(el("div", { className: "etichettina" }, "Può contenere"));
+  const chip = el("div", { style: "display:flex;flex-wrap:wrap;gap:4px" });
+  for (const a of p.allergeni) {
+    const b = el("button", { className: "allergene on" }, a);
+    b.onclick = () => { p.allergeni = p.allergeni.filter(x => x !== a); salva(); disegna(); };
+    chip.append(b);
+  }
+  const altri = ALLERGENI.filter(a => !p.allergeni.includes(a));
+  if (S.altriAllergeni) for (const a of altri) {
+    const b = el("button", { className: "allergene" }, a);
+    b.onclick = () => { p.allergeni = [...p.allergeni, a]; salva(); disegna(); };
+    chip.append(b);
+  }
+  if (S.altriAllergeni) {
+    const b = el("button", { className: "allergene aggiungi" }, "Fatto");
+    b.onclick = () => { S.altriAllergeni = false; disegna(); };
+    chip.append(b);
+  } else if (altri.length) {
+    const b = el("button", { className: "allergene aggiungi" }, "+ Altri");
+    b.onclick = () => { S.altriAllergeni = true; disegna(); };
+    chip.append(b);
+  }
+  all.append(chip);
+  scheda.append(all);
+
+  const giorni = el("div", { className: "casella" });
+  const gi = el("input", { value: p.giorni, inputMode: "numeric", style: "font-weight:700" });
+  gi.dataset.fuoco = "gg";
+  gi.oninput = e => { p.giorni = Math.max(0, parseInt(e.target.value) || 0); salva(); aggiornaAnteprime(); };
+  giorni.append(gi, el("span", { className: "unita" }, "giorni"));
+  scheda.append(campoInline("Scadenza", giorni));
+
+  const due = el("div", { style: "display:grid;gap:14px" });
+  due.style.gridTemplateColumns = "minmax(0,1fr) minmax(0,1fr)";
+  due.append(campoScelta("Dicitura scadenza", et.dicitura, ["da consumare entro", "da consumarsi preferibilmente entro il", "Scade il"], v => et.dicitura = v),
+    campoScelta("Formato data", et.formato, ["GG/MM/AAAA", "GG/MM/AA", "GG MMM AAAA"], v => et.formato = v));
+  scheda.append(due);
+
+  const cons = el("div", { className: "casella", style: "padding:0" });
+  const cs = el("select", { style: "flex:1;border:0;background:none;font:inherit;font-size:16px;color:inherit;padding:0 14px;height:50px;cursor:pointer" });
+  for (const o of ["Fuori dal frigo", "In frigo", "In congelatore"]) cs.append(el("option", { value: o, selected: o === p.conservazione }, o));
+  cs.onchange = e => { p.conservazione = e.target.value; salva(); disegna(); };
+  cons.append(cs);
+  scheda.append(campoInline("Conservazione", cons));
+
+  const qta = el("div", { className: "casella" });
+  const qi = el("input", { value: p.quantita, inputMode: "numeric", style: "font-weight:700" });
+  qi.dataset.fuoco = "q2";
+  qi.oninput = e => { p.quantita = parseInt(e.target.value) || 0; salva(); aggiornaAnteprime(); };
+  qta.append(qi, el("span", { className: "unita" }, "g"));
+  scheda.append(campoInline("Quantità", qta));
+  scheda.append(campoLotto(et));
+
+  const valori = el("div", { className: "campo" });
+  const capoV = el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;gap:8px" });
+  const agg = el("button", { style: "font-size:12px;font-weight:700;color:var(--verdescuro)" }, "+ Aggiungi voce");
+  agg.onclick = () => { p.valori.push(["", ""]); salva(); disegna(); const n = document.querySelector(`[data-fuoco="vn${p.valori.length - 1}"]`); n?.focus(); };
+  capoV.className = "capoValori";
+  capoV.append(el("div", { className: "etichettina" }, el("span", {}, "Valori nutrizionali "),
+    el("span", { style: "font-weight:400;text-transform:none;letter-spacing:0;color:var(--spento)" }, "· per 100 g")), agg);
+  valori.append(capoV);
+  const box = el("div", { className: "scheda", style: "overflow:hidden" });
+  if (!p.valori.length) box.append(el("div", { style: "padding:12px 14px;color:var(--tenue);font-size:14px" }, "Nessun valore su questo prodotto."));
+  // ogni voce si scrive: nome a sinistra, valore a destra, e si puo' togliere
+  p.valori.forEach((v, i) => {
+    const riga = el("div", { style: "display:flex;align-items:center;gap:8px;min-height:34px;padding:3px 6px 3px 10px;border-bottom:1px solid var(--riga);font-size:13px" });
+    const nome = el("input", { value: v[0], placeholder: "Voce (es. Grassi)", style: `flex:1;min-width:0;border:0;background:none;font:inherit;font-size:13px;color:inherit;padding:0;${String(v[0]).toLowerCase().startsWith("di cui") ? "color:var(--spento);padding-left:10px" : ""}` });
+    nome.dataset.fuoco = "vn" + i;
+    nome.oninput = e => { v[0] = e.target.value; salva(); aggiornaAnteprime(); };
+    const val = el("input", { value: v[1], placeholder: "0 g", style: "width:118px;height:24px;border:1px solid var(--bordo2);border-radius:6px;background:#fff;text-align:right;padding:0 6px;font:inherit;font-size:12.5px;font-weight:700;color:inherit" });
+    val.dataset.fuoco = "vv" + i;
+    val.oninput = e => { v[1] = e.target.value; salva(); aggiornaAnteprime(); };
+    const via = el("button", { className: "via", title: "Togli la voce" }); via.innerHTML = ico(I.via, 13, 2);
+    via.onclick = () => { p.valori.splice(i, 1); salva(); disegna(); };
+    riga.append(nome, val, via);
+    box.append(riga);
+  });
+  valori.append(box);
+  scheda.append(valori);
+
+  scheda.append(campoScritto("Ragione sociale", et.produttore.ragione, v => et.produttore.ragione = v, "rs"));
+  scheda.append(campoScritto("Sede legale", et.produttore.sede, v => et.produttore.sede = v, "sl"));
+  scheda.append(campoScritto("Sede di produzione · facoltativa", et.produttore.produzione, v => et.produttore.produzione = v, "sp"));
+  scheda.append(campoArea("Modo d'uso", p.modoUso || "", v => p.modoUso = v, "modoUso"));
+
+  /* --- anteprima e blocchi (o la stampa di prova, mentre gira) --- */
+  const ant = anteprima(p, et, 366, 200);
+  const [scelta_, nome, nomeSt, ingr, all_, scad, due_, consRiga, qtaRiga, lottoRiga, valori_, rs, sl, sp, uso_] = pezzi;
+  // ogni campo segue il suo blocco: se il blocco non e' sull'etichetta (o e' spento) il campo non si mostra,
+  // e una riga in fondo dice cosa manca e come farlo comparire. Il nome del prodotto c'e' sempre
+  const ce = tipo => et.blocchi.some(x => x.tipo === tipo && x.acceso);
+  const usa = { titolo: ce("titolo"), ingredienti: ce("ingredienti"), puoContenere: ce("puoContenere"), modoUso: ce("modoUso"), scadenza: ce("scadenza"),
+    lotto: ce("lotto") || ce("qr"), quantita: ce("quantita"), valori: ce("valori"), produttore: ce("produttore") };
+  const fuori = DATI.titolo.filter(k => !usa[k]).map(k => NOMIBLOCCO[k]);
+  const inElenco = a => a.length > 1 ? a.slice(0, -1).join(", ") + " e " + a.at(-1) : a.join("");
+  const nelProdotto = ["Nome", usa.scadenza && "scadenza", usa.scadenza && "conservazione", usa.quantita && "peso"].filter(Boolean);
+  const sezioni = [
+    { chiave: "prodotto", titolo: "Prodotto", sottoTel: inElenco(nelProdotto), campi: [nome, usa.titolo && nomeSt, usa.scadenza && scad, usa.scadenza && consRiga, usa.quantita && qtaRiga] },
+    { chiave: "ingredienti", titolo: "Ingredienti", sottoTel: usa.puoContenere ? (p.allergeni.length ? "Può contenere " + p.allergeni.join(", ").toLowerCase() : "Nessun allergene segnato") : null, campi: [usa.ingredienti && ingr, usa.puoContenere && all_] },
+    { chiave: "uso", titolo: "Modo d'uso", sottoTel: p.modoUso ? null : "Da scrivere", campi: [usa.modoUso && uso_] },
+    { chiave: "valori", titolo: "Valori nutrizionali", sottoPC: "per 100 g", sottoTel: p.valori.length ? plurale(p.valori.length, "voce", "voci") + " per 100 g" : "Nessuna voce", campi: [usa.valori && valori_] },
+    { chiave: "scadenza", titolo: "Scadenza sull'etichetta", sottoTel: `“${et.dicitura}” · ${et.formato}`, campi: [usa.scadenza && due_] },
+    { chiave: "lotto", titolo: "Lotto", sottoTel: riassuntoLotto(), campi: [usa.lotto && lottoRiga] },
+    { chiave: "produttore", titolo: "Produttore", sottoTel: et.produttore.ragione, campi: [usa.produttore && rs, usa.produttore && sl, usa.produttore && sp] },
+  ].map(z => ({ ...z, campi: z.campi.filter(Boolean) })).filter(z => z.campi.length);
+  const nonCe = fuori.length ? el("div", { className: "fuoriEtichetta" },
+    (fuori.length === 1 ? "Non compare su questa etichetta: " : "Non compaiono su questa etichetta: ") + inElenco(fuori) + (fuori.length === 1 ? ". Accendi il blocco per compilarlo." : ". Accendi i blocchi per compilarli.")) : null;
+  if (!tel) {
+    const colonna = el("div", { className: "colonna scheda scorre", style: "flex:0 1 456px;min-width:300px;gap:12px" });
+    // i campi stanno in riquadri, uno per argomento, sullo stesso fondo sabbia del vassoio dei blocchi:
+    // gli stessi gruppi del telefono, qui tutti aperti
+    const capoV = valori_.querySelector(".capoValori"), aggiungiVoce = capoV.querySelector("button"); capoV.remove();
+    colonna.append(scelta_, ...sezioni.map(z => riquadro(z.titolo, z.sottoPC, z.chiave === "valori" ? aggiungiVoce : null, ...z.campi)));
+    if (nonCe) colonna.append(nonCe);
+    const dx = el("div", { className: "colonna", style: "flex:1 1 350px;min-width:350px;gap:10px" });
+    dx.append(ant);
+    if (S.fase) { dx.append(pannelloInColonna(p, et)); return schermo.append(elenco, colonna, dx), schermo; }
+    const capoBl = el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;padding-top:8px;border-top:1px solid var(--riga)" });
+    capoBl.append(el("div", { style: "font-size:14px;font-weight:700" }, "Blocchi dell'etichetta"),
+      el("div", { style: "font-size:12px;color:var(--tenue)" }, "trascina per ordinare"));
+    dx.append(capoBl);
+    dx.append(listaBlocchi(et));
+    dx.append(piedeRotolo());
+    return schermo.append(elenco, colonna, dx), schermo;
+  }
+
+  /* telefono: prima si sceglie il prodotto e si vede l'etichetta, poi si scende nei dettagli un gruppo alla volta */
+  const cap = el("div", { style: "font-size:12px;color:var(--spento);margin-top:-6px" });
+  cap.dataset.misura = "1"; cap.textContent = "…";
+  schermo.append(scelta_, ant, cap);
+  if (S.fase) schermo.append(pannelloInColonna(p, et));
+  const accesi = et.blocchi.filter(x => x.acceso).length;
+  schermo.append(...sezioni.map(z => gruppo(z.chiave, z.titolo, z.sottoTel, ...z.campi)));
+  if (nonCe) schermo.append(nonCe);
+  if (!S.fase) schermo.append(gruppo("blocchi", "Blocchi dell'etichetta", `${accesi} accesi su ${et.blocchi.length}`, listaBlocchi(et), piedeRotolo()));
+  return schermo;
+}
+// un riquadro della scheda sul PC: titolo e campi su fondo sabbia
+function riquadro(titolo, sotto, destra, ...dentro) {
+  const r = el("div", { className: "riquadro" });
+  const capo = el("div", { className: "capoRiquadro" });
+  capo.append(el("div", { className: "nomeRiquadro" }, titolo, sotto ? el("span", { className: "sottoRiquadro" }, " · " + sotto) : null));
+  if (destra) capo.append(destra);
+  r.append(capo, ...dentro.filter(Boolean));
+  return r;
+}
+// un gruppo della scheda: chiuso mostra solo il titolo e un riassunto, aperto tutti i campi
+function gruppo(chiave, titolo, sotto, ...dentro) {
+  const aperto = !!S.gruppi[chiave];
+  const g = el("div", { className: "gruppo" + (aperto ? " aperto" : "") });
+  const capo = el("button", { className: "capoGruppo" });
+  capo.setAttribute("aria-expanded", String(aperto));
+  capo.append(el("div", { className: "testi" }, el("div", { className: "h nomeGruppo" }, titolo), sotto ? el("div", { className: "sottoGruppo" }, sotto) : null),
+    el("span", { className: "puntaGruppo", innerHTML: ico(I.giu, 20, 2) }));
+  capo.onclick = () => { S.gruppi[chiave] = !aperto; disegna(); };
+  g.append(capo);
+  if (aperto) g.append(el("div", { className: "dentroGruppo" }, ...dentro));
+  return g;
+}// il pannello della stampa, stretto come nella schermata Stampa, dentro una colonna larga
+function pannelloInColonna(p, et) {
+  const box = el("div", { style: "display:flex;flex-direction:column;gap:12px;max-width:420px;width:100%;margin:0 auto;flex:1;min-height:0;padding-top:8px;border-top:1px solid var(--riga)" });
+  box.append(...pannelloStampa(p, et));
+  return box;
+}
+function nuovoProdotto() {
+  mettiProdotto({ id: "pr" + Date.now().toString(36), nome: "Prodotto nuovo", etichetta: etichettaNuova(), nomeStampa: "PRODOTTO NUOVO", giorni: 3, quantita: 500,
+    ingredienti: "", allergeni: [], conservazione: "In frigo", modoUso: "", valori: [] }, S.prodotti.length);
+}
+// la copia e' uguale in tutto, etichetta compresa, e sta subito sotto l'originale. Il nome stampato
+// segue quello in elenco se andavano insieme; se erano stati separati apposta, resta com'era.
+function duplicaProdotto(p) {
+  const copia = JSON.parse(JSON.stringify(p));
+  copia.id = "pr" + Date.now().toString(36);
+  const insieme = p.nomeStampa === p.nome.toUpperCase();
+  copia.nome = p.nome + " (copia)";
+  if (insieme) copia.nomeStampa = copia.nome.toUpperCase();
+  mettiProdotto(copia, S.prodotti.indexOf(p) + 1);
+  avvisa("Copia creata: cambiale il nome.");
+}
+// il prodotto entra in elenco dove detto, si apre e il nome e' gia' selezionato: si scrive subito
+function mettiProdotto(nuovo, dove) {
+  S.prodotti.splice(dove, 0, nuovo);
+  S.prodotto = nuovo.id; S.cercaEt = ""; S.altriAllergeni = false; S.fase = null; S.elimina = null; S.gruppi.prodotto = true; salva(); disegna();
+  const n = document.querySelector('[data-fuoco="nomeProdotto"]'); if (n) { n.focus(); n.select(); n.scrollIntoView({ block: "center" }); }
+  document.querySelector(".colonna.soloPC .scelto")?.scrollIntoView({ block: "nearest" });
+}
+// si passa al vicino in elenco; lo storico tiene le stampe fatte, con il nome che avevano
+function eliminaProdotto(p) {
+  const i = S.prodotti.indexOf(p);
+  S.prodotti.splice(i, 1);
+  delete S.usi[p.id]; storie.delete(p.id);
+  S.prodotto = S.prodotti[Math.min(i, S.prodotti.length - 1)].id;
+  S.elimina = null; S.altriAllergeni = false; S.fase = null; salva(); disegna();
+  avvisa("Eliminata: " + p.nome + ".");
+  document.querySelector(".colonna.soloPC .scelto")?.scrollIntoView({ block: "nearest" });
+}
+// eliminare e' l'unico gesto che "Indietro" non rimedia: per questo chiede conferma in una finestra
+function finestraElimina() {
+  const p = prod(S.elimina);
+  const chiudi = () => { S.elimina = null; disegna(); };
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) chiudi(); };
+  const f = el("div", { className: "finestra", style: "width:min(440px,100%);padding:24px 24px 20px;gap:18px" });
+  f.setAttribute("role", "dialog");
+  f.append(el("div", { className: "h", style: "font-size:21px;font-weight:700;line-height:1.25" }, "Eliminare “" + p.nome + "”?"),
+    el("div", { style: "font-size:14.5px;color:var(--tenue);line-height:1.45" }, "Sparisce dall'elenco e dalla stampa. Le stampe già fatte restano nello storico, con il nome che avevano."));
+  const piede = el("div", { style: "display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap" });
+  const no = bottone("No, lascia", { onclick: chiudi });
+  piede.append(no, bottone("Sì, elimina", { classe: "elimina forte", icona: I.cestino, iw: 18, onclick: () => eliminaProdotto(p) }));
+  f.append(piede);
+  velo.append(f);
+  setTimeout(() => no.focus(), 0);
+  return velo;
+}
+// il lotto sta qui perche' e' una riga dell'etichetta: si sceglie come si genera e si vede cosa esce oggi
+function campoLotto(et) {
+  const im = S.impostazioni, aMano = im.schemaLotto === "mano";
+  const c = el("div", { className: "campo campoLotto" });
+  c.append(el("div", { className: "etichettina" }, "Lotto"));
+  const box = el("div", { className: "casella", style: "padding:0" });
+  const sel = el("select", { className: "schemaLotto", style: "flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;color:inherit;padding:0 14px;height:50px;cursor:pointer" });
+  for (const [k, nome, schema] of SCHEMI_LOTTO) sel.append(el("option", { value: k, selected: k === im.schemaLotto }, nome + " · " + schema));
+  sel.onchange = e => { im.schemaLotto = e.target.value; salva(); disegna(); };
+  box.append(sel);
+  c.append(box);
+  if (aMano) {
+    const scritto = el("div", { className: "casella mono", style: "font-size:13px" });
+    const i = el("input", { value: S.lottoMano, placeholder: "es. 20260903-A", style: "font-weight:700;min-width:0;flex:1" });
+    i.dataset.fuoco = "lottoMano";
+    // si scrive senza ridisegnare, cosi' non si perde il posto: si aggiornano a mano le scritte intorno
+    i.oninput = e => { S.lottoMano = e.target.value; salva(); aggiornaAnteprime();
+      const es = c.querySelector(".esempioLotto"); if (es) es.textContent = "sull'etichetta: " + lottoDiOggi();
+      const so = c.closest(".gruppo")?.querySelector(".sottoGruppo"); if (so) so.textContent = riassuntoLotto(); };
+    scritto.append(i);
+    c.append(scritto);
+  }
+  c.append(el("div", { className: "esempioLotto mono", style: "font-size:12px;color:var(--spento)" }, (aMano ? "sull'etichetta: " : "oggi: ") + lottoDiOggi()));
+  c.append(et.blocchi.some(b => b.tipo === "lotto" && b.acceso)
+    ? el("div", { style: "font-size:12px;color:var(--tenue)" }, "Vale per tutti i prodotti. Prima di stampare si può cambiare.")
+    : el("div", { style: "font-size:12px;color:var(--spento)" }, "Non compare su questa etichetta"));
+  return c;
+}
+function campoInline(nome, dentro) {
+  const c = el("div", { style: "display:flex;align-items:center;gap:12px" });
+  c.append(el("div", { className: "etichettina", style: "width:138px;flex-shrink:0" }, nome), dentro);
+  dentro.style.flex = "1";
+  return c;
+}
+
+function campoScritto(nome, valore, onchange, chiave, forte, ridisegna) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const box = el("div", { className: "casella" });
+  const i = el("input", { value: valore, style: forte ? "font-weight:700" : "" });
+  i.dataset.fuoco = chiave;
+  i.oninput = e => { onchange(e.target.value); salva(); if (ridisegna) disegna(); else aggiornaAnteprime(); };
+  box.append(i); c.append(box);
+  return c;
+}
+function campoArea(nome, valore, onchange, chiave) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const t = el("textarea", { value: valore, rows: 3,
+    className: "scorre",
+    style: "border:1px solid var(--bordo2);border-radius:12px;background:#fff;padding:10px 14px;font:inherit;font-size:14px;line-height:1.45;color:inherit;resize:vertical" });
+  t.dataset.fuoco = chiave;
+  t.oninput = e => { onchange(e.target.value); salva(); aggiornaAnteprime(); };
+  c.append(t);
+  return c;
+}
+function campoNumero(nome, valore, unita, onchange, chiave) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const box = el("div", { className: "casella" });
+  const i = el("input", { value: valore, inputMode: "numeric", style: "font-weight:700" });
+  i.dataset.fuoco = chiave;
+  i.oninput = e => { onchange(e.target.value); salva(); aggiornaAnteprime(); };
+  box.append(i, el("span", { className: "unita" }, unita)); c.append(box);
+  return c;
+}
+function campoScelta(nome, valore, opzioni, onchange) {
+  const c = el("div", { className: "campo" });
+  c.append(el("div", { className: "etichettina" }, nome));
+  const box = el("div", { className: "casella", style: "padding:0" });
+  const s = el("select", { style: "flex:1;min-width:0;border:0;background:none;font:inherit;font-size:15px;color:inherit;padding:0 12px;height:50px;cursor:pointer" });
+  for (const o of opzioni) s.append(el("option", { value: o, selected: o === valore }, o));
+  s.onchange = e => { onchange(e.target.value); salva(); disegna(); };
+  box.append(s); c.append(box);
+  return c;
+}
+
+/* ---------- elenco dei blocchi, con trascinamento ---------- */
+function listaBlocchi(et) {
+  const cont = el("div", { className: "scorre", style: "display:flex;flex-direction:column;flex:1;min-height:0" });
+  const vassoio = el("div", { className: "vassoio" });
+  cont.append(vassoio);
+  let zonaAperta = false;
+  et.blocchi.forEach((bl, i) => {
+    if (bl.colonna !== "piena" && !zonaAperta) { zonaAperta = true; vassoio.append(intestazioneZona(et)); }
+    if (bl.colonna === "piena") zonaAperta = false;
+    vassoio.append(rigaBlocco(et, i));
+  });
+  const agg = el("button", { style: "min-height:52px;border:1px dashed var(--tratteggio);border-radius:12px;background:var(--sabbia);display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:700;color:#6B5A4E;margin-top:4px;flex-shrink:0" });
+  agg.innerHTML = ico(I.piu, 20, 2.2) + `<span>${S.tavolozzaAperta ? "Chiudi" : "Aggiungi un blocco"}</span>`;
+  agg.onclick = () => { S.tavolozzaAperta = !S.tavolozzaAperta; disegna(); };
+  agg.style.background = "transparent";
+  vassoio.append(agg);
+  if (S.tavolozzaAperta) vassoio.append(tavolozzaBlocchi(et));
+  return cont;
+}
+function intestazioneZona(et) {
+  const z = el("div", { className: "zona" });
+  for (const [k, t] of [["sx", "sinistra"], ["dx", "destra"]]) {
+    const b = el("button", { className: "corsia" + (S.lato === k ? " on" : "") });
+    b.innerHTML = icoLato(k) + `<span>${t}</span>`;
+    b.onclick = () => { S.lato = k; disegna(); };
+    z.append(b);
+  }
+  const q = el("div", { className: "quote" });
+  for (const [v, t] of [[4, "1/4"], [3, "1/3"], [2, "1/2"], [32, "2/3"]]) {
+    const quotaLato = S.lato === "dx" ? v : ({ 4: 32, 3: 2, 2: 2, 32: 4 })[v];
+    const attivo = et.quota === v;
+    const b = el("button", { className: attivo ? "on" : "" }, t);
+    b.onclick = () => { et.quota = v; salva(); disegna(); };
+    q.append(b);
+  }
+  z.append(q);
+  return z;
+}
+
+function rigaBlocco(et, i) {
+  const bl = et.blocchi[i];
+  const libero = bl.tipo === "testo" || bl.tipo === "testoGrande";
+  const acceso = bl.colonna === S.lato && bl.colonna !== "piena";
+  const r = el("div", { className: "blocco" + (acceso ? " acceso" : "") + (bl.acceso ? "" : " spento") });
+  if (libero) { r.style.flexDirection = "column"; r.style.alignItems = "stretch"; r.style.gap = "8px"; r.style.padding = "9px 10px"; }
+  r.dataset.indice = i;
+
+  const testa = libero ? el("div", { style: "display:flex;align-items:center;gap:8px" }) : r;
+  // sopra la maniglia c'e' il numero d'ordine di stampa, dall'alto: aiuta a ritrovare la riga guardando l'anteprima
+  const m = el("span", { className: "maniglia" }); m.innerHTML = '<span class="posto">' + (i + 1) + '</span>' + ico(I.maniglia, 16, 1.5);
+  testa.append(m);
+  const sw = el("button", { className: "sw" + (bl.acceso ? "" : " off"), title: bl.acceso ? "Non stamparlo" : "Stampalo" });
+  sw.onclick = () => { bl.acceso = !bl.acceso; salva(); disegna(); };
+  testa.append(sw);
+  testa.append(el("span", { className: "nome" }, NOMIBLOCCO[bl.tipo] || bl.tipo));
+  const mis = el("select", { className: "misura" });
+  for (const v of SCALETTA) mis.append(el("option", { value: v, selected: v === bl.corpo }, v + " pt"));
+  mis.onchange = e => { bl.corpo = parseInt(e.target.value); salva(); disegna(); };
+  testa.append(mis);
+  const lat = el("button", { className: "lato" + (bl.colonna === "piena" ? "" : " on"), title: "Larghezza del blocco" });
+  lat.innerHTML = icoLato(bl.colonna);
+  lat.onclick = () => { bl.colonna = bl.colonna === "piena" ? "sx" : bl.colonna === "sx" ? "dx" : "piena"; salva(); disegna(); };
+  testa.append(lat);
+  const via = el("button", { className: "via", title: "Togli il blocco" }); via.innerHTML = ico(I.via, 14, 2);
+  via.onclick = () => { et.blocchi.splice(i, 1); salva(); disegna(); };
+  testa.append(via);
+  if (libero) {
+    r.append(testa);
+    const box = el("input", { value: bl.testo || "", placeholder: "Scrivi il testo…",
+      style: "border:1px solid var(--bordo2);border-radius:9px;background:#fff;padding:9px 11px;font:inherit;font-size:14px;font-weight:400;color:inherit" });
+    box.dataset.fuoco = "testo" + i;
+    box.oninput = e => { bl.testo = e.target.value; salva(); aggiornaAnteprime(); };
+    r.append(box);
+  }
+  trascinabile(r, et);
+  return r;
+}
+function trascinabile(riga, et) {
+  riga.querySelector(".maniglia").onpointerdown = ev => {
+    ev.preventDefault();
+    // il blocco si segue per riferimento, non per posizione: ogni spostamento ridisegna
+    // l'elenco e la riga di partenza non esiste piu'.
+    const blocco = et.blocchi[+riga.dataset.indice];
+    const muovi = e => {
+      const da = et.blocchi.indexOf(blocco);
+      if (da < 0) return;
+      const sotto = [...document.querySelectorAll(".blocco")].find(r => {
+        const b = r.getBoundingClientRect();
+        return e.clientY > b.top && e.clientY < b.bottom;
+      });
+      if (!sotto) return;
+      const a = +sotto.dataset.indice;
+      if (a === da || Number.isNaN(a)) return;
+      et.blocchi.splice(da, 1); et.blocchi.splice(a, 0, blocco);
+      salva(); disegna();
+      const nuova = document.querySelector(`.blocco[data-indice="${a}"]`);
+      if (nuova) nuova.classList.add("trascina");
+    };
+    const molla = () => {
+      document.removeEventListener("pointermove", muovi);
+      document.removeEventListener("pointerup", molla);
+      document.querySelectorAll(".blocco.trascina").forEach(r => r.classList.remove("trascina"));
+    };
+    riga.classList.add("trascina");
+    document.addEventListener("pointermove", muovi);
+    document.addEventListener("pointerup", molla);
+  };
+}
+
+function tavolozzaBlocchi(et) {
+  const c = el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-top:6px" });
+  for (const [gruppo, elenco] of [["Dati del prodotto", DATI.titolo], ["Blocchi liberi", DATI.liberi]]) {
+    c.append(el("div", { className: "etichettina", style: "margin-top:4px" }, gruppo));
+    for (const t of elenco) {
+      const usato = et.blocchi.some(x => x.tipo === t) && DATI.titolo.includes(t);
+      const b = el("button", { className: "tavolozza" + (usato ? " usato" : "") });
+      b.append(el("span", {}, NOMIBLOCCO[t]), el("span", { className: "piu" }, usato ? "✓" : "+"));
+      if (!usato) b.onclick = () => { et.blocchi.push(b0(t)); S.tavolozzaAperta = false; salva(); disegna(); };
+      c.append(b);
+    }
+  }
+  return c;
+}
+const b0 = t => b(t, t === "titolo" || t === "quantita" ? 28 : t === "testoGrande" ? 14 : 8);
+
+// sotto i blocchi: che rotolo c'e' in stampante, visto che e' lui a dare la larghezza. Lo legge lei: non si sceglie.
+function piedeRotolo() {
+  const p = el("div", { className: "piedeRotolo", style: "display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--riga);margin-top:4px;flex-wrap:wrap" });
+  p.append(el("span", { className: "etichettina" }, "Rotolo"), el("span", { className: "rotoloLetto", style: "font-size:14px;font-weight:700" }, S.impostazioni.rotolo),
+    el("span", { style: "font-size:13px;color:var(--tenue)" }, "letto dalla stampante"),
+    el("span", { style: "margin-left:auto;font-size:13px;color:var(--tenue)" }, "Lunghezza: automatica"));
+  return p;
+}
+// solo per la demo: fa finta che in stampante sia stato caricato un altro rotolo, e l'app lo legge
+function selettoreRotoloDemo() {
+  const rotoli = el("div", { className: "rotoli", style: "display:flex;border:1px solid var(--bordo2);border-radius:10px;overflow:hidden;height:36px;background:#fff;flex-shrink:0" });
+  for (const r of ["62 mm", "102 mm"]) {
+    const b = el("button", { style: `padding:0 16px;display:flex;align-items:center;font-size:14px;font-weight:700;white-space:nowrap;${S.impostazioni.rotolo.startsWith(r.split(" ")[0]) ? "background:var(--testo);color:#fff" : "color:var(--tenue)"}` }, r);
+    b.onclick = () => { if (S.impostazioni.rotolo.startsWith(r.split(" ")[0])) return; S.impostazioni.rotolo = r.split(" ")[0] + " mm continuo"; salva(); disegna(); avvisa("La stampante ha letto un rotolo da " + r + " continuo."); };
+    rotoli.append(b);
+  }
+  return rotoli;
+}
+/* ============================ finestra: collega un telefono ============================ */
+const NOMITEL = ["iPhone di Luca", "Telefono di Sara", "Android della sala", "iPad della cucina"];
+let timerColl = null;
+function apriCollega() {
+  S.collega = { fase: "attesa", codice: String(Math.floor(1000 + Math.random() * 9000)), nome: nomeLibero() };
+  disegna();
+  aspettaTelefono();
+}
+// un nome che non e' gia' in elenco, cosi' non si vedono due apparecchi uguali
+function nomeLibero() {
+  const libero = NOMITEL.find(n => !S.telefoni.some(x => x.nome === n));
+  if (libero) return libero;
+  let i = 2;
+  while (S.telefoni.some(x => x.nome === "Telefono nuovo " + i)) i++;
+  return "Telefono nuovo " + i;
+}
+// nella demo il telefono inquadra il codice dopo qualche secondo: il codice e' gia' il permesso, si collega da solo
+function aspettaTelefono() {
+  clearTimeout(timerColl);
+  timerColl = setTimeout(() => {
+    if (!S.collega || S.collega.fase !== "attesa") return;
+    const c = S.collega;
+    S.telefoni.push({ id: "t" + Date.now().toString(36), nome: c.nome, tipo: /iPad|Tablet/.test(c.nome) ? "tablet" : "telefono", quando: "Collegato adesso" });
+    c.fase = "fatto";
+    salva(); disegna();
+  }, 3200);
+}
+function chiudiCollega() { clearTimeout(timerColl); S.collega = null; S.telSchermo = null; disegna(); }
+// l'altra meta': quello che compare sul telefono di chi inquadra il codice
+function apriTelefonoFinto() {
+  clearTimeout(timerColl);   // finche' si guarda da qui, il telefono non entra da solo
+  S.telSchermo = { fase: "arriva" };
+  disegna();
+}
+function entraDalTelefono() {
+  const c = S.collega;
+  if (c && c.fase === "attesa") {
+    S.telefoni.push({ id: "t" + Date.now().toString(36), nome: c.nome, tipo: /iPad|Tablet/.test(c.nome) ? "tablet" : "telefono", quando: "Collegato adesso" });
+    c.fase = "fatto";
+  }
+  S.telSchermo.fase = "dentro";
+  salva(); disegna();
+}
+function chiudiTelefonoFinto() {
+  S.telSchermo = null;
+  if (S.collega && S.collega.fase === "attesa") aspettaTelefono();   // torna in ascolto com'era
+  disegna();
+}
+function schermoTelefono() {
+  const c = S.collega, s = S.telSchermo;
+  const velo = el("div", { className: "velo velotel" });
+  velo.onclick = e => { if (e.target === velo) chiudiTelefonoFinto(); };
+  const tel = el("div", { className: "telaio" });
+  tel.append(el("div", { className: "tacca" }));
+  const d = el("div", { className: "dentro" });
+
+  if (s.fase === "arriva") {
+    d.append(el("div", { style: "width:56px;height:56px;border-radius:16px;background:var(--verde);color:#fff;display:flex;align-items:center;justify-content:center;margin-top:8px", innerHTML: ico(I.marchio, 30, 2) }),
+      el("div", { className: "h", style: "font-size:22px;font-weight:700" }, "Banco etichette"),
+      el("div", { style: "font-size:14px;color:var(--tenue);margin-top:-10px" }, "Michi s.n.c. · Cucina"));
+    const box = el("div", { style: "width:100%;border:1px solid var(--verde);background:var(--verdechiaro);border-radius:14px;padding:12px 14px" });
+    box.append(el("div", { className: "etichettina", style: "color:var(--verdescuro)" }, "Codice riconosciuto"),
+      el("div", { className: "mono", style: "font-size:26px;font-weight:700;letter-spacing:.08em" }, c.codice));
+    d.append(box);
+    d.append(el("div", { style: "font-size:15px;line-height:1.5;color:var(--tenue)" },
+      "Ti colleghi alla stampante ", el("b", { style: "color:var(--testo)" }, "Brother QL-1100c"),
+      " del banco. Da qui stampi le stesse etichette del PC."));
+    d.append(el("div", { style: "flex:1" }));
+    const entra = bottone("Entra", { classe: "primario grande", onclick: entraDalTelefono });
+    entra.style.width = "100%";
+    d.append(entra);
+    d.append(el("div", { style: "font-size:12.5px;color:var(--spento)" }, "Rete Wi-Fi: Michi-Cucina"));
+  } else {
+    d.append(el("div", { style: "width:96px;height:96px;border-radius:48px;background:var(--verdechiaro);color:var(--verde);display:flex;align-items:center;justify-content:center;margin-top:28px", innerHTML: ico(I.spunta, 52, 2.6) }),
+      el("div", { className: "h", style: "font-size:24px;font-weight:700" }, "Sei collegato"),
+      el("div", { style: "font-size:15px;line-height:1.5;color:var(--tenue)" },
+        "Questo telefono si chiama ", el("b", { style: "color:var(--testo)" }, "“" + (c?.nome || "Telefono") + "”"),
+        ". Dal PC lo trovi nelle impostazioni, e da lì si scollega."));
+    d.append(el("div", { style: "flex:1" }));
+    const vai = bottone("Apri le etichette", { classe: "primario grande", onclick: () => { chiudiTelefonoFinto(); chiudiCollega(); avvisa("Il telefono è collegato: stampa anche lui."); } });
+    vai.style.width = "100%";
+    d.append(vai);
+  }
+  tel.append(d);
+  velo.append(tel);
+  return velo;
+}
+function finestraCollega() {
+  const c = S.collega;
+  const velo = el("div", { className: "velo" });
+  velo.onclick = e => { if (e.target === velo) chiudiCollega(); };
+  const f = el("div", { className: "finestra", style: "width:min(720px,100%)" });
+
+  const capo = el("div", { style: "display:flex;align-items:flex-start;gap:12px;padding:22px 24px 6px" });
+  capo.append(el("div", { style: "flex:1;min-width:0" },
+    el("div", { className: "h", style: "font-size:21px;font-weight:700" }, "Collega un telefono"),
+    el("div", { style: "font-size:13px;color:var(--tenue);line-height:1.4;margin-top:4px" },
+      "Chi inquadra il codice entra subito e stampa dalla stessa stampante: da qui non devi confermare niente.")));
+  const x = el("button", { className: "chiudi", style: "width:40px;height:40px;border-radius:20px;border:1px solid var(--bordo);background:var(--sabbia);display:flex;align-items:center;justify-content:center;flex-shrink:0" });
+  x.innerHTML = ico(I.via, 18, 2);
+  x.onclick = chiudiCollega;
+  capo.append(x);
+  f.append(capo);
+
+  const dentro = el("div", { className: "scorre collegaCorpo", style: "display:flex;gap:22px;padding:12px 24px 4px;align-items:flex-start" });
+  const qr = el("div", { style: "flex-shrink:0", innerHTML: qrFinto(21, 7) });
+  dentro.append(qr);
+
+  const passi = el("div", { style: "flex:1;min-width:0;display:flex;flex-direction:column;gap:14px" });
+  const righe = [
+    ["Stessa rete Wi-Fi", el("b", {}, "Michi-Cucina")],
+    ["Inquadra il codice", el("span", {}, "con la fotocamera del telefono")],
+    ["Oppure apri a mano", el("span", {}, el("b", { className: "mono" }, "etichette.local"), " e scrivi il codice ", el("b", { className: "mono codiceColl" }, c.codice))],
+  ];
+  righe.forEach(([titolo, sotto], i) => {
+    const r = el("div", { style: "display:flex;gap:12px;align-items:flex-start" });
+    r.append(el("span", { style: "width:24px;height:24px;border-radius:12px;background:var(--testo);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0" }, String(i + 1)),
+      el("div", { style: "min-width:0" }, el("div", { style: "font-size:15px;font-weight:700" }, titolo),
+        el("div", { style: "font-size:13.5px;color:var(--tenue);line-height:1.45" }, sotto)));
+    passi.append(r);
+  });
+  dentro.append(passi);
+  f.append(dentro);
+
+  /* lo stato: si aspetta, poi il telefono chiede di entrare, poi e' dentro */
+  const stato = el("div", { className: "statoColl", style: "margin:14px 24px 0;padding:14px 16px;border-radius:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap" });
+  if (c.fase === "attesa") {
+    stato.style.border = "1px solid var(--bordo)";
+    stato.style.background = "var(--sabbia)";
+    stato.append(el("span", { className: "pastiglia incorso", innerHTML: '<span class="punto"></span><span>In ascolto</span>' }),
+      el("span", { style: "font-size:14px;color:var(--tenue)" }, "Aspetto che un telefono inquadri il codice…"));
+  } else {
+    stato.style.border = "1px solid var(--verde)";
+    stato.style.background = "var(--verdechiaro)";
+    stato.append(el("span", { style: "color:var(--verde);display:flex", innerHTML: ico(I.spunta, 26, 2.6) }),
+      el("div", { style: "flex:1;min-width:160px" },
+        el("div", { style: "font-size:15px;font-weight:700" }, `“${c.nome}” si è collegato`),
+        el("div", { style: "font-size:13px;color:var(--verdescuro)" }, "È nell'elenco qui sotto: da lì si scollega")));
+  }
+  f.append(stato);
+
+  const piede = el("div", { style: "display:flex;gap:10px;justify-content:flex-end;padding:16px 24px 20px;flex-wrap:wrap" });
+  if (c.fase === "fatto") {
+    // il codice cambia: quello di prima ha gia' fatto entrare un telefono
+    piede.append(bottone("Collega un altro", { onclick: apriCollega }), bottone("Fatto", { classe: "primario", onclick: chiudiCollega }));
+  } else {
+    piede.append(bottone("Cosa vede il telefono", { icona: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18.5h2"/>', onclick: apriTelefonoFinto }),
+      bottone("Chiudi", { onclick: chiudiCollega }));
+  }
+  f.append(piede);
+  velo.append(f);
+  return velo;
+}
+
+/* ============================ schermata: storico ============================ */
+function vistaStorico() {
+  const tel = innerWidth <= 860;
+  const schermo = el("div", { className: "schermo" + (tel ? " storicoTel" : "") });
+  const c = el("div", { className: "colonna", style: "flex:1;gap:12px" });
+
+  const prima = el("div", { className: "prima", style: "display:flex;gap:12px;flex-wrap:wrap" });
+  const filtri = el("div", { style: "display:flex;gap:8px" });
+  for (const [k, t] of [["oggi", "Oggi"], ["7", "7 giorni"], ["30", "30 giorni"], ["tutto", "Tutto"]]) {
+    const g = el("button", { className: "gettone" + (S.storicoFiltro === k ? " on" : "") }, t);
+    g.onclick = () => { S.storicoFiltro = k; disegna(); };
+    filtri.append(g);
+  }
+  const cerca = el("div", { className: "cerca", style: "flex:1;min-width:220px;height:44px;font-size:15px" });
+  cerca.innerHTML = ico(I.cerca, 18, 2);
+  const i = el("input", { placeholder: "Cerca per prodotto o lotto…", value: S.storicoCerca });
+  i.dataset.fuoco = "storico";
+  i.oninput = e => { S.storicoCerca = e.target.value; disegna(); };
+  cerca.append(i);
+  prima.append(filtri, cerca);
+  c.append(prima);
+
+  const COL = "64px 1fr 150px 88px 104px 104px 104px";
+  const capo = el("div", { className: "tabella soloPC", style: `display:grid;grid-template-columns:${COL};gap:10px;padding:0 12px 6px;border-bottom:1px solid var(--riga)` });
+  for (const t of ["Ora", "Prodotto", "Lotto", "Quantità", "Scadenza", "Da", ""])
+    capo.append(el("div", { className: "etichettina" }, t));
+  c.append(capo);
+
+  const q = S.storicoCerca.toLowerCase();
+  const nelPeriodo = x => q || S.storicoFiltro !== "oggi" || x.giorno.startsWith("Oggi");
+  const righe = S.storico.filter(x => nelPeriodo(x) && (!q || x.prodotto.toLowerCase().includes(q) || x.lotto.toLowerCase().includes(q)));
+  const lista = el("div", { className: "scorre", style: "display:flex;flex-direction:column;flex:1;min-height:0" });
+  if (!righe.length) lista.append(el("div", { style: "color:var(--tenue);padding:16px 2px;line-height:1.5" },
+    !S.storico.length ? "Ancora nessuna stampa. Stampa un'etichetta e compare qui." : q ? "Nessuna stampa con questo nome o lotto." : "Nessuna stampa oggi. Guarda gli altri giorni."));
+  const monitor = '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>';
+  const telefono = '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18.5h2"/>';
+  let giorno = null;
+  for (const x of righe) {
+    if (x.giorno !== giorno) { giorno = x.giorno; lista.append(el("div", { className: "etichettina giornoStorico", style: "padding:14px 12px 6px" }, giorno)); }
+    const rifai = () => { const q2 = S.prodotti.find(y => y.nome === x.prodotto); if (q2) { S.prodotto = q2.id; S.copie = x.copie; S.vista = "stampa"; avviaStampa(); } else avvisa("Quel prodotto non c'è più."); };
+    const giro = ico('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>', 15, 2);
+    // sul telefono ogni stampa e' una riga piena come i prodotti in Stampa: si tocca la riga e riparte
+    if (tel) {
+      const r = el("button", { className: "vocestorico tel" });
+      r.append(el("div", { className: "n" }, x.prodotto),
+        el("div", { className: "d" }, `${x.ora} · ${plurale(x.copie, "copia", "copie")} · ${x.da === "PC" ? "da PC" : "da telefono"}`),
+        el("div", { className: "d" }, el("span", { className: "mono" }, x.lotto), ` · ${x.quantita} · scade ${x.scadenza}`),
+        el("span", { className: "ristampino", innerHTML: giro + "<span>Ristampa</span>" }));
+      r.onclick = rifai;
+      lista.append(r);
+      continue;
+    }
+    const r = el("div", { className: "vocestorico", style: `display:grid;grid-template-columns:${COL};gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--riga)` });
+    const ristampa = el("button", { className: "btn", style: "height:36px;padding:0 12px;font-size:13px;gap:6px" });
+    ristampa.innerHTML = giro + "<span>Ristampa</span>";
+    ristampa.onclick = rifai;
+    r.append(
+      el("div", { className: "ora", style: "font-size:14px;color:var(--tenue)" }, x.ora),
+      el("div", { className: "chi", style: "min-width:0" }, el("div", { style: "font-size:15px;font-weight:700" }, x.prodotto),
+        el("div", { style: "font-size:12.5px;color:var(--tenue)" }, `${x.copie} ${x.copie === 1 ? "copia" : "copie"}`)),
+      el("div", { className: "lotto mono", style: "font-size:12.5px;color:var(--tenue)" }, x.lotto),
+      el("div", { className: "qta", style: "font-size:14px" }, x.quantita),
+      el("div", { className: "scad", style: "font-size:14px" }, x.scadenza),
+      el("div", { className: "da", style: "display:flex;align-items:center;gap:6px;font-size:13px;color:var(--tenue)", innerHTML: ico(x.da === "PC" ? monitor : telefono, 15, 1.8) + "<span>" + x.da + "</span>" }),
+      ristampa);
+    lista.append(r);
+  }
+  c.append(lista);
+  const tot = S.storico.filter(x => x.giorno.startsWith("Oggi")).reduce((n, x) => n + x.copie, 0);
+  c.append(el("div", { style: "font-size:13px;color:var(--tenue);border-top:1px solid var(--riga);padding-top:10px" },
+    el("b", {}, `${tot} ${tot === 1 ? "etichetta" : "etichette"}`), " stampate oggi"));
+  schermo.append(c);
+  return schermo;
+}
+/* ============================ schermata: impostazioni ============================ */
+function vistaImpostazioni() {
+  const schermo = el("div", { className: "schermo scorre", style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));align-content:start;align-items:start;gap:16px" });
+  const im = S.impostazioni;
+
+  const stampante = sezione("Stampante", el("span", { className: "pastiglia pronta", innerHTML: '<span class="punto"></span><span>Pronta</span>' }));
+  for (const [k, v] of [["Modello", "Brother QL-1100c (USB)"], ["Firmware", "V2.17"], ["Ultimo controllo", "2 secondi fa"]])
+    stampante.append(el("div", { className: "riga" }, el("span", { className: "t" }, k), el("span", { className: "v" }, v)));
+  // il rotolo lo legge la stampante: qui si vede soltanto
+  const rot = el("div", { className: "riga" });
+  rot.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, "Rotolo caricato"), el("div", { className: "s" }, "Lo legge la stampante: se lo cambi, si aggiorna da solo")),
+    el("span", { className: "v rotoloLetto", style: "color:var(--testo);font-weight:700" }, im.rotolo));
+  stampante.append(rot);
+  const prova = el("div", { style: "display:flex;flex-wrap:wrap;gap:10px;padding-top:12px" });
+  prova.append(bottone("Stampa di prova", { icona: I.stampa, onclick: () => { S.vista = "stampa"; S.copie = 1; avviaStampa(); } }));
+  prova.append(bottone("Cerca di nuovo", { icona: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>', onclick: () => avvisa("Trovata: Brother QL-1100c su USB, rotolo " + im.rotolo + ", pronta.") }));
+  stampante.append(prova);
+
+
+  const stampa = sezione("Stampa");
+  for (const [k, nome, nota] of [["taglia", "Taglia ogni etichetta", "Se spento, taglia solo alla fine della serie"]]) {
+    const r = el("button", { className: "riga", style: "width:100%" });
+    r.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, nome), nota ? el("div", { className: "s" }, nota) : null),
+      el("span", { className: "interruttore" + (im[k] ? "" : " off") }));
+    r.onclick = () => { im[k] = !im[k]; salva(); disegna(); };
+    stampa.append(r);
+  }
+  const marg = el("div", { className: "riga" });
+  const mi = el("input", { value: im.margine, inputMode: "numeric", style: "width:44px;text-align:center;font-weight:700" });
+  mi.dataset.fuoco = "margine";
+  // si scrive liberamente, il minimo si applica quando si esce dalla casella
+  mi.oninput = e => { im.margine = parseInt(e.target.value) || 0; salva(); };
+  mi.onchange = () => { im.margine = Math.max(3, im.margine || 3); salva(); disegna(); };
+  marg.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, "Margine iniziale e finale"),
+    el("div", { className: "s" }, "Minimo consentito dalla stampante: 3 mm")),
+    el("div", { style: "display:flex;align-items:center;gap:8px" },
+      el("div", { className: "casella", style: "min-height:44px;padding:0 10px" }, mi), el("span", { className: "v" }, "mm")));
+  stampa.append(marg);
+
+  const telefoni = sezione("Telefoni e tablet", el("span", { style: "font-size:13px;color:var(--tenue)" }, plurale(S.telefoni.length, "collegato", "collegati")));
+  for (const [k, v] of [["Indirizzo sulla rete", "etichette.local"], ["Rete Wi-Fi", "Michi-Cucina"]])
+    telefoni.append(el("div", { className: "riga" }, el("span", { className: "t" }, k), el("span", { className: "v" + (k === "Indirizzo sulla rete" ? " mono" : "") }, v)));
+  if (!S.telefoni.length) telefoni.append(el("div", { style: "padding:12px 0;font-size:14px;color:var(--tenue);line-height:1.45" }, "Nessun telefono collegato. Collegane uno qui sotto: da lì si stampa senza andare al PC."));
+  for (const tf of S.telefoni) {
+    const r = el("div", { className: "riga telefonoRiga" });
+    r.append(el("span", { style: "color:var(--tenue);display:flex;flex-shrink:0", innerHTML: ico(tf.tipo === "tablet" ? '<rect x="3" y="2" width="18" height="20" rx="2"/><path d="M11 18.5h2"/>' : '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18.5h2"/>', 20, 1.8) }),
+      el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, tf.nome), el("div", { className: "s" }, tf.quando)));
+    if (S.scollega === tf.id) {
+      r.append(el("span", { style: "font-size:13px;color:var(--tenue)" }, "Scollegare?"),
+        bottone("Sì", { onclick: () => { S.telefoni = S.telefoni.filter(y => y.id !== tf.id); S.scollega = null; salva(); disegna(); avvisa(tf.nome + " scollegato."); } }),
+        bottone("No", { onclick: () => { S.scollega = null; disegna(); } }));
+    } else {
+      r.append(bottone("Scollega", { onclick: () => { S.scollega = tf.id; disegna(); } }));
+    }
+    telefoni.append(r);
+  }
+  const coll = el("div", { style: "padding-top:12px" });
+  coll.append(bottone("Collega un telefono", { classe: "primario", icona: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2M14 19h3M19 19h2"/>',
+    onclick: apriCollega }));
+  telefoni.append(coll);
+
+  const prova2 = sezione("Prova della demo");
+  const r = el("button", { className: "riga", style: "width:100%" });
+  r.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, "Simula il coperchio aperto"),
+    el("div", { className: "s" }, "La prossima serie da 3 copie o più si ferma alla terza")),
+    el("span", { className: "interruttore" + (S.coperchio ? "" : " off") }));
+  r.onclick = () => { S.coperchio = !S.coperchio; salva(); disegna(); };
+  prova2.append(r);
+  // nella realta' il rotolo lo si cambia in stampante e lei lo dice all'app; qui si fa finta
+  const rot2 = el("div", { className: "riga rotolo" });
+  rot2.append(el("div", { style: "min-width:0;flex:1" }, el("div", { className: "t" }, "Cambia il rotolo in stampante"),
+    el("div", { className: "s" }, "Fa finta di caricare un altro rotolo: l'app lo legge da sola")), selettoreRotoloDemo());
+  prova2.append(rot2);
+  // due tocchi, non una finestra del browser: dentro un frame non si aprirebbe
+  const az = el("div", { style: "padding-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center" });
+  if (!azzeraChiesto) az.append(bottone("Riporta la demo com'era", { onclick: () => { azzeraChiesto = true; disegna(); } }));
+  else {
+    az.append(el("div", { style: "font-size:13.5px;color:var(--tenue);line-height:1.4;flex-basis:100%" }, "Rimette prodotti, etichette e storico come all'inizio. Quello che hai cambiato si perde."));
+    az.append(bottone("Sì, azzera tutto", { classe: "primario", onclick: () => { azzeraChiesto = false; S = partenza(); S.vista = "impostazioni"; misureViste.clear(); salva(); disegna(); avvisa("Demo riportata com'era."); } }));
+    az.append(bottone("Lascia stare", { onclick: () => { azzeraChiesto = false; disegna(); } }));
+  }
+  prova2.append(az);
+
+  schermo.append(stampante, stampa, telefoni, prova2);
+  return schermo;
+}
+let azzeraChiesto = false;
+function sezione(nome, destra) {
+  const s = el("div", { className: "scheda sezione", style: "padding:18px 22px;align-self:start" });
+  const capo = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px" });
+  capo.append(el("div", { className: "h", style: "font-size:19px;font-weight:600" }, nome));
+  if (destra) capo.append(destra);
+  s.append(capo);
+  return s;
+}
+/* ============================ impianto ============================ */
+const VOCI = [["stampa", "Stampa", I.stampa], ["etichette", "Etichette", I.etichette], ["storico", "Storico", I.storico], ["impostazioni", "Impostazioni", I.impostazioni]];
+const TITOLI = { stampa: "Stampa etichetta", etichette: "Etichette", storico: "Storico stampe", impostazioni: "Impostazioni" };
+
+function aggiornaAnteprime() {
+  const p = prod(S.prodotto), et = etichettaDi(p);
+  for (const c of document.querySelectorAll(".cornice")) {
+    const m = misuraEtichetta(p, et);
+    c.dataset.larghezza = m.larghezza; c.dataset.altezza = m.altezza;
+    c.innerHTML = rendiMisurata(p, et, m);
+    adatta(c);
+  }
+}
+// dove si era arrivati scorrendo: ridisegnando la stessa pagina si rimette li', invece di ripartire da cima
+let ultimoDove = "";
+function disegna(opz = {}) {
+  const attivo = document.activeElement, chiave = attivo?.dataset?.fuoco, pos = attivo?.selectionStart;
+  const dove = `${S.vista}|${S.dettaglio}|${S.fase}|${S.prodotto}`;
+  const scorsi = dove === ultimoDove ? [...document.querySelectorAll(".schermo, .scorre")].map(e => e.scrollTop) : null;
+  ultimoDove = dove;
+  const app = $("#app");
+  app.textContent = "";
+  const cont = el("div", { className: "app" });
+
+  const rail = el("div", { className: "rail" });
+  rail.append(el("div", { className: "marchio", innerHTML: ico(I.marchio, 24, 2) }));
+  for (const [k, t, d] of VOCI) {
+    const v = el("button", { className: "voce" + (S.vista === k ? " on" : "") });
+    v.innerHTML = ico(d) + `<span>${t}</span>`;
+    // una stampa finita e' finita: cambiando schermata il pannello "Stampate" si chiude da solo
+    v.onclick = () => { azzeraChiesto = false; if (S.fase === "fatta") S.fase = null; S.vista = k; disegna(); };
+    rail.append(v);
+  }
+
+  const corpo = el("div", { className: "corpo" });
+  const testata = el("div", { className: "testata" });
+  const sinistra = el("div", { style: "display:flex;align-items:center;gap:10px;min-width:0" });  // sul telefono la scheda del prodotto e' una pagina: si torna all'elenco da qui (non mentre stampa: li' c'e' "Ferma")
+  const telDettaglio = S.vista === "stampa" && innerWidth <= 860 && S.dettaglio;
+  if (telDettaglio && S.fase !== "stampa" && S.fase !== "errore") {
+    const b = el("button", { className: "indietro", title: "Torna ai prodotti" });
+    b.innerHTML = ico(I.sinistra, 22, 2);
+    b.onclick = () => { S.dettaglio = false; if (S.fase === "fatta") S.fase = null; disegna(); };
+    sinistra.append(b);
+  }
+  sinistra.append(el("div", { className: "h titolo" }, TITOLI[S.vista]));
+  const destra = el("div", { style: "display:flex;align-items:center;gap:10px" });
+  const strumenti = S.vista === "etichette" ? strumentiEtichetta() : null;
+  if (strumenti && innerWidth > 860) destra.append(strumenti);
+  for (const b of comandiDiTestata()) destra.append(b);
+  if (S.vista === "stampa" && !telDettaglio) destra.append(statoStampante());
+  testata.append(sinistra, destra);
+  if (strumenti && innerWidth <= 860) testata.append(strumenti);
+  corpo.append(testata);
+
+  corpo.append(S.vista === "stampa" ? vistaStampa() : S.vista === "etichette" ? vistaEtichette()
+    : S.vista === "storico" ? vistaStorico() : vistaImpostazioni());
+
+  const barra = el("div", { className: "barrasotto" });
+  for (const [k, t, d] of VOCI) {
+    const v = el("button", { className: "tab" + (S.vista === k ? " on" : "") });
+    v.innerHTML = ico(d) + `<span>${t}</span>`;
+    // toccare di nuovo "Stampa" riporta all'elenco, come si aspetta chi usa un telefono
+    v.onclick = () => { azzeraChiesto = false;
+      if (k === "stampa" && S.vista === "stampa" && S.fase !== "stampa" && S.fase !== "errore") { S.dettaglio = false; S.fase = null; }
+      if (S.fase === "fatta") S.fase = null;
+      S.vista = k; disegna(); };
+    barra.append(v);
+  }
+  corpo.append(barra);
+  cont.append(rail, corpo);
+  app.append(cont);
+  if (scorsi) app.querySelectorAll(".schermo, .scorre").forEach((e, i) => { if (scorsi[i]) e.scrollTop = scorsi[i]; });
+  aggiornaIndietroAvanti();
+  if (S.elimina && S.vista === "etichette" && prod(S.elimina)) app.append(finestraElimina());
+  if (S.collega) app.append(finestraCollega());
+  if (S.collega && S.telSchermo) app.append(schermoTelefono());
+  if (ingrandita) app.append(lente());
+  // adesso le cornici sono nel documento e si possono misurare
+  for (const c of app.querySelectorAll(".cornice")) adatta(c);
+  for (const m of app.querySelectorAll(".mini")) adattaMini(m);
+  if (ingrandita) { adattaLente(); if (!chiave) app.querySelector(".lente .chiudi")?.focus(); }
+
+  if (chiave) { const n = document.querySelector(`[data-fuoco="${chiave}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }
+}
+
+// appena il frame ha una misura vera si ridisegna tutto: da nascosto era stato disegnato alla cieca
+const ridisegnaSeIncerto = () => { if (misuraIncerta && !senzaLayout()) { misuraIncerta = false; disegna(); return true; } return false; };
+new ResizeObserver(ridisegnaSeIncerto).observe(document.documentElement);
+addEventListener("visibilitychange", ridisegnaSeIncerto);
+addEventListener("resize", () => { if (ridisegnaSeIncerto()) return; clearTimeout(window._r); window._r = setTimeout(() => { aggiornaAnteprime(); adattaLente(); }, 120); });
+addEventListener("keydown", e => {
+  // Ctrl+Z e Ctrl+Y (o Ctrl+Maiusc+Z) sull'etichetta aperta, come in un programma di scrittura
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && S.vista === "etichette" && !S.collega && !ingrandita && !S.elimina) {
+    const k = e.key.toLowerCase();
+    if (k === "z" || k === "y") { e.preventDefault(); if (S.fase !== "stampa" && S.fase !== "errore") annulla(k === "y" || e.shiftKey); return; }
+  }
+  if (e.key !== "Escape") return;
+  if (ingrandita) chiudiLente();
+  else if (S.telSchermo) chiudiTelefonoFinto();
+  else if (S.collega) chiudiCollega();
+  else if (S.elimina) { S.elimina = null; disegna(); }
+});
+disegna();
+</script>

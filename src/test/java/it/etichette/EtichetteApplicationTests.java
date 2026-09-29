@@ -55,11 +55,13 @@ class EtichetteApplicationTests {
 
     @Test
     void leImpostazioniSeminateSonoLeggibili() throws Exception {
-        // "data" e non "data_progressivo": corretto in db/changelog/v2-semi.yaml per allinearsi
-        // al valore del contratto (docs/api.md, schema_lotto: data|giorno|continuo|mano).
+        // schema_lotto NON c'e' piu' fra le impostazioni: dal 22 settembre 2026 lo schema del
+        // lotto e' dell'etichetta del prodotto (prodotto.etichetta.schemaLotto, migrazione v8),
+        // come nel prototipo - "Vale per questa etichetta", mentre restano del locale i
+        // progressivi che lo alimentano. Qui si controlla anche che sia sparito davvero.
         mockMvc.perform(get("/api/impostazioni"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.schema_lotto").value("data"))
+                .andExpect(jsonPath("$.schema_lotto").doesNotExist())
                 .andExpect(jsonPath("$.margine_mm").value("3"));
     }
 }

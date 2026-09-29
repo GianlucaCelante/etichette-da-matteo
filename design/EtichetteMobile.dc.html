@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap">
+  <style>
+    body { margin: 0; background: #EADECE; color: #58443C; font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #5E7B18; } a:hover { color: #4B6313; }
+    .h { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .tab { flex: 1; min-width: 0; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: #7A6A5E; white-space: nowrap; }
+    .tab.on { color: #4B6313; }
+    .btn { height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 17px; font-weight: 700; box-sizing: border-box; }
+    .card { background: #ffffff; border: 1px solid #DCCFBB; border-radius: 16px; box-sizing: border-box; }
+    .scorre { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+    .scorre::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px; background: linear-gradient(to bottom, rgba(234,222,206,0), #EADECE 80%); }
+    .lab { font-size: 12px; font-weight: 700; color: #7A6A5E; letter-spacing: 0.02em; text-transform: uppercase; }
+    .in { min-height: 52px; border: 1px solid #CFC0AA; border-radius: 12px; background: #ffffff; display: flex; align-items: center; padding: 10px 14px; font-size: 17px; box-sizing: border-box; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .al { height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #CFC0AA; background: #ffffff; display: flex; align-items: center; font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .al.on { background: #58443C; color: #ffffff; border-color: #58443C; }
+    .al.add { border-style: dashed; border-color: #C0AF9B; color: #7A6A5E; font-weight: 400; }
+    .riga { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; box-sizing: border-box; }
+    .riga .t { font-size: 16px; font-weight: 700; }
+    .riga .s { font-size: 13px; color: #7A6A5E; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; overflow: hidden; background: #EADECE; box-sizing: border-box; padding-top: 54px;">
+
+  <div style="display: flex; align-items: center; gap: 10px; padding: 0 20px 12px 20px;">
+    <div style="width: 40px; height: 40px; margin-left: -8px; display: flex; align-items: center; justify-content: center; color: #58443C; flex-shrink: 0;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg></div>
+    <div class="h" style="flex: 1; min-width: 0; font-size: 21px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Base pizza low carb</div>
+  </div>
+
+  <div class="scorre">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 0 20px 40px 20px;">
+
+      <div class="card riga">
+        <div style="flex: 1; min-width: 0;"><div class="t">Completa</div><div class="s">Usata da 12 prodotti</div></div>
+        <div style="color: #B0A08E; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div>
+      </div>
+
+      <div class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <div class="field"><div class="lab">Nome sull'etichetta</div><div class="in" style="font-weight: 700;">BASE PIZZA LOW CARB ARTIGIANALE</div></div>
+        <div class="field"><div class="lab">Ingredienti</div><div class="in" style="display: block; font-size: 14px; line-height: 1.45;">Acqua, Mix farine [Amido resistente di tapioca, Proteina vitale di <strong>frumento</strong>, Fibra di <strong>frumento</strong>, Lievito madre…</div></div>
+        <div class="field"><div class="lab">Può contenere</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <div class="al on">Latte</div><div class="al on">Lupini</div><div class="al on">Senape</div><div class="al on">Sesamo</div><div class="al on">Soia</div><div class="al on">Uova</div><div class="al add">+ Altri</div>
+          </div>
+        </div>
+        <div class="field"><div class="lab">Scadenza</div><div class="in"><span style="font-weight: 700;">7</span><span style="margin-left: auto; font-size: 14px; color: #9C8C7C;">giorni</span></div></div>
+        <div class="field"><div class="lab">Dicitura scadenza</div><div class="in"><span>da consumare entro</span><span style="margin-left: auto; color: #9C8C7C;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span></div></div>
+        <div class="field"><div class="lab">Formato data</div><div class="in"><span>GG/MM/AAAA</span><span style="margin-left: auto; color: #9C8C7C;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span></div></div>
+        <div class="field"><div class="lab">Conservazione</div><div class="in"><span>Fuori dal frigo</span><span style="margin-left: auto; color: #9C8C7C;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span></div></div>
+        <div class="field"><div class="lab">QUANTITÀ</div><div class="in"><span style="font-weight: 700;">2148</span><span style="margin-left: auto; font-size: 14px; color: #9C8C7C;">g</span></div></div>
+      </div>
+
+      <div class="card">
+        <div class="riga" style="border-bottom: 1px solid #EDE3D5;">
+          <div style="flex: 1; min-width: 0;"><div class="t">Valori nutrizionali</div><div class="s">· per 100 g</div></div>
+          <div style="color: #B0A08E; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div>
+        </div>
+        <div class="riga">
+          <div style="flex: 1; min-width: 0;"><div class="t">Produttore</div><div class="s">Michi s.n.c. di Michele Alberto Crivellari</div></div>
+          <div style="color: #B0A08E; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 10px; padding: 10px 20px 12px 20px;">
+    <div class="btn" style="flex: 1; border: 1px solid #CFC0AA; background: #ffffff; font-size: 15px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa di prova</span></div>
+    <div class="btn" style="flex: 1; background: #5E7B18; color: #ffffff; font-size: 16px;">Salva prodotto</div>
+  </div>
+
+  <div style="display: flex; background: #FBF5EC; border-top: 1px solid #DCCFBB; padding-bottom: 18px;">
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="8" rx="2"></rect><path d="M6 14h12v7H6z"></path></svg><span>Stampa</span></div>
+    <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg><span>Etichette</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Storico</span></div>
+    <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg><span>Impostazioni</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

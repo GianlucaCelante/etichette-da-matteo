@@ -1,5 +1,6 @@
 package it.etichette.api;
 
+import it.etichette.dati.Contratto;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import it.etichette.resa.ParametriStampa;
@@ -56,8 +57,8 @@ public class ResaController {
                                                @RequestParam(required = false) String quantita,
                                                @RequestParam(required = false) String scadenza,
                                                @RequestParam(required = false) String lotto) {
-        Prodotto p = trovaProdotto(id);
-        RisultatoResa risultato = renderer.rendi(prodottiConversioni.aDto(p), parametri(quantita, scadenza, lotto), rotolo, scala);
+        ProdottoDto p = prodottiConversioni.aDto(trovaProdotto(id));
+        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, scadenza, lotto, false), rotolo, scala);
         return png(risultato.immagine());
     }
 
@@ -69,6 +70,10 @@ public class ResaController {
      * la retrocompatibilita' e usa il prodotto salvato (con la SUA etichetta) quando {@code
      * prodotto} manca. Uno dei due e' obbligatorio: non c'e' piu' un'etichetta indipendente da
      * mandare a se stante.
+     *
+     * <p>{@code scadenzaSegnaposto} (facoltativo, docs/api.md): quando vero il blocco "scadenza"
+     * scrive il segnaposto del formato scelto al posto della data vera - solo per l'editor, che
+     * cosi' non mostra una data calcolata da oggi che confonderebbe in fase di modifica.
      */
     @PostMapping(value = "/anteprima.png", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> anteprima(@RequestBody Map<String, Object> corpo) {
@@ -76,7 +81,7 @@ public class ResaController {
         ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
         double scala = richiesta.scala() != null ? richiesta.scala() : 1.0;
-        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(null, null, null), rotolo, scala);
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, scala);
         return png(risultato.immagine());
     }
 
@@ -97,22 +102,24 @@ public class ResaController {
                                        @RequestParam(required = false) String quantita,
                                        @RequestParam(required = false) String scadenza,
                                        @RequestParam(required = false) String lotto) {
-        Prodotto p = trovaProdotto(id);
-        RisultatoResa risultato = renderer.rendi(prodottiConversioni.aDto(p), parametri(quantita, scadenza, lotto), rotolo, 1.0);
+        ProdottoDto p = prodottiConversioni.aDto(trovaProdotto(id));
+        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, scadenza, lotto, false), rotolo, 1.0);
         return misureDi(risultato);
     }
 
     /**
      * Le misure della bozza in modifica: stesso corpo di {@code POST /anteprima.png} ({@code scala}
-     * ignorata), stessa risposta di {@code GET /prodotti/{id}/misure}. Serve alla cornice
-     * dell'anteprima per sapere se l'etichetta e' corta o lunga anche prima di salvare.
+     * ignorata, {@code scadenzaSegnaposto} idem), stessa risposta di {@code GET
+     * /prodotti/{id}/misure}. Serve alla cornice dell'anteprima per sapere se l'etichetta e' corta
+     * o lunga anche prima di salvare - con lo stesso segnaposto mostrato nell'anteprima, cosi' le
+     * misure e gli avvisi restano coerenti con quello che si vede.
      */
     @PostMapping("/anteprima/misure")
     public Map<String, Object> misureAnteprima(@RequestBody Map<String, Object> corpo) {
         CorpoAnteprima richiesta = json.converti(corpo, CorpoAnteprima.class);
         ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
-        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(null, null, null), rotolo, 1.0);
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, 1.0);
         return misureDi(risultato);
     }
 
@@ -124,13 +131,19 @@ public class ResaController {
 
     // ---------------------------------------------------------------------------------------
 
-    private record CorpoAnteprima(Long prodottoId, ProdottoDto prodotto, Integer rotolo, Double scala) {
+    private record CorpoAnteprima(Long prodottoId, ProdottoDto prodotto, Integer rotolo, Double scala, Boolean scadenzaSegnaposto) {
     }
 
-    private ParametriStampa parametri(String quantita, String scadenza, String lotto) {
+    /** Lo schema si legge dal prodotto {@code p} (docs/api.md, 22/09/2026 sera: e' dell'etichetta, non del locale). */
+    private ParametriStampa parametri(ProdottoDto p, String quantita, String scadenza, String lotto, Boolean scadenzaSegnaposto) {
         LocalDate scad = scadenza != null && !scadenza.isBlank() ? LocalDate.parse(scadenza) : null;
-        String lottoEffettivo = lotto != null && !lotto.isBlank() ? lotto : lotti.prossimoConSchemaAttivo();
-        return new ParametriStampa(quantita, scad, lottoEffettivo);
+        String lottoEffettivo = lotto != null && !lotto.isBlank() ? lotto : lotti.prossimoConSchema(schemaLottoDi(p));
+        return new ParametriStampa(quantita, scad, lottoEffettivo, Boolean.TRUE.equals(scadenzaSegnaposto));
+    }
+
+    private static String schemaLottoDi(ProdottoDto p) {
+        String schema = p.etichetta() != null ? p.etichetta().schemaLotto() : null;
+        return schema != null && !schema.isBlank() ? schema : Contratto.SCHEMA_LOTTO_DEFAULT;
     }
 
     private Prodotto trovaProdotto(Long id) {

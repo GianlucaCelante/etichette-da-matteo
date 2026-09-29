@@ -1,20 +1,38 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useDebounced } from "../hooks/useDebounced";
-import { anteprimaProdottoBlob, api, caricaLogo, eliminaLogo, logoEsiste, misureProdottoInModifica, percorsoResaProdotto } from "./client";
+import {
+  anteprimaProdottoBlob,
+  api,
+  caricaFotoArrivo,
+  caricaFotoLotto,
+  caricaLogo,
+  eliminaFoto,
+  eliminaLogo,
+  logoEsiste,
+  misureProdottoInModifica,
+  percorsoResaProdotto,
+} from "./client";
 import type {
+  ArrivoRichiesta,
+  CorreggiCatenaRichiesta,
   EventoStampa,
+  FiltroIngredienti,
   Impostazioni,
+  IngredienteRichiesta,
   MisureRisposta,
   NuovoProdotto,
   OrdineProdotti,
   ParametriResa,
+  ParametriStorico,
   PeriodoStorico,
   Prodotto,
+  Programma,
   ProvaProdottoRichiesta,
   RistampaRichiesta,
   Rotolo,
   StampaRichiesta,
+  StoricoRiga,
 } from "./tipi";
 
 // Chiavi di cache condivise: gli eventi SSE in eventi.ts scrivono nella stessa
@@ -33,14 +51,35 @@ export const chiaviQuery = {
   prodotto: (id: number) => ["prodotti", "uno", id] as QueryKey,
   misureProdotto: (id: number, rotolo?: Rotolo) => ["prodotti", "misure", id, rotolo ?? null] as QueryKey,
 
-  lotto: ["lotto"] as QueryKey,
+  // Lo schema del lotto e' dell'etichetta (docs/api.md, "Impostazioni come
+  // il prototipo"): la chiave porta il prodotto, senza si legge solo
+  // l'elenco degli schemi (schema/oggi null).
+  lotto: (prodottoId?: number) => ["lotto", prodottoId ?? null] as QueryKey,
 
-  storico: (opzioni?: { periodo?: PeriodoStorico; q?: string }) => ["storico", opzioni ?? {}] as QueryKey,
+  // Tutto lo storico sta sotto ["storico"]: un evento SSE di fine stampa
+  // (eventi.ts) o una correzione della catena rileggono insieme elenco a
+  // pagine, righe filtrate, ultime valide e catene.
+  storico: (parametri?: ParametriStorico) => ["storico", parametri ?? {}] as QueryKey,
+  // Una chiave a parte per le pagine della vista Storico: la cache di una
+  // query "infinita" ha un'altra forma ({pages, pageParams}) di una lista.
+  storicoAPagine: (filtro: { periodo: PeriodoStorico; q?: string }) => ["storico", "pagine", filtro] as QueryKey,
+  ultimeValide: (prodotti: number[]) => ["storico", "ultimeValide", prodotti] as QueryKey,
+  catenaStorico: (id: number) => ["storico", "catena", id] as QueryKey,
 
   dispositivoIo: ["dispositivi", "io"] as QueryKey,
   dispositivi: ["dispositivi", "elenco"] as QueryKey,
 
   logo: ["impostazioni", "logo"] as QueryKey,
+
+  ingredienti: (opzioni?: { q?: string; filtro?: FiltroIngredienti }) => ["ingredienti", "elenco", opzioni ?? {}] as QueryKey,
+  ingrediente: (id: number) => ["ingredienti", "uno", id] as QueryKey,
+  ingredientiSimili: (nome: string, escludiId?: number) => ["ingredienti", "simili", nome, escludiId ?? null] as QueryKey,
+  proposteIngredienti: (testo: string) => ["ingredienti", "proposte", testo] as QueryKey,
+  fornitori: ["fornitori"] as QueryKey,
+  usiLottoIngrediente: (id: number) => ["ingredienti", "lotto", "usi", id] as QueryKey,
+  arrivo: (id: number) => ["arrivi", "uno", id] as QueryKey,
+
+  programma: ["programma"] as QueryKey,
 };
 
 export function useStampante() {
@@ -61,11 +100,7 @@ export function useSalvaImpostazioni() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (dati: Impostazioni) => api.salvaImpostazioni(dati),
-    onSuccess: (dati) => {
-      client.setQueryData(chiaviQuery.impostazioni, dati);
-      // schema_lotto e margine_mm influenzano /api/lotto e la resa: si rilegge
-      void client.invalidateQueries({ queryKey: chiaviQuery.lotto });
-    },
+    onSuccess: (dati) => client.setQueryData(chiaviQuery.impostazioni, dati),
   });
 }
 
@@ -78,8 +113,62 @@ export function useVersione() {
   return useQuery({ queryKey: chiaviQuery.versione, queryFn: api.versione, staleTime: Infinity });
 }
 
+/* ============================ programma ============================ */
+// docs/api.md, "Impostazioni come il prototipo": versione, cartella dei
+// dati e stato delle copie di sicurezza.
+
+export function useProgramma() {
+  return useQuery({ queryKey: chiaviQuery.programma, queryFn: api.programma });
+}
+
+export function useSalvaCartellaBackup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (cartella: string | null) => api.salvaCartellaBackup(cartella),
+    onSuccess: (dati) => client.setQueryData(chiaviQuery.programma, dati),
+  });
+}
+
+// "Fai una copia adesso": aggiorna solo "backup.ultima" nella cache, senza
+// rileggere tutto (il servizio torna solo l'esito, non l'oggetto intero).
+export function useEseguiBackupOra() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.eseguiBackupOra(),
+    onSuccess: (ultima) => {
+      // Il servizio manda solo l'ultimo TENTATIVO: "ultimaRiuscita" (l'ultima
+      // copia buona) si aggiorna qui solo se e' andato bene, altrimenti resta
+      // quella di prima - un fallimento non deve cancellarne la memoria
+      // (docs/api.md, "Copie ravvicinate e ultima copia buona").
+      client.setQueryData(chiaviQuery.programma, (precedente: Programma | undefined) =>
+        precedente
+          ? {
+              ...precedente,
+              backup: {
+                ...precedente.backup,
+                ultima,
+                ultimaRiuscita: ultima.esito === "riuscita" ? ultima : precedente.backup.ultimaRiuscita,
+              },
+            }
+          : precedente,
+      );
+    },
+  });
+}
+
 export function useProvaStampa() {
   return useMutation({ mutationFn: api.provaStampa });
+}
+
+// "Cerca di nuovo" delle Impostazioni: forza una nuova ricerca e aggiorna la
+// cache di useStampante con lo stato appena tornato, invece di dire solo
+// quello che gia' sapeva (docs/api.md, "Impostazioni come il prototipo").
+export function useCercaStampante() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.cercaStampante,
+    onSuccess: (dati) => client.setQueryData(chiaviQuery.stampante, dati),
+  });
 }
 
 export function useAnnullaStampa() {
@@ -128,6 +217,10 @@ export function useProdotto(id: number | undefined) {
 
 function invalidaProdotti(client: ReturnType<typeof useQueryClient>) {
   void client.invalidateQueries({ queryKey: ["prodotti"] });
+  // Un prodotto porta con se' i tracciati (docs/api.md): salvare/creare/duplicare/eliminare
+  // un'etichetta puo' cambiare "Nelle etichette" nella scheda di un ingrediente (Ingredienti.tsx) -
+  // si invalida tutto il prefisso, non si sa quali ingredienti erano coinvolti senza rileggerli.
+  void client.invalidateQueries({ queryKey: ["ingredienti"] });
 }
 
 // Senza argomento crea il prodotto nuovo del prototipo (il servizio decide i
@@ -153,7 +246,13 @@ export function useAggiornaProdotto() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ id, dati }: { id: number; dati: Prodotto }) => api.aggiornaProdotto(id, dati),
-    onSuccess: () => invalidaProdotti(client),
+    onSuccess: (_dati, variabili) => {
+      invalidaProdotti(client);
+      // schemaLotto e' dell'etichetta ora (docs/api.md, "Impostazioni come
+      // il prototipo"): salvando il prodotto puo' essere cambiato, si
+      // rilegge cosa uscirebbe oggi per QUESTO prodotto.
+      void client.invalidateQueries({ queryKey: chiaviQuery.lotto(variabili.id) });
+    },
   });
 }
 
@@ -175,14 +274,27 @@ export function useMisureProdotto(id: number | undefined, rotolo: Rotolo | undef
 
 /* ============================ lotto ============================ */
 
-export function useLotto() {
-  return useQuery({ queryKey: chiaviQuery.lotto, queryFn: api.lotto });
+// Senza prodottoId: solo l'elenco degli schemi (per la schermata che li
+// spiega). Con prodottoId: anche lo schema di QUELL'etichetta e cosa
+// uscirebbe oggi (docs/api.md, "Impostazioni come il prototipo").
+export function useLotto(prodottoId?: number) {
+  return useQuery({ queryKey: chiaviQuery.lotto(prodottoId), queryFn: () => api.lotto(prodottoId) });
 }
 
 /* ============================ stampe ============================ */
 
 export function useCreaStampa() {
-  return useMutation({ mutationFn: (dati: StampaRichiesta) => api.stampa(dati) });
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (dati: StampaRichiesta) => api.stampa(dati),
+    // Il progressivo del lotto si consuma AL MOMENTO DELLA RICHIESTA
+    // (StampeService#stampa, non quando il lavoro finisce): la prossima
+    // proposta (GET /api/lotto) e' gia' cambiata appena questa POST torna,
+    // qualunque sia poi l'esito del lavoro. Invalidare solo sull'evento SSE
+    // "completata" (come prima) lasciava la proposta vecchia in cache dopo
+    // una stampa annullata o andata in errore - vedi anche eventi.ts.
+    onSuccess: (_dati, variabili) => void client.invalidateQueries({ queryKey: chiaviQuery.lotto(variabili.prodottoId) }),
+  });
 }
 
 export function useRistampaUltima() {
@@ -224,13 +336,104 @@ export function useEliminaLogo() {
 
 /* ============================ storico ============================ */
 
-export function useStorico(opzioni?: { periodo?: PeriodoStorico; q?: string }) {
-  return useQuery({ queryKey: chiaviQuery.storico(opzioni), queryFn: () => api.storico(opzioni) });
+export function useStorico(parametri?: ParametriStorico) {
+  return useQuery({ queryKey: chiaviQuery.storico(parametri), queryFn: () => api.storico(parametri) });
+}
+
+// Le righe di una pagina della vista Storico: qualche giorno di lavoro, poco
+// da scaricare e da disegnare anche con "Tutto" (con 40.000 stampe lo storico
+// intero pesava 12,7 MB e la pagina restava ferma per mezzo minuto).
+const RIGHE_PER_PAGINA_STORICO = 200;
+
+// Una pagina piena vuol dire che ce ne possono essere altre: la prossima
+// riparte da dopo la sua ultima riga (primaDi, docs/api.md). Una pagina
+// corta e' l'ultima.
+function paginaDopo(ultima: StoricoRiga[]): number | undefined {
+  return ultima.length === RIGHE_PER_PAGINA_STORICO ? ultima[ultima.length - 1]?.id : undefined;
+}
+
+// Lo storico della vista Storico, a pagine di 200 per ogni periodo e ricerca.
+// Un'invalidazione (fine stampa, correzione) rilegge tutte le pagine gia'
+// caricate, dalla prima: con primaDi le pagine restano attaccate giuste anche
+// se nel frattempo sono arrivate stampe nuove in cima.
+export function useStoricoAPagine(filtro: { periodo: PeriodoStorico; q?: string }) {
+  return useInfiniteQuery({
+    queryKey: chiaviQuery.storicoAPagine(filtro),
+    queryFn: ({ pageParam }) => api.storico({ ...filtro, limite: RIGHE_PER_PAGINA_STORICO, primaDi: pageParam }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: paginaDopo,
+  });
+}
+
+// Ogni quanto si rilegge la riga di un lavoro finito rimasta "in_stampa":
+// l'aggiornamento finale non e' riuscito e il servizio riprova da solo, ma
+// nessun evento SSE avvisa quando ce la fa.
+const RILETTURA_ESITO_NON_SALVATO_MS = 10_000;
+
+// La riga scritta da UN lavoro di stampa (lo stesso lavoroId di POST
+// /api/stampe e degli eventi SSE): 0 o 1 righe. Stampa.tsx la chiede solo a
+// lavoro finito (undefined = non chiederla), per il pannello "Stampata".
+// Finche' torna "in_stampa" a lavoro finito si rilegge ogni tanto, cosi' il
+// pannello passa da solo a "Registrata nello storico..." appena il servizio
+// riesce a salvare l'esito.
+export function useStoricoDelLavoro(lavoroId: string | undefined) {
+  return useQuery({
+    queryKey: chiaviQuery.storico({ lavoroId: lavoroId ?? "" }),
+    queryFn: () => api.storico({ lavoroId }),
+    enabled: lavoroId !== undefined,
+    refetchInterval: (query) => (query.state.data?.some((r) => r.esito === "in_stampa") ? RILETTURA_ESITO_NON_SALVATO_MS : false),
+  });
+}
+
+// Le ultime stampe completate di un prodotto, dalla piu' recente: le
+// candidate per correggere un anello di produzione propria (CatenaLotti.tsx),
+// chieste solo a correzione aperta (undefined = non chiederle).
+export function useStampeCompletateProdotto(prodottoId: number | undefined, limite: number) {
+  const parametri: ParametriStorico = { prodottoId: prodottoId ?? -1, esito: "completata", limite };
+  return useQuery({
+    queryKey: chiaviQuery.storico(parametri),
+    queryFn: () => api.storico(parametri),
+    enabled: prodottoId !== undefined,
+  });
+}
+
+// L'ultima stampa valida di ogni semilavorato tracciato (la striscia dei
+// lotti in Stampa): la decide il servizio, con la stessa regola con cui poi
+// la registra stampando. Senza id non si chiede niente.
+export function useUltimeValide(prodotti: number[]) {
+  return useQuery({
+    queryKey: chiaviQuery.ultimeValide(prodotti),
+    queryFn: () => api.ultimeValide(prodotti),
+    enabled: prodotti.length > 0,
+  });
 }
 
 export function useRistampaStorico() {
   return useMutation({
     mutationFn: ({ id, dati }: { id: number; dati?: RistampaRichiesta }) => api.ristampaStorico(id, dati),
+  });
+}
+
+// La catena di una riga (docs/api.md, "Storico: la catena"): si legge solo
+// quando la riga si apre in Storico.tsx (componenti/storico/CatenaLotti.tsx).
+export function useCatenaStorico(id: number | undefined) {
+  return useQuery({
+    queryKey: chiaviQuery.catenaStorico(id ?? -1),
+    queryFn: () => api.catenaStorico(id as number),
+    enabled: id !== undefined,
+  });
+}
+
+export function useCorreggiCatenaStorico() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dati }: { id: number; dati: CorreggiCatenaRichiesta }) => api.correggiCatenaStorico(id, dati),
+    onSuccess: (dati, variabili) => {
+      client.setQueryData(chiaviQuery.catenaStorico(variabili.id), dati);
+      // i conteggi "lottiRegistrati"/"lottiNonRegistrati" e "correttoIl"
+      // nell'elenco (righe della lista Storico) vanno rifatti.
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
   });
 }
 
@@ -268,6 +471,230 @@ export function useEliminaDispositiviSenzaNome() {
   return useMutation({
     mutationFn: () => api.eliminaDispositiviSenzaNome(),
     onSuccess: () => void client.invalidateQueries({ queryKey: chiaviQuery.dispositivi }),
+  });
+}
+
+/* ============================ ingredienti, fornitori, lotti e arrivi ============================ */
+// docs/api.md, "Ingredienti, fornitori e lotti": Ingredienti e Merce
+// arrivata. Le mutazioni invalidano per prefisso ["ingredienti"] (elenco,
+// dettaglio e simili insieme: un lotto chiuso o un nome cambiato tocca sia la
+// pastiglia di stato in elenco sia la scheda), e ["fornitori"] quando puo'
+// esserne nato uno nuovo (fornitoreNome).
+
+export function useIngredienti(opzioni?: { q?: string; filtro?: FiltroIngredienti }) {
+  return useQuery({ queryKey: chiaviQuery.ingredienti(opzioni), queryFn: () => api.ingredienti(opzioni) });
+}
+
+export function useIngrediente(id: number | undefined) {
+  return useQuery({
+    queryKey: chiaviQuery.ingrediente(id ?? -1),
+    queryFn: () => api.ingrediente(id as number),
+    enabled: id !== undefined,
+  });
+}
+
+// La tendina dei nomi simili (campoTesto del prototipo): si attiva da due
+// caratteri scritti, ritardata cosi' non parte una richiesta a ogni tasto.
+export function useIngredientiSimili(nome: string, escludiId?: number) {
+  const differito = useDebounced(nome, 250);
+  const query = differito.trim();
+  return useQuery({
+    queryKey: chiaviQuery.ingredientiSimili(query, escludiId),
+    queryFn: () => api.ingredientiSimili(query, escludiId),
+    enabled: query.length >= 2,
+  });
+}
+
+// Le proposte dal testo (Etichette, gruppo Ingredienti): non piu' un bottone
+// a comando, mentre si scrive l'elenco degli ingredienti (deciso da
+// Gianluca, 23 settembre 2026: un bottone e' un gesto che ci si dimentica,
+// il suggerimento mentre scrivi arriva quando serve). Stesso ritmo di
+// useAnteprimaProdottoSrc (400 ms, sopra): non se ne inventa un altro.
+// "testo vuoto -> lista vuota" e' gia' il servizio (docs/api.md), ma non ha
+// senso nemmeno chiamarlo per niente: enabled lo evita.
+export function useProposteIngredienti(testo: string) {
+  const differito = useDebounced(testo, 400);
+  const query = differito.trim();
+  return useQuery({
+    queryKey: chiaviQuery.proposteIngredienti(query),
+    queryFn: () => api.proposteIngredienti(query),
+    enabled: query.length > 0,
+  });
+}
+
+function invalidaIngredienti(client: ReturnType<typeof useQueryClient>) {
+  void client.invalidateQueries({ queryKey: ["ingredienti"] });
+}
+function invalidaFornitori(client: ReturnType<typeof useQueryClient>) {
+  void client.invalidateQueries({ queryKey: chiaviQuery.fornitori });
+}
+
+export function useCreaIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (dati: IngredienteRichiesta) => api.creaIngrediente(dati),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+    },
+  });
+}
+
+export function useAggiornaIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dati }: { id: number; dati: IngredienteRichiesta }) => api.aggiornaIngrediente(id, dati),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+    },
+  });
+}
+
+export function useEliminaIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.eliminaIngrediente(id),
+    onSuccess: () => invalidaIngredienti(client),
+  });
+}
+
+export function useFornitori() {
+  return useQuery({ queryKey: chiaviQuery.fornitori, queryFn: api.fornitori });
+}
+
+// "Nuovo fornitore" (FinestraFornitori.tsx, deciso da Gianluca, 25/09/2026):
+// tocca solo l'elenco dei fornitori, nessun ingrediente cambia.
+export function useCreaFornitore() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (nome: string) => api.creaFornitore(nome),
+    onSuccess: () => invalidaFornitori(client),
+  });
+}
+
+// Il gesto giusto per un refuso (docs/api.md, "Gestire i fornitori"): il
+// nome cambia dappertutto, quindi si invalidano sia i fornitori (l'elenco e
+// i suoi conteggi) sia gli ingredienti (il nome compare nella loro carta).
+export function useRinominaFornitore() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, nome }: { id: number; nome: string }) => api.rinominaFornitore(id, nome),
+    onSuccess: () => {
+      invalidaFornitori(client);
+      invalidaIngredienti(client);
+    },
+  });
+}
+
+export function useEliminaFornitore() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.eliminaFornitore(id),
+    onSuccess: () => {
+      invalidaFornitori(client);
+      invalidaIngredienti(client);
+    },
+  });
+}
+
+export function useRegistraArrivo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (dati: ArrivoRichiesta) => api.registraArrivo(dati),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+    },
+  });
+}
+
+// La consegna con i suoi lotti e le sue foto (docs/api.md): serve alla
+// scheda di un arrivo (Merce arrivata) e alle foto del documento.
+export function useArrivo(id: number | undefined) {
+  return useQuery({
+    queryKey: chiaviQuery.arrivo(id ?? -1),
+    queryFn: () => api.arrivo(id as number),
+    enabled: id !== undefined,
+  });
+}
+
+export function useChiudiLottoIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.chiudiLottoIngrediente(id),
+    onSuccess: () => invalidaIngredienti(client),
+  });
+}
+
+export function useRiapriLottoIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.riapriLottoIngrediente(id),
+    onSuccess: () => invalidaIngredienti(client),
+  });
+}
+
+export function useAggiornaScadenzaLotto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, scadenza }: { id: number; scadenza: string }) => api.aggiornaScadenzaLotto(id, { scadenza }),
+    onSuccess: () => invalidaIngredienti(client),
+  });
+}
+
+// Il foglio di richiamo di un lotto (docs/api.md): non ancora usato da
+// nessuna vista di questo giro, ma completa il contratto dei lotti-ingrediente.
+export function useUsiLottoIngrediente(id: number | undefined) {
+  return useQuery({
+    queryKey: chiaviQuery.usiLottoIngrediente(id ?? -1),
+    queryFn: () => api.usiLottoIngrediente(id as number),
+    enabled: id !== undefined,
+  });
+}
+
+/* ============================ foto ============================ */
+// docs/api.md, "Foto dei lotti e dei documenti": l'etichetta del sacco (su
+// un lotto) e le pagine del documento (su un arrivo). Condivisi con
+// componenti/foto/ - li usa anche la vista Ingredienti/Merce arrivata.
+
+// La foto dell'etichetta del sacco: invalida gli ingredienti (il lotto vive
+// li' dentro) e lo storico (la catena porta la stessa foto sui suoi anelli).
+export function useCaricaFotoLotto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => caricaFotoLotto(id, file),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
+  });
+}
+
+// Una pagina del documento della consegna: invalida l'arrivo e lo storico
+// (la catena porta le stesse pagine su "fotoDocumento").
+export function useCaricaFotoArrivo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => caricaFotoArrivo(id, file),
+    onSuccess: (_dati, variabili) => {
+      void client.invalidateQueries({ queryKey: chiaviQuery.arrivo(variabili.id) });
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
+  });
+}
+
+// Non si sa da qui se la foto cancellata era di un lotto o di un arrivo:
+// si invalida un po' largo (ingredienti, arrivi, storico), costa poco.
+export function useEliminaFoto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => eliminaFoto(id),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      void client.invalidateQueries({ queryKey: ["arrivi"] });
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
   });
 }
 
@@ -324,7 +751,15 @@ export function useAnteprimaProdottoInModifica(bozza: BozzaAnteprima | null, rit
     let annullato = false;
     setCaricando(true);
     setErrore(false);
-    Promise.all([anteprimaProdottoBlob(differita), misureProdottoInModifica(differita)])
+    // scadenzaSegnaposto: true SEMPRE qui (docs/api.md, 24/09/2026) - questo hook e' solo
+    // dell'editor (mai della vista Stampa, che usa useAnteprimaProdottoSrc/useMisureProdotto,
+    // i GET che non lo conoscono): il blocco "scadenza" mostra il segnaposto del formato
+    // scelto ("GG/MM/AAAA" ecc.) invece della data vera, che in modifica e' solo indicativa
+    // e confonderebbe. La "Stampa di prova" non passa da qui: stampa sempre la data vera.
+    Promise.all([
+      anteprimaProdottoBlob({ ...differita, scadenzaSegnaposto: true }),
+      misureProdottoInModifica({ ...differita, scadenzaSegnaposto: true }),
+    ])
       .then(([blob, misureNuove]) => {
         if (annullato) return;
         const url = URL.createObjectURL(blob);

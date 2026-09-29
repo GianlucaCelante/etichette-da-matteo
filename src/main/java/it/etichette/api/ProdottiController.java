@@ -2,6 +2,8 @@ package it.etichette.api;
 
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
+import it.etichette.dati.ProdottoTracciato;
+import it.etichette.tracciati.TracciatiService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,10 +29,12 @@ public class ProdottiController {
 
     private final ProdottoRepository prodotti;
     private final ProdottiConversioni conversioni;
+    private final TracciatiService tracciatiService;
 
-    public ProdottiController(ProdottoRepository prodotti, ProdottiConversioni conversioni) {
+    public ProdottiController(ProdottoRepository prodotti, ProdottiConversioni conversioni, TracciatiService tracciatiService) {
         this.prodotti = prodotti;
         this.conversioni = conversioni;
+        this.tracciatiService = tracciatiService;
     }
 
     @GetMapping
@@ -41,12 +45,14 @@ public class ProdottiController {
             String frammento = q.toLowerCase();
             base = base.stream().filter(p -> p.getNome().toLowerCase().contains(frammento)).toList();
         }
-        return base.stream().map(conversioni::aDto).toList();
+        List<ProdottoDto> dto = base.stream().map(conversioni::aDto).toList();
+        Map<Long, List<TracciatoDto>> tracciatiPerProdotto = tracciatiService.leggiPerProdotti(dto.stream().map(ProdottoDto::id).toList());
+        return dto.stream().map(p -> p.conTracciati(tracciatiPerProdotto.getOrDefault(p.id(), List.of()))).toList();
     }
 
     @GetMapping("/{id}")
     public ProdottoDto uno(@PathVariable Long id) {
-        return conversioni.aDto(trova(id));
+        return conversioni.aDto(trova(id)).conTracciati(tracciatiService.leggi(id));
     }
 
     /** Senza corpo o con campi mancanti: "Etichetta nuova" con i valori di partenza del prototipo (docs/api.md). */
@@ -61,16 +67,32 @@ public class ProdottiController {
         return conversioni.aDto(prodotti.save(entita));
     }
 
+    /**
+     * {@code tracciati} assente/{@code null} (docs/api.md, difetto del 23/09/2026): i collegamenti
+     * restano quelli che c'erano, questa PUT non li tocca affatto - un {@code []} esplicito li
+     * cancella ancora (la differenza fra i due si fa QUI: {@code TracciatiService#valida}/{@code
+     * sostituisci} trattano un elenco vuoto sempre come "nessun collegamento", null o meno). Stesso
+     * discorso per {@code etichetta.schemaLotto} mancante: resta quello ATTUALE del prodotto invece
+     * di tornare a "data" (vedi {@code ProdottiConversioni#schemaLottoAttuale}).
+     */
     @PutMapping("/{id}")
     @Transactional
     public ProdottoDto sostituisci(@PathVariable Long id, @RequestBody Map<String, Object> corpo) {
         Prodotto entita = trova(id);
+        String schemaLottoAttuale = conversioni.schemaLottoAttuale(entita);
         ProdottoDto dto = conversioni.converti(corpo);
         ProdottiConversioni.valida(dto);
+        // Validato PRIMA di toccare il prodotto: un tracciato inesistente o l'auto-riferimento non
+        // devono lasciare il prodotto salvato a meta' (docs/api.md).
+        List<ProdottoTracciato> tracciatiValidati = dto.tracciati() != null ? tracciatiService.valida(id, dto.tracciati()) : null;
         entita.setNome(dto.nome());
-        conversioni.applicaCampi(entita, dto);
+        conversioni.applicaCampi(entita, dto, schemaLottoAttuale);
         entita.setModificatoIl(LocalDateTime.now());
-        return conversioni.aDto(prodotti.save(entita));
+        Prodotto salvato = prodotti.save(entita);
+        if (tracciatiValidati != null) {
+            tracciatiService.sostituisci(id, tracciatiValidati);
+        }
+        return conversioni.aDto(salvato).conTracciati(tracciatiService.leggi(id));
     }
 
     /** "Duplica prodotto" (mandato del 2026-09-08): copia tutto, etichetta compresa; nome + " (copia)"; usi=0, ultimoUso=null. */
@@ -88,13 +110,22 @@ public class ProdottiController {
                 origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null);
         Prodotto copia = new Prodotto(nomeCopia);
         conversioni.applicaCampi(copia, dtoCopia);
-        return ResponseEntity.status(HttpStatus.CREATED).body(conversioni.aDto(prodotti.save(copia)));
+        Prodotto salvata = prodotti.save(copia);
+        tracciatiService.duplica(id, salvata.getId());
+        ProdottoDto risultato = conversioni.aDto(salvata).conTracciati(tracciatiService.leggi(salvata.getId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(risultato);
     }
 
+    /**
+     * Toglie anche i collegamenti di {@code prodotti_tracciati} (docs/api.md, difetto del
+     * 23/09/2026): quelli DI questo prodotto e quelli che lo tracciano come semilavorato in ALTRI
+     * prodotti, altrimenti restavano orfani (SQLite qui non forza le foreign key).
+     */
     @DeleteMapping("/{id}")
     @Transactional
     public Map<String, Object> elimina(@PathVariable Long id) {
         trova(id);
+        tracciatiService.eliminaCollegamenti(id);
         prodotti.deleteById(id);
         return Map.of();
     }
