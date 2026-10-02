@@ -1,0 +1,10 @@
+{
+  "name": "etichette-prove-utenti",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pilota del browser per le prove con utenti simulati (vedi LEGGIMI.md)",
+  "dependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}
