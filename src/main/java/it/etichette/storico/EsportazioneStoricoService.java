@@ -33,13 +33,37 @@ import java.util.List;
  * StoricoController#elenco} scritte in CSV, XLSX o PDF, direttamente sull'{@link OutputStream}
  * della risposta - nessuno dei tre formati costruisce prima l'intero file in un array, cosi' i
  * 40.000 righe di un {@code periodo=tutto} non raddoppiano in memoria.
+ *
+ * <p>Le colonne sono le dieci di sempre (stesso ordine) piu' due in coda, i lotti degli ingredienti
+ * con il fornitore e la scadenza, e i fornitori ({@link CatenaPerEsportazione}). Ogni file dichiara
+ * in testa il filtro con cui e' stato fatto - il periodo (o l'intervallo di date) e la ricerca - e
+ * quando e' stato generato: un file portato a un controllo deve dire da solo cosa contiene.
  */
 @Component
 public class EsportazioneStoricoService {
 
-    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto", "Quantità", "Scadenza", "Da", "Esito"};
+    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto", "Quantità", "Porzioni", "Scadenza", "Da", "Esito",
+            "Ingredienti e lotti del fornitore", "Fornitori"};
     private static final DateTimeFormatter DATA_ITALIANA = RigaEsportazione.DATA_ITALIANA;
     private static final DateTimeFormatter ORA_ITALIANA = DateTimeFormatter.ofPattern("HH:mm");
+
+    /**
+     * Cosa dichiara un file in testa: {@code filtro} e' il periodo gia' in parole («Oggi, 02/10/2026»,
+     * «Dal 01/09/2026 al 30/09/2026», «Tutto lo storico»), {@code ricerca} il testo cercato (null se
+     * non c'era), con le stampe e le etichette esportate e il momento della generazione.
+     */
+    public record DatiEsportazione(String filtro, String ricerca, int totaleCopie, LocalDateTime generatoIl) {
+
+        /** «Storico stampe · Oggi, 02/10/2026 · ricerca «impasto»»: la riga di testa di tutti e tre i formati. */
+        String titolo() {
+            return "Storico stampe · " + filtro + (ricerca != null && !ricerca.isBlank() ? " · ricerca «" + ricerca + "»" : "");
+        }
+
+        String riepilogo(int stampe) {
+            return "generato il " + generatoIl.format(DATA_ITALIANA) + " alle " + generatoIl.format(ORA_ITALIANA)
+                    + " · " + stampe + " stampe · " + totaleCopie + " etichette";
+        }
+    }
 
     private final BaseFont baseRegolare;
     private final BaseFont baseGrassetto;
@@ -54,13 +78,16 @@ public class EsportazioneStoricoService {
 
     /**
      * UTF-8 con BOM e separatore {@code ;} (docs/api.md): quello che Excel italiano si aspetta
-     * aprendo il file con un doppio clic. Righe CRLF, virgolette raddoppiate solo dove servono.
+     * aprendo il file con un doppio clic. Righe CRLF, virgolette raddoppiate solo dove servono. Le
+     * prime due righe dichiarano filtro e generazione (una cella sola ciascuna), poi l'intestazione.
      */
-    public void scriviCsv(List<RigaEsportazione> righe, OutputStream out) throws IOException {
+    public void scriviCsv(List<RigaEsportazione> righe, DatiEsportazione dati, OutputStream out) throws IOException {
         out.write(0xEF);
         out.write(0xBB);
         out.write(0xBF);
         BufferedWriter scrittore = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+        scriviRigaCsv(scrittore, new String[] {dati.titolo()});
+        scriviRigaCsv(scrittore, new String[] {dati.riepilogo(righe.size())});
         scriviRigaCsv(scrittore, INTESTAZIONI);
         String[] campi = new String[INTESTAZIONI.length];
         for (RigaEsportazione r : righe) {
@@ -70,9 +97,12 @@ public class EsportazioneStoricoService {
             campi[3] = String.valueOf(r.copie());
             campi[4] = r.lotto();
             campi[5] = r.quantita();
-            campi[6] = r.scadenza();
-            campi[7] = r.da();
-            campi[8] = r.esito();
+            campi[6] = r.porzioni();
+            campi[7] = r.scadenza();
+            campi[8] = r.da();
+            campi[9] = r.esito();
+            campi[10] = r.ingredientiELotti();
+            campi[11] = r.fornitori();
             scriviRigaCsv(scrittore, campi);
         }
         scrittore.flush(); // niente close(): chiuderebbe anche "out", che e' del chiamante (la risposta HTTP)
@@ -100,29 +130,38 @@ public class EsportazioneStoricoService {
     // -----------------------------------------------------------------------------------------
     // XLSX
 
+    /** Le righe sopra l'intestazione del foglio: titolo con il filtro, e la riga di generazione. */
+    private static final int RIGHE_DI_TESTA = 2;
+
     /**
-     * Intestazione in grassetto e bloccata, filtro automatico, colonne con larghezze sensate,
-     * {@code Data} come vera data Excel (si ordina e si filtra), {@code Copie} come numero, il
-     * resto testo. Le stringhe vanno con {@link Worksheet#inlineString}, non {@code value}: quel
-     * metodo passa dalla tabella delle stringhe condivise ({@code xl/sharedStrings.xml}), qui non
-     * serve (poca ripetizione riga per riga) e terrebbe in memoria l'intera tabella fino alla
-     * chiusura del workbook - una stringa scritta subito e' piu' in linea con lo streaming.
+     * Titolo con il filtro e riga di generazione in cima, poi l'intestazione in grassetto e bloccata
+     * (le tre righe restano ferme scorrendo), filtro automatico sull'intestazione, colonne con
+     * larghezze sensate, {@code Data} come vera data Excel (si ordina e si filtra), {@code Copie}
+     * come numero, il resto testo. I lotti degli ingredienti vanno a capo dentro la cella. Le
+     * stringhe vanno con {@link Worksheet#inlineString}, non {@code value}: quel metodo passa dalla
+     * tabella delle stringhe condivise ({@code xl/sharedStrings.xml}), qui non serve (poca ripetizione
+     * riga per riga) e terrebbe in memoria l'intera tabella fino alla chiusura del workbook - una
+     * stringa scritta subito e' piu' in linea con lo streaming.
      */
-    public void scriviXlsx(List<RigaEsportazione> righe, OutputStream out) throws IOException {
+    public void scriviXlsx(List<RigaEsportazione> righe, DatiEsportazione dati, OutputStream out) throws IOException {
         try (Workbook cartella = new Workbook(out, "Etichette", "1.0")) {
             Worksheet foglio = cartella.newWorksheet("Storico stampe");
+            foglio.inlineString(0, 0, dati.titolo());
+            foglio.style(0, 0).bold().fontSize(12).set();
+            foglio.inlineString(1, 0, dati.riepilogo(righe.size()));
+            int intestazione = RIGHE_DI_TESTA;
             for (int c = 0; c < INTESTAZIONI.length; c++) {
-                foglio.inlineString(0, c, INTESTAZIONI[c]);
+                foglio.inlineString(intestazione, c, INTESTAZIONI[c]);
             }
-            foglio.range(0, 0, 0, INTESTAZIONI.length - 1).style().bold().fillColor("D9D9D9").set();
-            foglio.freezePane(0, 1);
-            foglio.setAutoFilter(0, 0, INTESTAZIONI.length - 1);
-            int[] larghezze = {12, 8, 32, 8, 16, 12, 12, 20, 14};
+            foglio.range(intestazione, 0, intestazione, INTESTAZIONI.length - 1).style().bold().fillColor("D9D9D9").set();
+            foglio.freezePane(0, intestazione + 1);
+            foglio.setAutoFilter(intestazione, 0, INTESTAZIONI.length - 1);
+            int[] larghezze = {12, 8, 32, 8, 16, 12, 12, 12, 20, 14, 70, 28};
             for (int c = 0; c < larghezze.length; c++) {
                 foglio.width(c, larghezze[c]);
             }
 
-            int riga = 1;
+            int riga = intestazione + 1;
             for (RigaEsportazione r : righe) {
                 foglio.value(riga, 0, r.data());
                 foglio.style(riga, 0).format("dd/mm/yyyy").set();
@@ -131,9 +170,15 @@ public class EsportazioneStoricoService {
                 foglio.value(riga, 3, r.copie());
                 foglio.inlineString(riga, 4, r.lotto());
                 foglio.inlineString(riga, 5, r.quantita());
-                foglio.inlineString(riga, 6, r.scadenza());
-                foglio.inlineString(riga, 7, r.da());
-                foglio.inlineString(riga, 8, r.esito());
+                foglio.inlineString(riga, 6, r.porzioni());
+                foglio.inlineString(riga, 7, r.scadenza());
+                foglio.inlineString(riga, 8, r.da());
+                foglio.inlineString(riga, 9, r.esito());
+                foglio.inlineString(riga, 10, r.ingredientiELotti());
+                foglio.inlineString(riga, 11, r.fornitori());
+                if (!r.ingredientiELotti().isEmpty()) {
+                    foglio.style(riga, 10).wrapText(true).set();
+                }
                 riga++;
             }
         }
@@ -143,13 +188,15 @@ public class EsportazioneStoricoService {
     // PDF
 
     /**
-     * A4 orizzontale: titolo, riga del filtro applicato e riga di riepilogo, poi la tabella (o la
-     * frase "Nessuna stampa in questo periodo." se {@code righe} e' vuota - una tabella senza
-     * righe di dati sarebbe solo l'intestazione, meno chiaro di una frase). Font Liberation Sans
-     * incorporato (risorse del progetto): l'Helvetica standard di PDF non ha le lettere accentate.
+     * A4 orizzontale: titolo, riga del filtro applicato (periodo o intervallo di date, piu' la
+     * ricerca) e riga di riepilogo, poi la tabella (o la frase "Nessuna stampa in questo periodo."
+     * se {@code righe} e' vuota - una tabella senza righe di dati sarebbe solo l'intestazione, meno
+     * chiaro di una frase). Dodici colonne in 7,5 punti: la colonna dei lotti prende un quarto della
+     * larghezza e va a capo, il resto resta leggibile nella pagina senza uscirne (la tabella e' sempre
+     * alla larghezza del testo). Font Liberation Sans incorporato (risorse del progetto): l'Helvetica
+     * standard di PDF non ha le lettere accentate.
      */
-    public void scriviPdf(List<RigaEsportazione> righe, String descrizionePeriodo, String ricercaQ, int totaleCopie,
-                           LocalDateTime generatoIl, OutputStream out) throws IOException {
+    public void scriviPdf(List<RigaEsportazione> righe, DatiEsportazione dati, OutputStream out) throws IOException {
         Document documento = new Document(PageSize.A4.rotate(), 24, 24, 50, 36);
         try {
             PdfWriter writer = PdfWriter.getInstance(documento, out);
@@ -160,12 +207,10 @@ public class EsportazioneStoricoService {
             Font sottotitolo = new Font(baseRegolare, 10f, Font.NORMAL, Color.DARK_GRAY);
             documento.add(new Paragraph("Storico stampe", titolo));
 
-            String filtro = descrizionePeriodo + (ricercaQ != null && !ricercaQ.isBlank() ? " · ricerca «" + ricercaQ + "»" : "");
+            String filtro = dati.filtro() + (dati.ricerca() != null && !dati.ricerca().isBlank() ? " · ricerca «" + dati.ricerca() + "»" : "");
             documento.add(new Paragraph(filtro, sottotitolo));
 
-            String meta = "generato il " + generatoIl.format(DATA_ITALIANA) + " alle " + generatoIl.format(ORA_ITALIANA)
-                    + " · " + righe.size() + " stampe · " + totaleCopie + " etichette";
-            Paragraph paragrafoMeta = new Paragraph(meta, sottotitolo);
+            Paragraph paragrafoMeta = new Paragraph(dati.riepilogo(righe.size()), sottotitolo);
             paragrafoMeta.setSpacingAfter(10f);
             documento.add(paragrafoMeta);
 
@@ -187,17 +232,17 @@ public class EsportazioneStoricoService {
      * supera la pagina corrente - senza calcolare noi le interruzioni di pagina.
      */
     private PdfPTable tabella(List<RigaEsportazione> righe) throws DocumentException {
-        PdfPTable tabella = new PdfPTable(new float[] {9, 6, 20, 6, 13, 10, 9, 15, 10});
+        PdfPTable tabella = new PdfPTable(new float[] {7.5f, 4.5f, 11, 4, 9, 6, 5, 7, 8, 6, 24, 9});
         tabella.setWidthPercentage(100);
         tabella.setHeaderRows(1);
 
-        Font grassettoCella = new Font(baseGrassetto, 8.5f, Font.NORMAL, Color.BLACK);
-        Font testoCella = new Font(baseRegolare, 8.5f, Font.NORMAL, Color.BLACK);
+        Font grassettoCella = new Font(baseGrassetto, 7.5f, Font.NORMAL, Color.BLACK);
+        Font testoCella = new Font(baseRegolare, 7.5f, Font.NORMAL, Color.BLACK);
         Color sfondoIntestazione = new Color(0xD9, 0xD9, 0xD9);
         for (String testo : INTESTAZIONI) {
             PdfPCell cella = new PdfPCell(new Phrase(testo, grassettoCella));
             cella.setBackgroundColor(sfondoIntestazione);
-            cella.setPadding(4f);
+            cella.setPadding(3f);
             tabella.addCell(cella);
         }
 
@@ -211,9 +256,12 @@ public class EsportazioneStoricoService {
             aggiungiCella(tabella, String.valueOf(r.copie()), testoCella, sfondo);
             aggiungiCella(tabella, r.lotto(), testoCella, sfondo);
             aggiungiCella(tabella, r.quantita(), testoCella, sfondo);
+            aggiungiCella(tabella, r.porzioni(), testoCella, sfondo);
             aggiungiCella(tabella, r.scadenza(), testoCella, sfondo);
             aggiungiCella(tabella, r.da(), testoCella, sfondo);
             aggiungiCella(tabella, r.esito(), testoCella, sfondo);
+            aggiungiCella(tabella, r.ingredientiELotti(), testoCella, sfondo);
+            aggiungiCella(tabella, r.fornitori(), testoCella, sfondo);
             indice++;
         }
         return tabella;
@@ -222,7 +270,7 @@ public class EsportazioneStoricoService {
     private void aggiungiCella(PdfPTable tabella, String testo, Font font, Color sfondo) {
         PdfPCell cella = new PdfPCell(new Phrase(testo, font));
         cella.setBackgroundColor(sfondo);
-        cella.setPadding(3f);
+        cella.setPadding(2.5f);
         tabella.addCell(cella);
     }
 

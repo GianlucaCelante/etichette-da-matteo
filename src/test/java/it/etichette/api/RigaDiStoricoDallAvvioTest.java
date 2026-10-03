@@ -62,6 +62,9 @@ class RigaDiStoricoDallAvvioTest {
     static void proprieta(DynamicPropertyRegistry registry) throws IOException {
         cartellaDati = Files.createTempDirectory("etichette-test-riga-dall-avvio-");
         registry.add("etichette.dati", () -> cartellaDati.toString());
+        // Questi test mandano APPOSTA stampe identiche di fila dallo stesso "PC" e vogliono un lavoro per
+        // ciascuna: la finestra del doppio tocco (StampeService, 2/10/2026) qui non deve accorparle.
+        registry.add("etichette.stampe.finestra-doppio-tocco-ms", () -> "0");
     }
 
     @Autowired

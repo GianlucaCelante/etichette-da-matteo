@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBlocker, useNavigate, useSearchParams, type BlockerFunction } from "react-router-dom";
 import {
   useAggiornaProdotto,
   useAnnullaStampa,
   useAnteprimaProdottoInModifica,
   useCreaProdotto,
-  useDuplicaProdotto,
   useEliminaProdotto,
   useIngredienti,
   useLavoroStampa,
@@ -13,6 +12,7 @@ import {
   useLotto,
   useProdotti,
   useProdotto,
+  useProdottoBozza,
   useProposteIngredienti,
   useProvaProdotto,
   useStampante,
@@ -42,14 +42,44 @@ import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/st
 import { GIORNI_SCADENZA_PROPOSTI, oggiPiuGiorni } from "../componenti/stampa/formattazione";
 import { CampoAllergeni, CampoArea, CampoInline, CampoSelezione, CampoTesto, Gruppo } from "../componenti/etichette/CampiComuni";
 import { blocchiInBozza, bozzaInBlocchi, bozzaInValori, valoriInBozza, type BloccoBozza, type ValoreBozza } from "../componenti/etichette/bozza";
+import { bloccoNuovo, numeroDelTesto } from "../componenti/etichette/corpoBlocco";
+import { useBloccoNuovo } from "../componenti/etichette/useBloccoNuovo";
 import BlocchiEditor from "../componenti/etichette/BlocchiEditor";
 import BlocchiTelefono from "../componenti/etichette/BlocchiTelefono";
 import CampoLogoBlocco from "../componenti/etichette/CampoLogoBlocco";
+import SegmentiModalita, { type ModalitaEditor } from "../componenti/etichette/SegmentiModalita";
+import SelettoreEtichetta from "../componenti/etichette/SelettoreEtichetta";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
+import CampoConservazione from "../componenti/etichette/CampoConservazione";
+import ConfermaUscita from "../componenti/etichette/ConfermaUscita";
 
-const OPZIONI_CONSERVAZIONE = ["Fuori dal frigo", "In frigo", "In congelatore"];
+// Un elenco vuoto sempre lo stesso, per le props che aspettano un array mentre i prodotti arrivano.
+const NESSUN_PRODOTTO: Prodotto[] = [];
+
+// L'ultima etichetta scelta in questa sessione (2 ottobre 2026, prove con
+// utenti simulati: arrivando da «Etichette» nel menu si apriva sempre la prima
+// dell'elenco, anche dopo aver lavorato su un'altra). Sta in memoria a livello
+// di modulo, come modalitaTelSessione piu' sotto: tornando a Etichette si
+// ritrova, riaprendo l'app no. Un indirizzo con ?prodotto=ID vince sempre.
+let ultimoProdottoVisto: number | null = null;
+
+// Il fuoco da tastiera non deve finire sotto l'anteprima ancorata in cima (telefono), la cui
+// altezza si misura (rifAncorata): vedi stileSchermo nel componente.
+
+// Una «Nuova etichetta» o un «Duplica» NON creano subito un record (2 ottobre
+// 2026: abbandonandoli restavano «Etichetta nuova» stampabili in elenco): sono
+// una BOZZA che vive solo nel browser (il servizio dà il prodotto di partenza
+// con GET /api/prodotti/nuovo e /{id}/copia, senza salvare). Il prodotto nasce
+// al primo «Salva etichetta». L'indirizzo la ricorda (?nuovo=1, ?duplica=ID):
+// ricaricando la pagina se ne riparte una pulita, e non resta mai niente.
+type Bozza = { tipo: "nuovo" } | { tipo: "copia"; daId: number };
+function bozzaDaUrl(parametri: URLSearchParams): Bozza | null {
+  if (parametri.get("nuovo") === "1") return { tipo: "nuovo" };
+  const origine = Number(parametri.get("duplica"));
+  return parametri.has("duplica") && Number.isFinite(origine) ? { tipo: "copia", daId: origine } : null;
+}
 // Le tre diciture fisse del prototipo (campoScelta): non e' testo libero.
-const OPZIONI_DICITURA_SCADENZA = ["da consumare entro", "da consumarsi preferibilmente entro il", "Scade il"];
+const OPZIONI_DICITURA_SCADENZA = ["da consumare entro", "da consumarsi preferibilmente entro il", "Scade il", "Confezionato il", "Prodotto il"];
 // Le unita' che si separano dal numero nel campo Quantita' (piu' lunghe
 // prima: "kg"/"ml" prima di "g"/"l", altrimenti il suffisso piu' corto le
 // intercetta per prima). Il valore salvato resta sempre il testo intero
@@ -69,10 +99,12 @@ function separaQuantita(testo: string): { numero: string; unita: string | null }
 // Etichette). Non c'e' piu' un gruppo fisso "Etichetta" (deciso dal cliente,
 // 24/09/2026: "separiamo il blocco Etichetta, il Nome sta a se'"): "Nome"
 // vive fuori dai gruppi, sempre in cima alla scheda (non dipende da nessun
-// blocco); "Nome stampato" ha il suo gruppo "Titolo" (chiave "titolo"),
-// "Quantita'" il suo gruppo "Quantita'" (chiave "quantita"), e la
+// blocco; sul telefono non c'e' proprio, si scrive dal selettore in cima:
+// SelettoreEtichetta); "Nome stampato" ha il suo gruppo "Titolo" (chiave "titolo"),
+// "Quantita'" il suo gruppo "Quantita'" (chiave "quantita"), "Porzioni" il
+// suo (chiave "porzioni", il valore di partenza sta nel prodotto), e la
 // "Conservazione" - non piu' un campo dentro "scadenza" - il suo gruppo, sul
-// nuovo blocco "conservazione". I blocchi liberi (testo, testoGrande, logo,
+// nuovo blocco "conservazione". I blocchi liberi (testo, logo,
 // riga, spazio) non hanno un gruppo fisso: il loro gruppo si costruisce al
 // volo, gia' nell'ordine giusto (vedi sezioniBlocchi).
 const GRUPPO_DEL_BLOCCO: Partial<Record<TipoBlocco, string>> = {
@@ -84,6 +116,7 @@ const GRUPPO_DEL_BLOCCO: Partial<Record<TipoBlocco, string>> = {
   conservazione: "conservazione",
   lotto: "lotto",
   quantita: "quantita",
+  porzioni: "porzioni",
   valori: "valori",
   produttore: "produttore",
   dataProduzione: "dataProduzione",
@@ -101,7 +134,7 @@ const GRUPPO_DEL_BLOCCO: Partial<Record<TipoBlocco, string>> = {
 // da "portare in vista" per loro).
 function chiaveSezionePerBlocco(blocco: BloccoBozza, blocchi: BloccoBozza[]): string | null {
   if (blocco.tipo === "logo") return "logo";
-  if (blocco.tipo === "testo" || blocco.tipo === "testoGrande") {
+  if (blocco.tipo === "testo") {
     // Stessa formula di sezioniBlocchi piu' sotto: l'indice e' quanti blocchi
     // accesi di questo tipo ci sono in tutto (il nuovo, sempre acceso e in
     // fondo, e' l'ultimo contato).
@@ -124,6 +157,9 @@ interface ProdottoBozza {
   giorniScadenza: number;
   conservazione: string;
   quantita: string;
+  // Il valore di partenza del blocco "Porzioni" ("" = nessuno): sul servizio e'
+  // null/assente, qui sempre una stringa per l'input.
+  porzioni: string;
   siglaOperatore: string;
   allergeni: string[];
   valori: ValoreBozza[];
@@ -152,7 +188,7 @@ interface PassoStoria {
 const DURATA_RAGGRUPPAMENTO_MS = 500;
 const MASSIMO_PASSI_STORIA = 80;
 
-type CampoProdottoStringa = "nomeStampa" | "ingredienti" | "modoUso" | "conservazione" | "quantita" | "siglaOperatore";
+type CampoProdottoStringa = "nomeStampa" | "ingredienti" | "modoUso" | "conservazione" | "quantita" | "porzioni" | "siglaOperatore";
 type CampoCondiviso = "dicituraScadenza" | "formatoData";
 type CampoProduttore = "ragioneSociale" | "sedeLegale" | "sedeProduzione" | "confezionatoDa";
 
@@ -166,6 +202,13 @@ function anteprimaTesto(testo: string, massimo: number): string {
   if (!t) return "Da scrivere";
   return t.length > massimo ? t.slice(0, massimo).trimEnd() + "…" : t;
 }
+
+// L'ultima modalita' scelta sul telefono («Contenuto» / «Struttura»), solo per
+// la sessione: sta in memoria a livello di modulo, cosi' tornando a Etichette
+// da un'altra vista si ritrova com'era, ma non si scrive nel localStorage e
+// riaprendo l'app si riparte da «Contenuto». Cambiando etichetta si torna a
+// «Contenuto» (vedi l'effetto su chiaveProdotto piu' sotto).
+let modalitaTelSessione: ModalitaEditor = "contenuto";
 
 // Lo stato aperto/chiuso dei gruppi su PC (deciso da Gianluca, 9 settembre
 // sera: "i gruppi si aprono e chiudono come sul telefono... lo stato e'
@@ -193,22 +236,45 @@ function chiaveLsGruppoPC(nomeGruppo: string): string {
   return `etichette.gruppoPC.${nomeGruppo}`;
 }
 
-// Il testo "N blocchi accesi" sotto il nome non c'e' piu' (deciso dal
-// cliente, 25/09/2026): resta solo il nome.
+// La voce dell'elenco e' la stessa carta di Stampa e Ingredienti (".prodotto":
+// nome sopra, il peso sotto, stato scelto ".on"). Il testo "N blocchi accesi"
+// sotto il nome non c'e' piu' (deciso dal cliente, 25/09/2026): sotto al nome
+// sta il peso, come nelle altre viste.
 function VoceProdotto({
   prodotto,
   selezionato,
+  nomeInModifica,
   onScegli,
 }: {
   prodotto: Prodotto;
   selezionato: boolean;
+  // Il nome che si sta scrivendo adesso nell'editor, se questa è l'etichetta aperta: la voce
+  // dell'elenco lo segue mentre si digita, invece di restare quello salvato fino al «Salva».
+  nomeInModifica?: string;
   onScegli: (id: number) => void;
 }) {
   const clic = useCallback(() => onScegli(prodotto.id), [onScegli, prodotto.id]);
+  const nome = nomeInModifica ?? prodotto.nome;
   return (
-    <button type="button" className={selezionato ? "scelto" : ""} onClick={clic} aria-pressed={selezionato}>
-      <span>{prodotto.nome}</span>
+    <button type="button" className={"prodotto" + (selezionato ? " on" : "")} onClick={clic} aria-pressed={selezionato}>
+      <span className="n" title={nome}>
+        {nome}
+      </span>
+      <span className="d">{prodotto.quantita}</span>
     </button>
+  );
+}
+
+// La voce in cima all'elenco mentre c'è una bozza («Nuova etichetta» o «Duplica»):
+// dice che quell'etichetta non è ancora salvata e segue il nome che si digita.
+function VoceBozza({ nome }: { nome: string }) {
+  return (
+    <div className="prodotto on" aria-current="true">
+      <span className="n" title={nome}>
+        {nome.trim() || "Etichetta nuova"}
+      </span>
+      <span className="d">non ancora salvata</span>
+    </div>
   );
 }
 
@@ -231,34 +297,16 @@ function CampoQuantitaInline({ valore, onCambia }: { valore: string; onCambia: (
   );
 }
 
-// Una scelta fra opzioni fisse, con l'etichetta a sinistra invece che sopra
-// (CampoInline + una select nuda): serve per Scadenza/Conservazione dentro
-// il gruppo Prodotto, dove il prototipo usa "campoInline" invece di
-// "campoScelta" (verticale, gia' coperto da CampoSelezione).
-function CampoSceltaInline({
-  etichetta,
-  valore,
-  opzioni,
-  onCambia,
-}: {
-  etichetta: string;
-  valore: string;
-  opzioni: readonly string[];
-  onCambia: (v: string) => void;
-}) {
-  const cambia = useCallback((evento: ChangeEvent<HTMLSelectElement>) => onCambia(evento.target.value), [onCambia]);
+// Il campo "Porzioni" del gruppo omonimo: testo libero ("8", "12 porzioni"),
+// niente unita' da separare come per il Peso. Il valore di partenza sta nel
+// prodotto; alla stampa si puo' cambiare (vista Stampa). Portato a fuoco da
+// Gruppo appena il blocco nasce (data-fuoco-nuovo).
+function CampoPorzioniInline({ valore, onCambia }: { valore: string; onCambia: (v: string) => void }) {
+  const cambia = useCallback((evento: ChangeEvent<HTMLInputElement>) => onCambia(evento.target.value), [onCambia]);
   return (
-    <CampoInline etichetta={etichetta}>
-      <div className="casella p-0">
-        <select value={valore} onChange={cambia} aria-label={etichetta} className="w-full h-[50px] px-3.5 bg-transparent cursor-pointer">
-          {opzioni.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      </div>
-    </CampoInline>
+    <div className="casella">
+      <input value={valore} onChange={cambia} placeholder="es. 8" aria-label="Porzioni" className="font-bold" data-fuoco-nuovo />
+    </div>
   );
 }
 
@@ -303,7 +351,7 @@ function CampoLottoRapido({
           value={schemaLotto}
           onChange={cambiaSchema}
           aria-label="Schema del lotto"
-          className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3.5 h-[50px] cursor-pointer"
+          className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3.5 h-[calc(var(--d-campo)-2px)] cursor-pointer"
         >
           {schemi.map((s) => (
             <option key={s.codice} value={s.codice}>
@@ -316,11 +364,14 @@ function CampoLottoRapido({
       <div className="mono text-[12px] text-[var(--spento)]">
         {schemaLotto === "mano" ? "a mano: si scrive prima di stampare" : `oggi: ${schemaInfo?.oggi ?? "…"}`}
       </div>
+      {/* Il biglietto di Matteo dice che il lotto sta nelle Impostazioni, ma lo schema è di ogni
+          etichetta (2 ottobre 2026, prove con utenti simulati): lo si dice qui, dove si sceglie. */}
+      <div className="text-[12px] text-[var(--tenue)]">Il lotto si imposta qui, per ogni etichetta.</div>
     </div>
   );
 }
 
-// Il testo di un blocco "Testo libero"/"Testo grande", nel suo gruppo
+// Il testo di un blocco "Testo libero", nel suo gruppo
 // (deciso da Gianluca): prima stava nella riga del vassoio dei blocchi,
 // spostato qui perche' segua lo stesso posto degli altri campi del blocco.
 function CampoTestoBloccoLibero({ blocco, onCambia }: { blocco: BloccoBozza; onCambia: (chiave: string, testo: string) => void }) {
@@ -329,7 +380,7 @@ function CampoTestoBloccoLibero({ blocco, onCambia }: { blocco: BloccoBozza; onC
     <div className="campo">
       <div className="etichettina">Testo</div>
       <div className="casella">
-        <input value={blocco.testo ?? ""} onChange={cambia} placeholder="Scrivi il testo…" aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`} />
+        <input value={blocco.testo ?? ""} onChange={cambia} placeholder="Scrivi il testo…" aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`} data-fuoco-nuovo />
       </div>
     </div>
   );
@@ -341,7 +392,7 @@ function CampoTestoBloccoLibero({ blocco, onCambia }: { blocco: BloccoBozza; onC
 function ChipTracciato({ tracciato, senzaLotto, onTogli }: { tracciato: Tracciato; senzaLotto: boolean; onTogli: (tipo: Tracciato["tipo"], id: number) => void }) {
   const clic = useCallback(() => onTogli(tracciato.tipo, tracciato.id), [onTogli, tracciato.tipo, tracciato.id]);
   return (
-    <button type="button" className="chip on" title="Togli" onClick={clic}>
+    <button type="button" className="chip on" title="Togli" aria-label={`Togli ${tracciato.nome} dagli ingredienti da tracciare`} onClick={clic}>
       {tracciato.tipo === "prodotto" && <IconaStampa larghezza={13} spessoreTratto={2} className="opacity-80" />}
       <span>{tracciato.nome}</span>
       {senzaLotto && <span className="w-2 h-2 rounded-full bg-[var(--ambra)]" title="nessun lotto in uso" />}
@@ -463,13 +514,21 @@ function CampoIngredientiCollegati({
   // parte, e non tornano in fila da sole alla battuta successiva; quelle "da
   // creare" (id null, dal 25/09/2026) restano finche' non sono in
   // pezziNascosti (vedi sopra) - niente x per toglierle, deciso dal cliente.
-  const proposte = (proposteTrovate ?? []).filter((p) =>
-    p.id !== null ? !tracciati.some((t) => t.tipo === "ingrediente" && t.id === p.id) : !pezziNascosti.has(p.pezzo),
-  );
+  const proposte = (proposteTrovate ?? [])
+    .filter((p) => (p.id !== null ? !tracciati.some((t) => t.tipo === "ingrediente" && t.id === p.id) : !pezziNascosti.has(p.pezzo)))
+    // Lo stesso ingrediente puo' essere trovato da due pezzi del testo («Farina
+    // di grano tenero tipo 0», «farina»): una proposta sola per ingrediente
+    // (2 ottobre 2026, sera; per quelle da creare, per nome), la prima che arriva.
+    .filter((p, i, tutte) => tutte.findIndex((q) => (p.id !== null ? q.id === p.id : q.id === null && q.nome.trim().toLowerCase() === p.nome.trim().toLowerCase())) === i);
 
   return (
     <div className="collegati">
-      <div className="etichettina flex items-center gap-2 text-[var(--verdescuro)]">Ingredienti collegati, per i lotti</div>
+      {/* Parole da cucina (2 ottobre 2026: «collegati, per i lotti» non lo capiva nessuno): cosa
+          fa, in una riga. Il nome interno («tracciati») non cambia. */}
+      <div className="etichettina flex items-center gap-2 text-[var(--verdescuro)]">Ingredienti da tracciare</div>
+      <div className="text-[12px] text-[var(--tenue)]">
+        Scegli quelli di cui vuoi sapere da quale sacco arrivano: lo Storico ricorda il lotto che hai usato a ogni stampa.
+      </div>
       <div className="chips">
         {tracciati.map((t) => {
           const senzaLotto = t.tipo === "ingrediente" && (ingredientiTutti ?? []).find((i) => i.id === t.id)?.stato === "manca";
@@ -488,7 +547,7 @@ function CampoIngredientiCollegati({
           proporre (deciso da Gianluca): il riquadro resta com'era. */}
       {proposte.length > 0 && (
         <>
-          <div className="etichettina mt-0.5">Dal testo:</div>
+          <div className="etichettina mt-0.5">Trovati nel testo degli ingredienti (tocca per aggiungerli):</div>
           <div className="chips">
             {proposte.map((p) =>
               p.id !== null ? (
@@ -510,7 +569,7 @@ function CampoIngredientiCollegati({
               + Ingrediente nuovo…
             </button>
           </div>
-          <div className="etichettina mt-0.5">Le tue produzioni</div>
+          <div className="etichettina mt-0.5">Le tue preparazioni (da usare come ingrediente)</div>
           <div className="chips">
             {prodottiLiberi.map((p) => (
               <ChipProduzioneLibera key={p.id} id={p.id} nome={p.nome} onAggiungi={aggiungiProduzione} />
@@ -538,6 +597,11 @@ export default function Etichette() {
   const avvisa = useAvviso();
 
   const [cercaEt, setCercaEt] = useState("");
+  // La bozza di «Nuova etichetta»/«Duplica» (vedi il tipo Bozza in cima): se c'e', non c'e' un
+  // prodotto salvato scelto per i dati, ma prodottoId resta quello da cui si e' partiti, cosi'
+  // scartando la bozza si torna li'. istanzaBozza cambia a ogni nuova bozza, per ripartire pulita.
+  const [bozza, setBozza] = useState<Bozza | null>(() => bozzaDaUrl(searchParams));
+  const [istanzaBozza, setIstanzaBozza] = useState(0);
   const [prodottoId, setProdottoId] = useState<number | null>(() => {
     const p = searchParams.get("prodotto");
     const n = p ? Number(p) : NaN;
@@ -548,6 +612,16 @@ export default function Etichette() {
   // Sul telefono la scheda si apre un gruppo alla volta (vero accordion):
   // null = tutti chiusi, altrimenti la chiave del gruppo aperto.
   const [gruppoAperto, setGruppoAperto] = useState<string | null>(null);
+  // Sul telefono l'editor ha due modalita' (deciso dal cliente, 29/09/2026):
+  // «Contenuto» = le schede dei campi, «Struttura» = solo l'elenco dei blocchi.
+  const [modalitaTel, setModalitaTelStato] = useState<ModalitaEditor>(modalitaTelSessione);
+  const impostaModalitaTel = useCallback((m: ModalitaEditor) => {
+    modalitaTelSessione = m;
+    setModalitaTelStato(m);
+  }, []);
+  // L'ultimo prodotto visto dall'effetto che azzera la modalita' (null = mai
+  // visto in questa apertura della vista: si tiene quella ricordata).
+  const prodottoModalitaRef = useRef<string | null>(null);
   // Su PC invece ogni gruppo si apre/chiude per conto suo (deciso da
   // Gianluca): aperti di default, lo stato di ognuno si ricorda a parte nel
   // localStorage (leggiPreferenza/scriviPreferenza sopra); qui in memoria si
@@ -572,25 +646,16 @@ export default function Etichette() {
   const [azionePendente, setAzionePendente] = useState<(() => void) | null>(null);
   // Appena creato (nuovo o duplicato): il nome va selezionato per riscriverlo
   // subito, come nel prototipo ("si scrive subito").
-  const appenaCreatoRef = useRef(false);
+  const appenaCreatoRef = useRef(bozza !== null);
+  // Sale di uno quando, sul telefono, il selettore deve aprire il nome in
+  // scrittura (etichetta appena creata o duplicata).
+  const [richiestaNome, setRichiestaNome] = useState(0);
   // Appena eliminata (deciso da Gianluca): dopo confermaElimina, prodottoId
   // torna a null apposta (nessuna etichetta scelta) - senza questa guardia
   // l'effetto piu' sotto che sceglie il primo dell'elenco scattava subito e
   // sembrava che l'eliminazione non fosse successa. Si toglie appena
   // l'utente sceglie o crea qualcosa (impostaProdotto/nuovoProdotto sotto).
   const appenaEliminatoRef = useRef(false);
-  // Arrivando da Stampa col bottone "Nuova etichetta" (/etichette?nuovo=1):
-  // nuovoInCorsoRef diventa vero durante il render stesso (sotto), appena si
-  // vede il parametro, prima che qualunque effetto giri - cosi' l'effetto
-  // che sceglie il primo prodotto dell'elenco non si mette in mezzo mentre
-  // la creazione e' ancora in corso (il parametro si toglie dall'URL subito,
-  // ma la creazione resta appesa un attimo, il tempo della richiesta).
-  // nuovoRichiestoRef e' la guardia (come appenaCreatoRef) che fa partire
-  // nuovoProdotto() una volta sola, nell'effetto piu' sotto.
-  const nuovoInCorsoRef = useRef(false);
-  const nuovoRichiestoRef = useRef(false);
-  if (searchParams.get("nuovo") === "1") nuovoInCorsoRef.current = true;
-
   // La cronologia di Annulla/Ripristina vive in un ref (non in stato React):
   // cambia a ogni battuta, e rifarla passare per un render ogni volta
   // sarebbe inutile. "versioneStoria" e' solo la leva per far ridisegnare i
@@ -600,7 +665,14 @@ export default function Etichette() {
   const [, setVersioneStoria] = useState(0);
 
   const { data: prodotti } = useProdotti({ ordine: "nome" });
-  const { data: prodotto } = useProdotto(prodottoId ?? undefined);
+  // I dati dell'etichetta aperta: quelli salvati, oppure - con una bozza - il prodotto di partenza
+  // dal servizio (non salvato, id ID_BOZZA).
+  const { data: prodottoSalvato } = useProdotto(bozza ? undefined : (prodottoId ?? undefined));
+  const { data: prodottoDellaBozza } = useProdottoBozza(!!bozza, bozza?.tipo === "copia" ? bozza.daId : null, istanzaBozza);
+  const prodotto: Prodotto | undefined = bozza ? prodottoDellaBozza : prodottoSalvato;
+  // Cambia quando si apre un'etichetta diversa (o una nuova bozza): al posto di prodotto.id nelle
+  // dipendenze, perche' due bozze di fila hanno lo stesso id.
+  const chiaveProdotto = prodotto ? (bozza ? `bozza-${istanzaBozza}` : String(prodotto.id)) : undefined;
   const { data: stampante } = useStampante();
   const { data: lavoro } = useLavoroStampa();
   // Per il riassunto del gruppo "Logo" quando e' chiuso ("caricato"/"nessuno"):
@@ -610,7 +682,6 @@ export default function Etichette() {
   const salvaProdottoMut = useAggiornaProdotto();
   const eliminaProdottoMut = useEliminaProdotto();
   const creaProdottoMut = useCreaProdotto();
-  const duplicaProdottoMut = useDuplicaProdotto();
   const provaProdottoMut = useProvaProdotto();
   const annullaStampaMut = useAnnullaStampa();
 
@@ -623,7 +694,24 @@ export default function Etichette() {
   // sempre - si legge dallo scroll di ".schermo" (non della colonna: sul
   // telefono e' lei a scorrere, la colonna e' overflow:visible).
   const rifSchedaTel = useRef<HTMLDivElement>(null);
+  const rifAncorata = useRef<HTMLDivElement>(null);
+  // L'anteprima ancorata esiste solo con un'etichetta aperta: il nodo compare e sparisce con lei.
+  const haScheda = bozzaProdotto !== null;
+  const [altezzaAncorata, setAltezzaAncorata] = useState(0);
   const [anteprimaStaccata, setAnteprimaStaccata] = useState(false);
+  // L'altezza dell'anteprima ancorata (telefono, o PC a finestra stretta: ".soloTel"): la
+  // misura serve a scroll-padding-top, cosi' un campo che prende il fuoco non resta sotto di
+  // lei. Nascosta (display:none su PC) misura 0 e non toglie niente.
+  useEffect(() => {
+    const nodo = rifAncorata.current;
+    if (!nodo) return;
+    const misura = () => setAltezzaAncorata(nodo.offsetHeight);
+    misura();
+    const osservatore = new ResizeObserver(misura);
+    osservatore.observe(nodo);
+    return () => osservatore.disconnect();
+  }, [haScheda]);
+  const stileSchermo = useMemo(() => (altezzaAncorata > 0 ? { scrollPaddingTop: altezzaAncorata + 8 } : undefined), [altezzaAncorata]);
   useEffect(() => {
     const nodo = rifSchedaTel.current;
     if (!nodo) return;
@@ -632,29 +720,41 @@ export default function Etichette() {
     return () => nodo.removeEventListener("scroll", suScroll);
   }, []);
 
-  // Se non c'e' ancora un prodotto scelto (primo accesso, o quello nell'URL
-  // non esiste piu'), si prende il primo dell'elenco - ma non se si sta per
-  // crearne uno nuovo arrivando da Stampa (nuovoInCorsoRef, sopra), ne'
-  // appena dopo un'eliminazione (appenaEliminatoRef, sopra): senza questi
-  // controlli si vedrebbe per un attimo il primo della lista invece dello
-  // stato vuoto voluto.
+  // Se non c'e' ancora un'etichetta scelta (primo accesso senza ?prodotto=ID), si riapre
+  // l'ultima di questa sessione (ultimoProdottoVisto) se esiste ancora, altrimenti la prima
+  // dell'elenco - mai quando c'e' una bozza («Nuova etichetta» da Stampa: ?nuovo=1), ne'
+  // appena dopo un'eliminazione (appenaEliminatoRef, sopra): senza questi controlli si vedrebbe
+  // per un attimo un'altra etichetta invece dello stato vuoto o della bozza voluti.
   useEffect(() => {
-    if (prodottoId === null && prodotti?.[0] && !nuovoInCorsoRef.current && !appenaEliminatoRef.current) setProdottoId(prodotti[0].id);
-  }, [prodottoId, prodotti]);
+    if (prodottoId !== null || bozza || !prodotti?.[0] || appenaEliminatoRef.current) return;
+    const ricordata = prodotti.find((p) => p.id === ultimoProdottoVisto);
+    setProdottoId((ricordata ?? prodotti[0]).id);
+  }, [prodottoId, prodotti, bozza]);
+  useEffect(() => {
+    if (prodottoId !== null) ultimoProdottoVisto = prodottoId;
+  }, [prodottoId]);
 
   // L'URL segue la scelta, cosi' si puo' arrivare qui gia' su un prodotto
   // preciso (il tasto "matita" di Stampa) e ricaricando si resta li'; senza
-  // scelta (dopo un'eliminazione) il parametro sparisce.
+  // scelta (dopo un'eliminazione) il parametro sparisce. Con una bozza l'indirizzo e'
+  // ?nuovo=1 o ?duplica=ID: ricaricando se ne apre una pulita, e non resta nessun record.
+  const origineBozza = bozza?.tipo === "copia" ? bozza.daId : null;
   useEffect(() => {
+    if (bozza) {
+      setSearchParams(bozza.tipo === "nuovo" ? { nuovo: "1" } : { duplica: String(bozza.daId) }, { replace: true });
+      return;
+    }
     if (prodottoId !== null) {
       setSearchParams({ prodotto: String(prodottoId) }, { replace: true });
       return;
     }
     setSearchParams(
       (precedenti) => {
-        if (!precedenti.has("prodotto")) return precedenti;
+        if (!precedenti.has("prodotto") && !precedenti.has("nuovo") && !precedenti.has("duplica")) return precedenti;
         const nuovi = new URLSearchParams(precedenti);
         nuovi.delete("prodotto");
+        nuovi.delete("nuovo");
+        nuovi.delete("duplica");
         return nuovi;
       },
       { replace: true },
@@ -669,7 +769,7 @@ export default function Etichette() {
     // sera mentre si provava "proponi dal testo" scrivendo veloce). Se la si
     // rimette "per correttezza" torna il difetto.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prodottoId]);
+  }, [prodottoId, bozza?.tipo, origineBozza]);
 
   useEffect(() => {
     if (!prodotto) {
@@ -701,6 +801,8 @@ export default function Etichette() {
       giorniScadenza: prodotto.giorniScadenza,
       conservazione: prodotto.conservazione,
       quantita: prodotto.quantita,
+      // ?? "": un prodotto salvato prima delle porzioni non ha il campo.
+      porzioni: prodotto.porzioni ?? "",
       siglaOperatore: prodotto.siglaOperatore,
       allergeni: prodotto.allergeni,
       valori: valoriInBozza(prodotto.valoriNutrizionali),
@@ -728,6 +830,10 @@ export default function Etichette() {
     // dipende dall'ordine dei blocchi, che qui non e' ancora comodo da
     // ricalcolare (sezioniComplete si costruisce al render, non qui).
     setGruppoAperto(null);
+    // Un'altra etichetta apre sempre «Contenuto» (ma la prima volta che la
+    // vista vede un'etichetta si tiene la modalita' ricordata).
+    if (prodottoModalitaRef.current !== null && prodottoModalitaRef.current !== chiaveProdotto) impostaModalitaTel("contenuto");
+    prodottoModalitaRef.current = chiaveProdotto ?? null;
     // Nessuna evidenziazione residua da un prodotto precedente (deciso da
     // Gianluca): il gruppo evidenziato ha senso solo appena dopo l'aggiunta.
     setChiaveEvidenziata(null);
@@ -739,7 +845,7 @@ export default function Etichette() {
     storiaRef.current = { passi: [], indice: 0 };
     setVersioneStoria((v) => v + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- si ripropone solo quando cambia il prodotto scelto
-  }, [prodotto?.id]);
+  }, [chiaveProdotto]);
 
   // Il prodotto appena creato o duplicato entra in elenco, si apre e il nome
   // e' gia' selezionato: si scrive subito (prototipo, funzione
@@ -750,6 +856,12 @@ export default function Etichette() {
   useEffect(() => {
     if (!appenaCreatoRef.current || !bozzaProdotto) return;
     appenaCreatoRef.current = false;
+    // Sul telefono il campo "Nome" non c'e': il nome si scrive dal selettore
+    // in cima (SelettoreEtichetta), che si apre da solo con il testo selezionato.
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      setRichiestaNome((n) => n + 1);
+      return;
+    }
     const campo = document.querySelector('input[aria-label="Nome"]');
     if (campo instanceof HTMLInputElement) {
       campo.focus();
@@ -835,18 +947,40 @@ export default function Etichette() {
     return () => document.removeEventListener("keydown", suTasto);
   }, [annullaRipristina, eliminaChiesto, azionePendente]);
 
+  // Gli ultimi valori per chi decide FUORI dal render (il blocco della navigazione, sotto):
+  // un ref, perche' al momento del clic conta com'e' adesso, non com'era all'ultima resa.
+  const modificheRef = useRef(false);
+  useEffect(() => {
+    modificheRef.current = modificheNonSalvate;
+  }, [modificheNonSalvate]);
+  // Vero un attimo dopo un salvataggio riuscito: la navigazione che segue (verso Stampa) non va fermata.
+  const uscitaLiberaRef = useRef(false);
+
   // Chiudendo la scheda (o ricaricando) con modifiche non salvate, il
   // browser chiede conferma: e' un avviso nativo, non il nostro dialogo, il
   // massimo che si puo' fare per la chiusura vera del tab.
   useEffect(() => {
     function suUscita(evento: BeforeUnloadEvent) {
-      if (!modificheNonSalvate) return;
+      if (!modificheNonSalvate || uscitaLiberaRef.current) return;
       evento.preventDefault();
       evento.returnValue = "";
     }
     window.addEventListener("beforeunload", suUscita);
     return () => window.removeEventListener("beforeunload", suUscita);
   }, [modificheNonSalvate]);
+
+  // Avviso su OGNI altra uscita (2 ottobre 2026, prove con utenti simulati: dal menu laterale e con
+  // «indietro» la modifica si perdeva senza una parola, l'avviso c'era solo cambiando etichetta
+  // dall'elenco): useBlocker ferma la navigazione verso un'altra pagina e fa comparire la stessa
+  // domanda degli altri casi. Solo cambiando PAGINA (pathname): cambiare etichetta in questa pagina
+  // passa da provaAzione, e le modifiche dell'indirizzo che fa questa vista (?prodotto=…) non contano.
+  // Richiede il router «dei dati» (main.tsx).
+  const bloccaUscita = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) =>
+      !uscitaLiberaRef.current && modificheRef.current && currentLocation.pathname !== nextLocation.pathname,
+    [],
+  );
+  const blocker = useBlocker(bloccaUscita);
 
   // Se ci sono modifiche non salvate, l'azione (cambiare prodotto, aprirne
   // uno nuovo, duplicare) resta in sospeso finche' non si conferma di
@@ -858,13 +992,34 @@ export default function Etichette() {
     },
     [modificheNonSalvate],
   );
-  const confermaScarta = useCallback(() => {
-    setAzionePendente((azione) => {
-      azione?.();
-      return null;
-    });
-  }, []);
-  const annullaScarta = useCallback(() => setAzionePendente(null), []);
+  // L'azione in sospeso letta da un ref: eseguirla dentro la funzione di aggiornamento dello stato
+  // (come prima) la fa partire due volte in sviluppo (StrictMode), e «Nuova etichetta» ne apriva due.
+  const azionePendenteRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    azionePendenteRef.current = azionePendente;
+  }, [azionePendente]);
+  const uscitaChiesta = azionePendente !== null || blocker.state === "blocked";
+  // «Esci senza salvare»: l'uscita che era stata fermata prosegue, la modifica si perde.
+  const esciSenzaSalvare = useCallback(() => {
+    if (blocker.state === "blocked") {
+      modificheRef.current = false;
+      blocker.proceed();
+      return;
+    }
+    const azione = azionePendenteRef.current;
+    setAzionePendente(null);
+    azione?.();
+  }, [blocker]);
+  // «Resta e salva»: la domanda si chiude e il fuoco va al bottone «Salva etichetta» (con un
+  // attimo di ritardo: la finestra, chiudendosi, restituisce il fuoco a dov'era e lo coprirebbe).
+  const restaESalva = useCallback(() => {
+    if (blocker.state === "blocked") blocker.reset();
+    setAzionePendente(null);
+    window.setTimeout(() => {
+      const visibile = Array.from(document.querySelectorAll<HTMLElement>("button[data-salva-etichetta]")).find((b) => b.getClientRects().length > 0);
+      visibile?.focus();
+    }, 80);
+  }, [blocker]);
 
   const cambiaCercaEt = useCallback((evento: ChangeEvent<HTMLInputElement>) => setCercaEt(evento.target.value), []);
   // Scegliere un prodotto (clic sulla voce, o dopo "Nuova etichetta") riduce
@@ -873,72 +1028,49 @@ export default function Etichette() {
   // solo per il bottone «›», vedi toggleElenco).
   const impostaProdotto = useCallback((id: number) => {
     appenaEliminatoRef.current = false;
+    setBozza(null);
     setProdottoId(id);
     setElencoCollassato(true);
   }, []);
   const scegliProdotto = useCallback((id: number) => provaAzione(() => impostaProdotto(id)), [provaAzione, impostaProdotto]);
 
-  // Senza corpo: il servizio crea il prodotto nuovo del prototipo (nome
-  // "Etichetta nuova", etichetta minima) - niente piu' galleria da cui
-  // scegliere un'etichetta di partenza.
-  const nuovoProdotto = useCallback(() => {
-    creaProdottoMut.mutate(undefined, {
-      onSuccess: (dati) => {
-        appenaCreatoRef.current = true;
-        appenaEliminatoRef.current = false;
-        setProdottoId(dati.id);
-        setElencoCollassato(true);
-      },
-      onError: () => avvisa("Non sono riuscito a creare l'etichetta."),
-    });
-  }, [creaProdottoMut, avvisa]);
+  // Apre una bozza (nuova o copia): niente chiamate che creano record, il servizio dà solo il
+  // prodotto di partenza (useProdottoBozza). Il nome va selezionato appena la bozza è pronta.
+  const avviaBozza = useCallback((nuova: Bozza) => {
+    appenaEliminatoRef.current = false;
+    appenaCreatoRef.current = true;
+    setIstanzaBozza((n) => n + 1);
+    setBozza(nuova);
+    setElencoCollassato(true);
+  }, []);
+  // «Nuova etichetta»: il prodotto nuovo del prototipo (nome "Etichetta nuova", etichetta minima),
+  // ma solo come bozza - nasce al primo «Salva etichetta». Arrivando da Stampa (/etichette?nuovo=1)
+  // la bozza parte da sola (stato iniziale, bozzaDaUrl).
+  const nuovoProdotto = useCallback(() => avviaBozza({ tipo: "nuovo" }), [avviaBozza]);
   const clicNuovoProdotto = useCallback(() => provaAzione(nuovoProdotto), [provaAzione, nuovoProdotto]);
 
-  // Arrivando da Stampa col bottone "Nuova etichetta" (/etichette?nuovo=1):
-  // la stessa nuovoProdotto() del bottone qui sopra, una volta sola
-  // (nuovoRichiestoRef, dichiarato con nuovoInCorsoRef/appenaCreatoRef piu'
-  // sopra) - il parametro si toglie subito dall'URL, cosi' un ricaricamento
-  // della pagina non ne crea un'altra.
-  //
-  // NOTA ONESTA (23 settembre 2026, non risolta - chi ci torna non riparte
-  // da zero): in sviluppo, scrivendo in fretta un testo lungo nel campo
-  // Ingredienti, React segnala "Maximum update depth exceeded" e lo stack
-  // punta qui. Questo effetto ha le dipendenze vuote ([]), quindi da solo
-  // non puo' richiamarsi in loop: o c'e' una seconda causa non trovata, o
-  // l'attribuzione della riga nello stack di sviluppo e' fuorviante (non
-  // e' detto sia davvero QUESTO l'effetto responsabile). Sulla build di
-  // produzione il sintomo NON si presenta (verificato sul servizio
-  // installato 0.1.30, digitando piano e incollando 411 caratteri: console
-  // pulita) - nessun utente lo incontra. Non diagnosticato oltre: servirebbe
-  // il profiler di React, che qui non c'era.
-  useEffect(() => {
-    if (nuovoRichiestoRef.current || searchParams.get("nuovo") !== "1") return;
-    nuovoRichiestoRef.current = true;
-    setSearchParams(
-      (precedenti) => {
-        const nuovi = new URLSearchParams(precedenti);
-        nuovi.delete("nuovo");
-        return nuovi;
-      },
-      { replace: true },
-    );
-    nuovoProdotto();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- si consuma solo all'avvio, come il parametro "prodotto" sopra
-  }, []);
-
-  // "Duplica prodotto": copia tutto, etichetta compresa (funzione
-  // duplicaProdotto del prototipo).
+  // "Duplica prodotto": copia tutto, etichetta compresa (funzione duplicaProdotto del prototipo) -
+  // come bozza, non come record: se poi si cambia idea non resta nessuna copia in elenco.
   const duplicaProdotto = useCallback(() => {
-    if (!prodotto) return;
-    duplicaProdottoMut.mutate(prodotto.id, {
-      onSuccess: (dati) => {
-        avvisa("Copia creata: cambiale il nome.");
-        appenaCreatoRef.current = true;
-        provaAzione(() => impostaProdotto(dati.id));
-      },
-      onError: () => avvisa("Non sono riuscito a duplicare l'etichetta."),
+    if (bozza || !prodottoSalvato) return;
+    const daId = prodottoSalvato.id;
+    provaAzione(() => {
+      avviaBozza({ tipo: "copia", daId });
+      avvisa("Questa è una copia: cambia il nome e premi «Salva etichetta».");
     });
-  }, [prodotto, duplicaProdottoMut, avvisa, provaAzione, impostaProdotto]);
+  }, [bozza, prodottoSalvato, provaAzione, avviaBozza, avvisa]);
+
+  // Una bozza non salvata si scarta come qualunque altra uscita: se non c'e' niente di scritto non
+  // chiede nulla, altrimenti la domanda di sempre. Poi si torna all'etichetta da cui si era partiti.
+  const scartaBozza = useCallback(
+    () =>
+      provaAzione(() => {
+        appenaEliminatoRef.current = false;
+        setBozza(null);
+        setElencoCollassato(false);
+      }),
+    [provaAzione],
+  );
 
   const cambiaProdottoSelect = useCallback(
     (evento: ChangeEvent<HTMLSelectElement>) => {
@@ -1016,10 +1148,45 @@ export default function Etichette() {
       setBozzaBlocchi(nuovi);
       if (aggiunto) {
         const chiaveSezione = chiaveSezionePerBlocco(aggiunto, nuovi);
-        if (chiaveSezione) evidenziaBlocco(chiaveSezione);
+        if (chiaveSezione) {
+          evidenziaBlocco(chiaveSezione);
+          // Sul telefono, aggiunto in «Struttura» un blocco che ha una
+          // scheda, si passa a «Contenuto»: il gruppo si apre e lampeggia
+          // (Gruppo, CampiComuni.tsx). Un blocco senza scheda (riga
+          // separatrice, spazio) lascia in «Struttura», dove e' la sua riga a
+          // lampeggiare (useBloccoNuovo).
+          impostaModalitaTel("contenuto");
+        }
       }
     },
-    [bozzaBlocchi, evidenziaBlocco],
+    [bozzaBlocchi, evidenziaBlocco, impostaModalitaTel],
+  );
+
+  // «+ Blocco» accanto ai segmenti (SegmentiModalita, foglio dal basso): il
+  // blocco scelto va in fondo e passa per cambiaBlocchi, che sa se serve la
+  // sua scheda (passa a «Contenuto») o se resta in «Struttura». In quel caso
+  // e' la riga a lampeggiare (useBloccoNuovo): il vassoio (BlocchiTelefono)
+  // riceve il ref e la chiave, l'hook sta qui perche' chi aggiunge e chi
+  // mostra stanno in punti diversi dell'albero.
+  const { rifVassoio: rifVassoioTel, chiaveNuova: chiaveNuovaTel, segnaNuovo: segnaNuovoTel } = useBloccoNuovo();
+  const aggiungiBloccoTel = useCallback(
+    (tipo: TipoBlocco) => {
+      const nuovo = bloccoNuovo(tipo);
+      cambiaBlocchi([...(bozzaBlocchi ?? []), nuovo]);
+      segnaNuovoTel(nuovo.chiave);
+    },
+    [bozzaBlocchi, cambiaBlocchi, segnaNuovoTel],
+  );
+
+  // Il tocco sui segmenti: si riparte dall'inizio della nuova modalita'
+  // (le due liste hanno altezze diverse, altrimenti il browser lascerebbe la
+  // scheda a meta' di una lista piu' corta).
+  const scegliModalitaTel = useCallback(
+    (m: ModalitaEditor) => {
+      impostaModalitaTel(m);
+      rifSchedaTel.current?.scrollTo({ top: 0 });
+    },
+    [impostaModalitaTel],
   );
 
   const aggiornaNome = useCallback((_campo: "nome", valore: string) => {
@@ -1029,6 +1196,8 @@ export default function Etichette() {
       return { ...p, nome: valore, nomeStampa: insieme ? valore.toUpperCase() : p.nomeStampa };
     });
   }, []);
+  // Il nome confermato dal selettore del telefono: la stessa strada del campo Nome.
+  const aggiornaNomeDalSelettore = useCallback((valore: string) => aggiornaNome("nome", valore), [aggiornaNome]);
   const aggiornaCampoProdotto = useCallback((campo: CampoProdottoStringa, valore: string) => {
     setBozzaProdotto((p) => (p ? { ...p, [campo]: valore } : p));
   }, []);
@@ -1050,7 +1219,7 @@ export default function Etichette() {
   }, []);
   const aggiornaTracciati = useCallback((nuovi: Tracciato[]) => setBozzaProdotto((p) => (p ? { ...p, tracciati: nuovi } : p)), []);
   const aggiornaSchemaLotto = useCallback((v: SchemaLotto) => setBozzaProdotto((p) => (p ? { ...p, schemaLotto: v } : p)), []);
-  // Il testo dei blocchi "Testo libero"/"Testo grande": ora si scrive nel
+  // Il testo dei blocchi "Testo libero": ora si scrive nel
   // gruppo del blocco (deciso da Gianluca), non piu' nella riga del vassoio,
   // ma passa dalla stessa bozzaBlocchi/cronologia di annulla-ripristina di
   // tutti gli altri campi del blocco.
@@ -1102,6 +1271,7 @@ export default function Etichette() {
             giorniScadenza: bozzaProdotto.giorniScadenza,
             conservazione: bozzaProdotto.conservazione,
             quantita: bozzaProdotto.quantita,
+            porzioni: bozzaProdotto.porzioni.trim() ? bozzaProdotto.porzioni : null,
             siglaOperatore: bozzaProdotto.siglaOperatore,
             allergeni: bozzaProdotto.allergeni,
             valoriNutrizionali: bozzaInValori(bozzaProdotto.valori),
@@ -1123,45 +1293,100 @@ export default function Etichette() {
   );
 
   const pronto = !!prodottoInModifica;
-  const salvare = useCallback(() => {
-    if (!prodotto || !prodottoInModifica) return;
-    salvaProdottoMut.mutate(
-      { id: prodotto.id, dati: prodottoInModifica },
-      {
-        onSuccess: () => {
-          // Salvato: la cronologia riparte da qui, poi si passa a Stampa
-          // gia' su questo prodotto, con l'avviso "Etichetta salvata" (testo
-          // esatto).
-          storiaRef.current = { passi: [], indice: 0 };
-          setVersioneStoria((v) => v + 1);
-          avvisa("Etichetta salvata");
-          navigate(`/stampa?prodotto=${prodotto.id}`);
+  // Quello che si manda al servizio (anteprima, prova, creazione): una bozza non ha ancora un
+  // id, e «id: 0» (ID_BOZZA) non vuol dire niente fuori di qui - senza il campo.
+  const prodottoPerServizio: Prodotto | null = useMemo(
+    () => (prodottoInModifica && bozza ? ({ ...prodottoInModifica, id: undefined } as unknown as Prodotto) : prodottoInModifica),
+    [prodottoInModifica, bozza],
+  );
+
+  // Il salvataggio. Un'etichetta SALVATA si aggiorna (PUT); una BOZZA («Nuova etichetta»,
+  // «Duplica») nasce adesso, al primo «Salva» (POST col corpo intero, poi un PUT solo se ha
+  // ingredienti da tracciare, che la POST non porta). In entrambi i casi dopo si va su Stampa
+  // gia' su questa etichetta (deciso da Gianluca, dal mockup: non si cambia).
+  const terminaSalvataggio = useCallback(
+    (id: number, eraBozza: boolean) => {
+      // Salvato: la cronologia riparte da qui, e la navigazione che segue non va fermata dall'avviso
+      // delle modifiche non salvate (non ce ne sono piu').
+      storiaRef.current = { passi: [], indice: 0 };
+      modificheRef.current = false;
+      uscitaLiberaRef.current = true;
+      setVersioneStoria((v) => v + 1);
+      avvisa("Etichetta salvata");
+      // Da una bozza si va con replace: «indietro» da Stampa non deve riaprire una bozza vuota.
+      navigate(`/stampa?prodotto=${id}`, { replace: eraBozza });
+    },
+    [avvisa, navigate],
+  );
+  const salvaAsync = useCallback(async () => {
+    if (!prodotto || !prodottoInModifica || !prodottoPerServizio) return;
+    // Il nome vuoto lo dice qui, vicino al campo (prima: «Non sono riuscito a salvare l'etichetta» e basta).
+    if (!prodottoInModifica.nome.trim()) {
+      avvisa("Scrivi il nome dell'etichetta: è quello che trovi nell'elenco.");
+      if (window.matchMedia("(max-width: 860px)").matches) setRichiestaNome((n) => n + 1);
+      else document.querySelector<HTMLInputElement>('input[aria-label="Nome"]')?.focus();
+      return;
+    }
+    if (!bozza) {
+      salvaProdottoMut.mutate(
+        { id: prodotto.id, dati: prodottoInModifica },
+        {
+          onSuccess: () => terminaSalvataggio(prodotto.id, false),
+          onError: () => avvisa("Non sono riuscito a salvare l'etichetta."),
         },
-        onError: () => avvisa("Non sono riuscito a salvare l'etichetta."),
-      },
-    );
-  }, [prodotto, prodottoInModifica, salvaProdottoMut, avvisa, navigate]);
+      );
+      return;
+    }
+    let creatoId: number | null = null;
+    try {
+      const creato = await creaProdottoMut.mutateAsync(prodottoPerServizio);
+      creatoId = creato.id;
+      if (prodottoInModifica.tracciati.length > 0) {
+        await salvaProdottoMut.mutateAsync({ id: creato.id, dati: { ...prodottoInModifica, id: creato.id } });
+      }
+      terminaSalvataggio(creato.id, true);
+    } catch {
+      if (creatoId === null) {
+        avvisa("Non sono riuscito a salvare l'etichetta.");
+        return;
+      }
+      // L'etichetta c'e', ma gli ingredienti da tracciare non si sono collegati: la si riapre da salvata.
+      avvisa("L'etichetta è stata salvata, ma non sono riuscito a collegare gli ingredienti da tracciare: aprila e riprova.");
+      uscitaLiberaRef.current = false;
+      impostaProdotto(creatoId);
+    }
+  }, [prodotto, prodottoInModifica, prodottoPerServizio, bozza, avvisa, salvaProdottoMut, creaProdottoMut, terminaSalvataggio, impostaProdotto]);
+  const salvare = useCallback(() => {
+    void salvaAsync();
+  }, [salvaAsync]);
+  const salvando = salvaProdottoMut.isPending || creaProdottoMut.isPending;
 
   // "prodotto" (revisione di questo giro): niente piu' un'etichetta a parte
   // ne' un prodottoId facoltativo, e' tutto dentro l'oggetto in modifica.
   // 500 ms di ritardo invece dei 400 di Stampa: qui la bozza cambia insieme
   // su piu' fronti (campi del prodotto e blocchi insieme).
-  const bozzaAnteprima = prodottoInModifica ? { prodotto: prodottoInModifica, rotolo, scala } : null;
+  const bozzaAnteprima = prodottoPerServizio ? { prodotto: prodottoPerServizio, rotolo, scala } : null;
   const { src: srcAnteprima, misure: misureAnteprima, caricando: caricandoAnteprima } = useAnteprimaProdottoInModifica(bozzaAnteprima, 500, versioneLogo);
+  // La lente a tutto schermo vuole l'etichetta alla scala piena (300 dpi), non la miniatura
+  // dell'anteprima: la si chiede al servizio SOLO mentre la lente e' aperta.
+  const [lenteAperta, setLenteAperta] = useState(false);
+  const bozzaAnteprimaPiena = lenteAperta && prodottoPerServizio ? { prodotto: prodottoPerServizio, rotolo, scala: 1 } : null;
+  const { src: srcAnteprimaPiena, caricando: caricandoAnteprimaPiena } = useAnteprimaProdottoInModifica(bozzaAnteprimaPiena, 0, versioneLogo);
+  const srcPiena = lenteAperta && !caricandoAnteprimaPiena ? srcAnteprimaPiena : undefined;
 
   // "Stampa di prova" della vista Etichette: prova il prodotto in modifica su
   // una copia sola, riusando gli stessi pannelli e eventi SSE della vista
-  // Stampa (docs di questo giro).
+  // Stampa (docs di questo giro). L'etichetta che esce porta la banda «PROVA».
   const stampaDiProva = useCallback(() => {
-    if (!prodottoInModifica) return;
+    if (!prodottoPerServizio) return;
     provaProdottoMut.mutate(
-      { prodotto: prodottoInModifica },
+      { prodotto: prodottoPerServizio },
       {
         onSuccess: (dati) => setProvaLavoroId(dati.lavoroId),
         onError: () => avvisa("Non sono riuscito ad avviare la stampa di prova."),
       },
     );
-  }, [provaProdottoMut, prodottoInModifica, avvisa]);
+  }, [provaProdottoMut, prodottoPerServizio, avvisa]);
 
   const fermaProva = useCallback(() => {
     if (!provaLavoroId) return;
@@ -1174,16 +1399,43 @@ export default function Etichette() {
   const provaTerminata = eventoProva ? eventoProva.stato === "completata" || eventoProva.stato === "annullata" : false;
   const provaBloccante = !!provaLavoroId && !provaTerminata;
 
+  // Ctrl+S salva (da qualunque campo) e Invio dentro un campo di testo della scheda pure: prima per
+  // arrivare a «Salva etichetta» da un campo servivano 11 Maiusc+Tab (prove con utenti simulati,
+  // 2 ottobre 2026). Non quando c'e' una finestra aperta (elimina, uscita, nuovo ingrediente...), ne'
+  // dentro un'area di testo, dove Invio va a capo, ne' scrivendo con un metodo di input (IME).
+  const finestraAperta = eliminaChiesto || uscitaChiesta;
+  useEffect(() => {
+    function suTasto(evento: KeyboardEvent) {
+      if (finestraAperta || evento.isComposing || !pronto) return;
+      const bersaglio = evento.target instanceof HTMLElement ? evento.target : null;
+      if (bersaglio?.closest('[role="dialog"]')) return;
+      const ctrlS = (evento.ctrlKey || evento.metaKey) && !evento.altKey && !evento.shiftKey && evento.key.toLowerCase() === "s";
+      const invioInUnCampo =
+        evento.key === "Enter" &&
+        !evento.ctrlKey && !evento.altKey && !evento.shiftKey && !evento.defaultPrevented &&
+        bersaglio instanceof HTMLInputElement &&
+        (bersaglio.type === "text" || bersaglio.type === "") &&
+        !!bersaglio.closest("[data-scheda-etichetta]");
+      if (!ctrlS && !invioInUnCampo) return;
+      evento.preventDefault();
+      if (!salvando && !provaBloccante) salvare();
+    }
+    document.addEventListener("keydown", suTasto);
+    return () => document.removeEventListener("keydown", suTasto);
+  }, [finestraAperta, pronto, salvando, provaBloccante, salvare]);
+
+
   const ce = useCallback((tipo: TipoBlocco) => bozzaBlocchi?.some((b) => b.tipo === tipo && b.acceso) ?? false, [bozzaBlocchi]);
   const aggiornaConservazione = useCallback((v: string) => aggiornaCampoProdotto("conservazione", v), [aggiornaCampoProdotto]);
   const aggiornaQuantita = useCallback((v: string) => aggiornaCampoProdotto("quantita", v), [aggiornaCampoProdotto]);
+  const aggiornaPorzioni = useCallback((v: string) => aggiornaCampoProdotto("porzioni", v), [aggiornaCampoProdotto]);
   // Il riassunto del lotto per il gruppo "Lotto" sul telefono (sottoTel),
   // stessa formula del prototipo (riassuntoLotto): nome dello schema piu' cio'
   // che uscirebbe oggi, o "da scrivere" per lo schema a mano. Lo schema e'
   // quello scelto NELLA BOZZA (anche non salvato), non quello che il
   // servizio ha ancora salvato per questo prodotto - altrimenti cambiando
   // schema senza salvare il riassunto resterebbe quello vecchio.
-  const { data: lottoInfoSommario } = useLotto(prodotto?.id);
+  const { data: lottoInfoSommario } = useLotto(prodottoSalvato?.id);
   const schemaLottoSommario = lottoInfoSommario?.schemi.find((s) => s.codice === bozzaProdotto?.schemaLotto);
   // "mano" non e' piu' fra gli schemi offerti (docs/api.md, 24/09/2026): un
   // prodotto vecchio che lo avesse ancora non lo trova in schemi, ma il
@@ -1232,6 +1484,7 @@ export default function Etichette() {
   // il gruppo "Lotto" segue solo il blocco "lotto", non serve piu' l'OR di prima.
   const usaLotto = ce("lotto");
   const usaQuantita = ce("quantita");
+  const usaPorzioni = ce("porzioni");
   const usaValori = ce("valori");
   const usaProduttore = ce("produttore");
   const usaDataProduzione = ce("dataProduzione");
@@ -1288,6 +1541,21 @@ export default function Etichette() {
             ],
           },
           {
+            // "Porzioni": come il Peso, il valore di partenza sta nel prodotto
+            // e alla stampa si puo' cambiare; vuoto, il blocco non esce.
+            chiave: "porzioni",
+            titolo: NOMIBLOCCO.porzioni,
+            sottoTel: bozzaProdotto.porzioni || "Da scrivere",
+            ordine: ordineSezione("porzioni"),
+            campi: [
+              usaPorzioni && (
+                <CampoInline key="porzioni" etichetta="Porzioni">
+                  <CampoPorzioniInline valore={bozzaProdotto.porzioni} onCambia={aggiornaPorzioni} />
+                </CampoInline>
+              ),
+            ],
+          },
+          {
             chiave: "ingredienti",
             titolo: "Ingredienti",
             sottoPC: usaIngredienti ? anteprimaTesto(bozzaProdotto.ingredienti, 60) : undefined,
@@ -1302,7 +1570,7 @@ export default function Etichette() {
                 <CampoIngredientiCollegati
                   key="collegati"
                   tracciati={bozzaProdotto.tracciati}
-                  prodottoId={prodotto?.id}
+                  prodottoId={prodottoSalvato?.id}
                   ingredientiTesto={bozzaProdotto.ingredienti}
                   onCambia={aggiornaTracciati}
                 />
@@ -1349,7 +1617,7 @@ export default function Etichette() {
             ordine: ordineSezione("conservazione"),
             campi: [
               usaConservazione && (
-                <CampoSceltaInline key="conservazione" etichetta="Conservazione" valore={bozzaProdotto.conservazione} opzioni={OPZIONI_CONSERVAZIONE} onCambia={aggiornaConservazione} />
+                <CampoConservazione key={`conservazione-${chiaveProdotto}`} valore={bozzaProdotto.conservazione} onCambia={aggiornaConservazione} />
               ),
             ],
           },
@@ -1364,7 +1632,7 @@ export default function Etichette() {
                   key="lotto"
                   schemaLotto={bozzaProdotto.schemaLotto}
                   onCambiaSchemaLotto={aggiornaSchemaLotto}
-                  prodottoId={prodotto?.id}
+                  prodottoId={prodottoSalvato?.id}
                 />
               ),
             ],
@@ -1421,8 +1689,8 @@ export default function Etichette() {
         .filter((s) => s.campi.length > 0)
     : [];
 
-  // Ogni blocco "libero" che ha qualcosa da impostare (Logo, Testo libero,
-  // Testo grande) ha il suo gruppo, nell'ordine dei blocchi (deciso da
+  // Ogni blocco "libero" che ha qualcosa da impostare (Logo, Testo libero) ha
+  // il suo gruppo, nell'ordine dei blocchi (deciso da
   // Gianluca, 9 settembre sera - e ora anche mescolato con quelli fissi
   // sopra, non piu' sempre in coda: vedi il sort finale sotto): compare
   // quando il blocco e' acceso, sparisce quando si spegne o si toglie. Sigla
@@ -1430,17 +1698,19 @@ export default function Etichette() {
   // e' la posizione ESATTA di QUESTO blocco (non quella del primo di un
   // tipo, come per i gruppi fissi: qui puo' essercene piu' di uno dello
   // stesso tipo, es. due "Testo libero").
+  // Il numero dopo "Testo libero" compare solo se i blocchi di testo sono piu'
+  // d'uno, ed e' lo stesso della riga del blocco nella lista (numeroDelTesto).
   let contaTesto = 0;
-  let contaTestoGrande = 0;
   const sezioniBlocchi: typeof sezioni = (bozzaBlocchi ?? []).flatMap((b, indiceBlocco) => {
     if (!b.acceso) return [];
     if (b.tipo === "logo") {
       const sotto = logoEsiste ? "caricato" : "nessuno";
       return [{ chiave: "logo", titolo: NOMIBLOCCO.logo, sottoPC: sotto, sottoTel: sotto, ordine: indiceBlocco, campi: [<CampoLogoBlocco key="logo" onCambiato={logoCambiato} />] }];
     }
-    if (b.tipo === "testo" || b.tipo === "testoGrande") {
-      const indice = b.tipo === "testo" ? ++contaTesto : ++contaTestoGrande;
-      const titolo = `${NOMIBLOCCO[b.tipo]} ${indice}`;
+    if (b.tipo === "testo") {
+      const indice = ++contaTesto;
+      const numero = numeroDelTesto(bozzaBlocchi ?? [], b.chiave);
+      const titolo = numero ? `${NOMIBLOCCO[b.tipo]} ${numero}` : NOMIBLOCCO[b.tipo];
       const sotto = anteprimaTesto(b.testo ?? "", 40);
       return [
         {
@@ -1483,9 +1753,9 @@ export default function Etichette() {
             schermate), title+aria-label restano per chi non vede lo span. */}
         <button
           type="button"
-          className="btn conTesto iconaTel"
+          className="btn conTesto iconaTel aDestraTel"
           onClick={duplicaProdotto}
-          disabled={duplicaProdottoMut.isPending || provaBloccante}
+          disabled={!!bozza || provaBloccante}
           title="Duplica etichetta"
           aria-label="Duplica etichetta"
         >
@@ -1495,30 +1765,32 @@ export default function Etichette() {
         <button
           type="button"
           className="btn conTesto elimina iconaTel"
-          onClick={chiediElimina}
+          onClick={bozza ? scartaBozza : chiediElimina}
           disabled={eliminaProdottoMut.isPending || provaBloccante}
-          title="Elimina etichetta"
-          aria-label="Elimina etichetta"
+          title={bozza ? "Scarta questa etichetta nuova" : "Elimina etichetta"}
+          aria-label={bozza ? "Scarta questa etichetta nuova (non è ancora salvata)" : "Elimina etichetta"}
         >
           <IconaCestino larghezza={17} spessoreTratto={2} />
-          <span>Elimina</span>
+          <span>{bozza ? "Scarta" : "Elimina"}</span>
         </button>
         {/* Salva, duplicato solo sul telefono (deciso da Gianluca,
             25/09/2026): col titolo della testata nascosto sul telefono
             (Guscio.tsx, un altro giro), il bottone restava da solo sulla riga
             sopra e sotto c'era la riga di Annulla/Ripristina/Duplica/Elimina
             - una riga intera sprecata. Qui entra nella STESSA riga degli
-            strumenti, spinto a destra da "ml-auto" (stesso trucco di
-            ".cestino.soloTel/.soloPC" in ValoriNutrizionali.tsx: due bottoni
-            per lo stesso gesto, uno per larghezza, perche' cambia POSTO nella
-            riga, non solo aspetto). Quello vero per PC resta sotto, in
+            strumenti, in coda al gruppo Duplica/Elimina/Salva che va a destra
+            (".aDestraTel" su Duplica, index.css): due bottoni per lo stesso
+            gesto, uno per larghezza, perche' cambia POSTO nella riga, non solo
+            aspetto (stesso trucco di ".cestino.soloTel/.soloPC" in
+            ValoriNutrizionali.tsx). Quello vero per PC resta sotto, in
             portaleAzioni, ora "soloPC". */}
         <button
           type="button"
-          className="btn primario iconaTel soloTel ml-auto"
+          className="btn primario iconaTel soloTel"
           onClick={salvare}
-          disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}
-          title="Salva etichetta"
+          data-salva-etichetta
+          disabled={!pronto || salvando || provaBloccante}
+          title="Salva etichetta (Ctrl+S)"
           aria-label="Salva etichetta"
         >
           <IconaSalva larghezza={18} spessoreTratto={2} />
@@ -1545,8 +1817,9 @@ export default function Etichette() {
           type="button"
           className="btn primario soloPC"
           onClick={salvare}
-          disabled={!pronto || salvaProdottoMut.isPending || provaBloccante}
-          title="Salva etichetta"
+          data-salva-etichetta
+          disabled={!pronto || salvando || provaBloccante}
+          title="Salva etichetta (Ctrl+S)"
           aria-label="Salva etichetta"
         >
           <IconaSalva larghezza={18} spessoreTratto={2} />
@@ -1561,7 +1834,7 @@ export default function Etichette() {
       {portaleStrumenti}
       {portaleAzioni}
 
-      <div className="schermo" ref={rifSchedaTel}>
+      <div className="schermo" ref={rifSchedaTel} style={stileSchermo}>
         {elencoCollassato ? (
           // Ridotto a una barra stretta (deciso da Gianluca): il bottone
           // «›» la riapre, il nome del prodotto scelto resta leggibile in
@@ -1572,34 +1845,40 @@ export default function Etichette() {
               <IconaDestra larghezza={16} spessoreTratto={2} />
             </button>
             {prodotto && (
-              <span className="nomeVerticale" title={prodotto.nome}>
-                {prodotto.nome}
+              <span className="nomeVerticale" title={bozzaProdotto?.nome || prodotto.nome}>
+                {bozzaProdotto?.nome || prodotto.nome}
               </span>
             )}
           </div>
         ) : (
-          <div className="colonna soloPC flex-[0_1_240px] min-w-[190px] gap-1">
-            <div className="flex items-center gap-1.5">
-              <div className="cerca h-11 text-[15px] flex-1 min-w-0">
-                <IconaCerca larghezza={18} spessoreTratto={2} />
-                <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca…" aria-label="Cerca etichetta" />
+          // Come la colonna dell'elenco di Stampa (".colonnaElenco"): niente carta
+          // bianca attorno, ricerca a 52px, bottone Nuova etichetta e carte
+          // ".prodotto" sullo sfondo della pagina (deciso dal cliente,
+          // 29/09/2026: "non si vede bene ed e' diversa dal resto dell'app").
+          <div className="colonnaElenco elencoEtichette soloPC flex-[0_1_240px] min-w-[190px] gap-3">
+            <div className="flex items-center gap-2">
+              <div className="cerca flex-1 min-w-0">
+                <IconaCerca larghezza={20} spessoreTratto={2} />
+                <input value={cercaEt} onChange={cambiaCercaEt} placeholder="Cerca etichetta…" aria-label="Cerca etichetta" />
               </div>
               <button type="button" className="riduciElenco" onClick={toggleElenco} title="Riduci l'elenco delle etichette" aria-label="Riduci l'elenco delle etichette">
                 <IconaSinistra larghezza={16} spessoreTratto={2} />
               </button>
             </div>
-            <button
-              type="button"
-              className="h-11 border border-dashed border-[var(--tratteggio)] rounded-xl flex items-center justify-center gap-2 text-[14px] font-bold text-[#6B5A4E] mb-1"
-              onClick={clicNuovoProdotto}
-              disabled={creaProdottoMut.isPending}
-            >
+            <button type="button" className="btn h-[52px] w-full" onClick={clicNuovoProdotto}>
               <IconaPiu larghezza={17} spessoreTratto={2.2} />
               <span>Nuova etichetta</span>
             </button>
-            <div className="scorre flex flex-col gap-1 flex-1 min-h-0">
+            <div className="scorre flex flex-col gap-3 flex-1 min-h-0 p-1 -m-1">
+              {bozza && bozzaProdotto && <VoceBozza nome={bozzaProdotto.nome} />}
               {prodottiTrovati.map((p) => (
-                <VoceProdotto key={p.id} prodotto={p} selezionato={p.id === prodottoId} onScegli={scegliProdotto} />
+                <VoceProdotto
+                  key={p.id}
+                  prodotto={p}
+                  selezionato={!bozza && p.id === prodottoId}
+                  nomeInModifica={!bozza && p.id === prodottoId ? bozzaProdotto?.nome : undefined}
+                  onScegli={scegliProdotto}
+                />
               ))}
               {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessuna etichetta con questo nome.</div>}
             </div>
@@ -1607,24 +1886,26 @@ export default function Etichette() {
         )}
 
         <div
+          data-scheda-etichetta
           className={
             "colonna scheda schedaEtichette scorre flex-none w-full min-w-0 gap-3" +
             (bozzaProdotto ? " md:flex-[0_1_456px]" : " md:flex-1")
           }
         >
-          <div className="campo soloTel">
-            <div className="etichettina">Etichetta</div>
-            <div className="casella p-0">
-              <select value={prodottoId ?? ""} onChange={cambiaProdottoSelect} aria-label="Etichetta" className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3 h-[50px]">
-                {(prodotti ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome}
-                  </option>
-                ))}
-                <option value="nuovo">+ Nuova etichetta…</option>
-              </select>
-            </div>
-          </div>
+          {/* Telefono: il selettore in cima e' anche il campo del nome (due gesti:
+              toccare il nome lo scrive, toccare la freccia sceglie un'altra
+              etichetta) - per questo sul telefono non c'e' il gruppo «Nome».
+              Senza titoletto (30/09/2026): e' la prima riga della scheda, sotto
+              la riga degli strumenti della testata, e scorre via insieme al
+              resto; resta ancorata solo l'anteprima (qui sotto). */}
+          <SelettoreEtichetta
+            nome={bozzaProdotto?.nome ?? null}
+            prodotti={prodotti ?? NESSUN_PRODOTTO}
+            prodottoId={bozza ? null : prodottoId}
+            onCambiaNome={aggiornaNomeDalSelettore}
+            onScegli={cambiaProdottoSelect}
+            richiestaModifica={richiestaNome}
+          />
 
           {bozzaProdotto ? (
             <>
@@ -1649,51 +1930,61 @@ export default function Etichette() {
                 ))}
               </div>
 
-              {/* Telefono: anteprima in cima, poi il Nome da solo (idem),
-                  poi un gruppo alla volta, i blocchi per ultimi, con le righe
-                  semplificate (niente trascinamento ne' colonna sx/dx: quelle
-                  restano un affare da PC). */}
+              {/* Telefono: anteprima in cima (ancorata, con sotto i segmenti
+                  «Contenuto | Struttura»), poi o un gruppo alla volta (il Nome
+                  sta nel selettore in cima, SelettoreEtichetta) o, in
+                  «Struttura», solo l'elenco dei blocchi con le righe
+                  semplificate (niente colonna sx/dx: quella resta un affare
+                  da PC). */}
               <div className="soloTel flex flex-col gap-3">
-                <div ref={rifAnteprimaTel} className={"min-w-0 anteprimaAncorata" + (anteprimaStaccata ? " staccata" : "")}>
-                  <RiquadroAnteprima
-                    src={srcAnteprima}
-                    caricando={caricandoAnteprima}
-                    titolo={bozzaProdotto?.nome ?? ""}
-                    rotolo={rotolo}
-                    misure={misureAnteprima}
-                    compatta
-                    maxH={112}
-                  />
+                {/* I segmenti stanno DENTRO l'anteprima ancorata: sempre
+                    raggiungibili, senza una seconda fascia sticky. */}
+                <div ref={rifAncorata} data-ancorato className={"min-w-0 anteprimaAncorata" + (anteprimaStaccata ? " staccata" : "")}>
+                  <div ref={rifAnteprimaTel} className="min-w-0">
+                    <RiquadroAnteprima
+                      src={srcAnteprima}
+                      srcPiena={srcPiena}
+                      onLente={setLenteAperta}
+                      caricando={caricandoAnteprima}
+                      titolo={bozzaProdotto?.nome ?? ""}
+                      rotolo={rotolo}
+                      misure={misureAnteprima}
+                      compatta
+                      maxH={112}
+                    />
+                  </div>
+                  <SegmentiModalita modalita={modalitaTel} onCambia={scegliModalitaTel} blocchi={bozzaBlocchi} onAggiungiBlocco={aggiungiBloccoTel} />
                 </div>
-                <div className="riquadro">{campoNome}</div>
-                {sezioniComplete.map((s) => (
-                  <Gruppo
-                    key={s.chiave}
-                    chiave={s.chiave}
-                    titolo={s.titolo}
-                    sotto={s.sottoTel ?? s.sottoPC}
-                    aperto={gruppoAperto === s.chiave}
-                    onToggle={toggleGruppo}
-                    evidenziato={chiaveEvidenziata === s.chiave}
-                  >
-                    {s.campi}
-                  </Gruppo>
-                ))}
-                {bozzaBlocchi && (
-                  <Gruppo
-                    chiave="blocchi"
-                    titolo="Blocchi dell'etichetta"
-                    aperto={gruppoAperto === "blocchi"}
-                    onToggle={toggleGruppo}
-                  >
-                    <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={cambiaBlocchi} />
-                    <div className="piedeRotolo">
-                      <span className="etichettina">Rotolo</span>
-                      <span className="font-bold text-[14px]">{rotolo} mm</span>
-                      <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
-                    </div>
-                  </Gruppo>
-                )}
+                <div id="pannelloModalitaEditor" role="tabpanel" aria-labelledby={"schedaModalita-" + modalitaTel} className="flex flex-col gap-3">
+                  {modalitaTel === "contenuto" ? (
+                    <>
+                      {sezioniComplete.map((s) => (
+                        <Gruppo
+                          key={s.chiave}
+                          chiave={s.chiave}
+                          titolo={s.titolo}
+                          sotto={s.sottoTel ?? s.sottoPC}
+                          aperto={gruppoAperto === s.chiave}
+                          onToggle={toggleGruppo}
+                          evidenziato={chiaveEvidenziata === s.chiave}
+                        >
+                          {s.campi}
+                        </Gruppo>
+                      ))}
+                          </>
+                  ) : (
+                    bozzaBlocchi && (
+                      <>
+                        <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={cambiaBlocchi} rifVassoio={rifVassoioTel} chiaveNuova={chiaveNuovaTel} />
+                        <div className="piedeRotolo">
+                          <span className="etichettina">Rotolo</span>
+                          <span className="font-bold text-[14px]">{rotolo} mm</span>
+                          <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
+                        </div>
+                      </>
+                    )
+                  )}
+                </div>
               </div>
             </>
           ) : (
@@ -1707,7 +1998,7 @@ export default function Etichette() {
               {!nessunaEtichettaInElenco && (
                 <div className="text-[14px] text-[var(--tenue)] max-w-[280px]">Scegline una dall&apos;elenco, oppure creane una nuova.</div>
               )}
-              <button type="button" className="btn primario mt-2" onClick={clicNuovoProdotto} disabled={creaProdottoMut.isPending}>
+              <button type="button" className="btn primario mt-2" onClick={clicNuovoProdotto}>
                 <IconaPiu larghezza={17} spessoreTratto={2.2} />
                 <span>Nuova etichetta</span>
               </button>
@@ -1741,6 +2032,7 @@ export default function Etichette() {
                 fatte={eventoProva.copiaCorrente}
                 volute={1}
                 quantita={prodotto?.quantita ?? ""}
+                porzioni={prodotto?.porzioni ?? ""}
                 scadenza={prodotto ? oggiPiuGiorni(GIORNI_SCADENZA_PROPOSTI) : ""}
                 lotto="PROVA"
                 onRipeti={ripetiProva}
@@ -1762,18 +2054,21 @@ export default function Etichette() {
               <div ref={rifAnteprimaPC} className="min-w-0">
                 <RiquadroAnteprima
                   src={srcAnteprima}
+                  srcPiena={srcPiena}
+                  onLente={setLenteAperta}
                   caricando={caricandoAnteprima}
                   titolo={bozzaProdotto?.nome ?? ""}
                   rotolo={rotolo}
                   misure={misureAnteprima}
                   maxH={200}
+                  leggibile
                 />
               </div>
               {bozzaBlocchi && bozzaProdotto && (
                 <>
                   <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-[var(--riga)]">
-                    <div className="text-[14px] font-bold">Blocchi dell&apos;etichetta</div>
-                    <div className="text-[12px] text-[var(--tenue)]">trascina per ordinare</div>
+                    <div className="text-[14px] font-bold">Cosa c&apos;è sull&apos;etichetta</div>
+                    <div className="text-[12px] text-[var(--tenue)]">trascina le righe, o usa le frecce, per cambiare l&apos;ordine</div>
                   </div>
                   <BlocchiEditor
                     blocchi={bozzaBlocchi}
@@ -1814,23 +2109,7 @@ export default function Etichette() {
         />
       )}
 
-      {azionePendente && (
-        <Finestra
-          titolo="Modifiche non salvate: le scarto?"
-          sottotitolo="Non hai salvato le ultime modifiche a questa etichetta: cambiando ora le perdi."
-          onChiudi={annullaScarta}
-          piede={
-            <>
-              <button type="button" className="btn" onClick={annullaScarta}>
-                Annulla
-              </button>
-              <button type="button" className="btn elimina forte" onClick={confermaScarta}>
-                Sì, scarta
-              </button>
-            </>
-          }
-        />
-      )}
+      {uscitaChiesta && <ConfermaUscita onEsci={esciSenzaSalvare} onResta={restaESalva} />}
     </div>
   );
 }

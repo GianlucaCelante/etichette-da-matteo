@@ -40,8 +40,8 @@ public interface StoricoStampaRepository extends JpaRepository<StoricoStampa, Lo
     @Query("UPDATE StoricoStampa s SET s.copie = :copie WHERE s.id = :id AND s.esito = :esitoAperto AND s.copie < :copie")
     int alzaCopie(@Param("id") Long id, @Param("copie") int copie, @Param("esitoAperto") String esitoAperto);
 
-    /** {@code GET /api/lotti-ingrediente/{id}/usi} (docs/api.md): le stampe che hanno registrato quel lotto, dalla piu' recente. */
+    /** {@code GET /api/lotti-ingrediente/{id}/usi} (docs/api.md): le stampe che hanno registrato quel lotto, dalla piu' recente (a parita' di istante, la piu' recente per id: la data si salva al millesimo). */
     @Query("SELECT s FROM StoricoStampa s WHERE s.id IN (SELECT sl.storicoId FROM StoricoLotto sl WHERE sl.lottoId = :lottoId) "
-            + "ORDER BY s.stampatoIl DESC")
+            + "ORDER BY s.stampatoIl DESC, s.id DESC")
     List<StoricoStampa> findStampeCheRegistranoLotto(@Param("lottoId") Long lottoId);
 }

@@ -10,7 +10,7 @@ import FotoVuota from "../componenti/foto/FotoVuota";
 import { IconaPiu, IconaVia } from "../componenti/Icone";
 import NuovoIngredienteModale from "../componenti/ingredienti/NuovoIngredienteModale";
 import SelettoreFornitore from "../componenti/ingredienti/SelettoreFornitore";
-import { formattaDataItaliana, oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
+import { oggiPiuGiorni, plurale } from "../componenti/stampa/formattazione";
 
 // Riferimento stabile (react-perf: niente array nuovi come prop a ogni resa).
 const FORNITORI_VUOTI: Fornitore[] = [];
@@ -31,13 +31,25 @@ function creaAnteprima(file: File): FotoBozza {
 // La miniatura di una foto non ancora caricata: stesso aspetto di
 // MiniaturaFoto (classe .foto condivisa) ma senza id ne' finestra
 // ingrandita, che hanno senso solo per una foto gia' sul servizio.
-function AnteprimaBozza({ url, didascalia }: { url: string; didascalia: string }) {
+// «onTogli»: il tasto × sopra l'immagine per scartarla prima di registrare
+// (la foto non e' ancora sul servizio: basta toglierla dallo stato).
+function AnteprimaBozza({ url, didascalia, onTogli }: { url: string; didascalia: string; onTogli: () => void }) {
   return (
     <div className="foto">
       <img src={url} alt="" />
       <span>{didascalia}</span>
+      <button type="button" className="togliFoto" onClick={onTogli} title={`Togli la foto: ${didascalia}`} aria-label={`Togli la foto: ${didascalia}`}>
+        <IconaVia larghezza={12} spessoreTratto={2.6} />
+      </button>
     </div>
   );
+}
+
+// Una pagina del documento della consegna, con il suo × (callback stabile per
+// pagina: la funzione condivisa riceve l'url).
+function PaginaDocumento({ url, numero, onTogli }: { url: string; numero: number; onTogli: (url: string) => void }) {
+  const togli = useCallback(() => onTogli(url), [onTogli, url]);
+  return <AnteprimaBozza url={url} didascalia={`Pag. ${numero}`} onTogli={togli} />;
 }
 
 interface RigaArrivoBozza {
@@ -72,25 +84,21 @@ function righeDelFornitore(righe: RigaArrivoBozza[], fornitoreId: number, tutti:
   return [...filtrate, ...proposte];
 }
 
-function testoLottoAutomatico(documento: string, data: string): string {
-  const dataFormattata = formattaDataItaliana(data);
-  return documento.trim() ? `${documento.trim()} · ${dataFormattata}` : `arrivo ${dataFormattata}`;
-}
-
 function RigaArrivo({
   riga,
-  placeholderLotto,
   onCambia,
   onCambiaFoto,
+  onTogliFoto,
   onRimuovi,
 }: {
   riga: RigaArrivoBozza;
-  placeholderLotto: string;
   onCambia: (ingredienteId: number, campo: "lotto" | "scadenza" | "quantita", valore: string) => void;
   onCambiaFoto: (ingredienteId: number, file: File) => void;
+  onTogliFoto: (ingredienteId: number) => void;
   onRimuovi: (ingredienteId: number) => void;
 }) {
   const inAttesa = riga.proposta && !riga.tocca;
+  const togliFoto = useCallback(() => onTogliFoto(riga.ingredienteId), [onTogliFoto, riga.ingredienteId]);
   const cambiaLotto = useCallback((e: ChangeEvent<HTMLInputElement>) => onCambia(riga.ingredienteId, "lotto", e.target.value), [onCambia, riga.ingredienteId]);
   const cambiaScadenza = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => onCambia(riga.ingredienteId, "scadenza", e.target.value),
@@ -109,15 +117,19 @@ function RigaArrivo({
         <div className="nome" title={riga.nome}>
           {riga.nome}
         </div>
+        {/* Il bottone della foto sta subito dopo il nome (che si tronca, lui
+            no); con la foto gia' scelta resta per sostituirla, la miniatura
+            sta sotto, nel piede. */}
+        <FotoVuota compatto testo={riga.foto ? "Sostituisci la foto dell'etichetta" : "Aggiungi una foto dell'etichetta"} onCaricaFile={cambiaFoto} />
         <button type="button" className="via" onClick={rimuovi} title="Togli la riga" aria-label={`Togli ${riga.nome}`}>
           <IconaVia larghezza={16} spessoreTratto={2} />
         </button>
       </div>
       <div className="campi">
         <div className="campo">
-          <div className="etichettina">Lotto</div>
+          <div className="etichettina">Lotto del fornitore</div>
           <div className="casella mono">
-            <input value={riga.lotto} onChange={cambiaLotto} placeholder={"vuoto: " + placeholderLotto} aria-label={`Lotto di ${riga.nome}`} className="font-bold" />
+            <input value={riga.lotto} onChange={cambiaLotto} placeholder="es. L 24301" aria-label={`Lotto del fornitore di ${riga.nome}`} className="font-bold" />
           </div>
         </div>
         <div className="campo">
@@ -133,9 +145,11 @@ function RigaArrivo({
           </div>
         </div>
       </div>
-      <div className="piede">
-        {riga.foto ? <AnteprimaBozza url={riga.foto.url} didascalia="Etichetta" /> : <FotoVuota testo="Foto etichetta" onCaricaFile={cambiaFoto} />}
-      </div>
+      {riga.foto && (
+        <div className="piede">
+          <AnteprimaBozza url={riga.foto.url} didascalia="Etichetta" onTogli={togliFoto} />
+        </div>
+      )}
     </div>
   );
 }
@@ -251,8 +265,27 @@ export default function MerceArrivata() {
   }, []);
   // La foto dell'etichetta del sacco, scelta ma non ancora caricata (si
   // carica per davvero solo dopo che l'arrivo esiste, in registra() qui sotto).
+  // Se la riga aveva gia' una foto, questa la sostituisce: l'anteprima
+  // vecchia si revoca.
   const cambiaFotoRiga = useCallback((ingredienteId: number, file: File) => {
-    setRighe((precedenti) => precedenti.map((r) => (r.ingredienteId === ingredienteId ? { ...r, foto: creaAnteprima(file), tocca: true } : r)));
+    const nuova = creaAnteprima(file);
+    setRighe((precedenti) =>
+      precedenti.map((r) => {
+        if (r.ingredienteId !== ingredienteId) return r;
+        if (r.foto) URL.revokeObjectURL(r.foto.url);
+        return { ...r, foto: nuova, tocca: true };
+      }),
+    );
+  }, []);
+  // Scarta la foto scelta di una riga (prima di registrare): revoca l'anteprima.
+  const togliFotoRiga = useCallback((ingredienteId: number) => {
+    setRighe((precedenti) =>
+      precedenti.map((r) => {
+        if (r.ingredienteId !== ingredienteId || !r.foto) return r;
+        URL.revokeObjectURL(r.foto.url);
+        return { ...r, foto: null };
+      }),
+    );
   }, []);
   const rimuoviRiga = useCallback((ingredienteId: number) => {
     setRighe((precedenti) => {
@@ -263,6 +296,14 @@ export default function MerceArrivata() {
   }, []);
   const aggiungiFotoDocumento = useCallback((file: File) => {
     setFotoDocumento((precedenti) => [...precedenti, creaAnteprima(file)]);
+  }, []);
+  // Scarta una pagina del documento scelta e non ancora registrata.
+  const togliFotoDocumento = useCallback((url: string) => {
+    setFotoDocumento((precedenti) => {
+      const tolta = precedenti.find((f) => f.url === url);
+      if (tolta) URL.revokeObjectURL(tolta.url);
+      return precedenti.filter((f) => f.url !== url);
+    });
   }, []);
 
   const liberi = useMemo(() => (tutti ?? []).filter((i) => !righe.some((r) => r.ingredienteId === i.id)), [tutti, righe]);
@@ -280,15 +321,37 @@ export default function MerceArrivata() {
     }
     setScegliAperto((v) => !v);
   }, [liberi.length, apriModaleNuovo]);
-  const aggiungiRigaLibera = useCallback((ingrediente: Ingrediente) => {
-    setRighe((precedenti) => [...precedenti, nuovaRiga(ingrediente)]);
-    setScegliAperto(false);
-  }, []);
-  const ingredientePronto = useCallback((pronto: { id: number; nome: string }) => {
-    setRighe((precedenti) => [...precedenti, nuovaRiga(pronto)]);
-    setModaleNuovo(false);
-    setScegliAperto(false);
-  }, []);
+  // Una riga per ingrediente, mai due (2 ottobre 2026: scegliendo «Già in
+  // elenco» un ingrediente che il fornitore porta di solito - quindi con la sua
+  // riga gia' proposta - ne nasceva una seconda identica, «Registra 2 lotti»
+  // creava due lotti e «Togli» le toglieva tutte e due). Se la riga c'e' gia',
+  // la proposta diventa una riga vera e si dice che c'era.
+  const aggiungiOAttiva = useCallback(
+    (ingrediente: { id: number; nome: string }) => {
+      if (righeRef.current.some((r) => r.ingredienteId === ingrediente.id)) {
+        setRighe((precedenti) => precedenti.map((r) => (r.ingredienteId === ingrediente.id ? { ...r, tocca: true } : r)));
+        avvisa(`${ingrediente.nome} è già nella consegna: scrivi lotto e scadenza nella sua riga.`);
+        return;
+      }
+      setRighe((precedenti) => [...precedenti, nuovaRiga(ingrediente)]);
+    },
+    [avvisa],
+  );
+  const aggiungiRigaLibera = useCallback(
+    (ingrediente: Ingrediente) => {
+      aggiungiOAttiva(ingrediente);
+      setScegliAperto(false);
+    },
+    [aggiungiOAttiva],
+  );
+  const ingredientePronto = useCallback(
+    (pronto: { id: number; nome: string }) => {
+      aggiungiOAttiva(pronto);
+      setModaleNuovo(false);
+      setScegliAperto(false);
+    },
+    [aggiungiOAttiva],
+  );
 
   const daRegistrare = righe.filter(rigaDaRegistrare);
   const nomeFornitoreCorrente = fornitoreAltro ? fornitoreNomeAltro.trim() : (fornitori ?? []).find((f) => f.id === fornitoreId)?.nome ?? "";
@@ -323,67 +386,111 @@ export default function MerceArrivata() {
   const chiudiConfermaAnnulla = useCallback(() => setConfermaAnnullaChiesta(false), []);
   useGuardiaIndietro(apriConfermaSeServe);
 
+  // Le righe che non dicono ne' il lotto del fornitore ne' la scadenza, in una
+  // consegna senza fornitore e senza documento: da dove viene quella merce non
+  // si potra' piu' ricostruire (2 ottobre 2026). Non e' un errore - si puo'
+  // registrare lo stesso - ma si chiede una conferma.
+  const consegnaSenzaOrigine = (fornitoreAltro ? !fornitoreNomeAltro.trim() : fornitoreId === null) && !documento.trim();
+  const righeSenzaTracce = consegnaSenzaOrigine ? daRegistrare.filter((r) => !r.lotto.trim() && !r.scadenza) : [];
+  const [confermaIncompletaChiesta, setConfermaIncompletaChiesta] = useState(false);
+  // Il servizio risponde 409 se la consegna sembra gia' registrata (stesso
+  // ingrediente, fornitore, lotto del fornitore e data): il suo messaggio qui,
+  // in attesa del «registra comunque».
+  const [doppione, setDoppione] = useState<string | null>(null);
+
+  const invia = useCallback(
+    (registraComunque: boolean) => {
+      registraArrivo.mutate(
+        {
+          fornitoreId: !fornitoreAltro && fornitoreId !== null ? fornitoreId : undefined,
+          fornitoreNome: fornitoreAltro && fornitoreNomeAltro.trim() ? fornitoreNomeAltro.trim() : undefined,
+          data,
+          documento: documento.trim() || undefined,
+          righe: daRegistrare.map((r) => ({
+            ingredienteId: r.ingredienteId,
+            lotto: r.lotto.trim() || undefined,
+            scadenza: r.scadenza || undefined,
+            quantita: r.quantita.trim() || undefined,
+          })),
+          registraComunque: registraComunque || undefined,
+        },
+        {
+          onSuccess: async (risposta) => {
+            // Solo ora l'arrivo e i lotti esistono per davvero sul servizio:
+            // le foto scelte durante la compilazione si caricano adesso, non
+            // prima (docs/api.md, "Foto dei lotti e dei documenti"). Un
+            // caricamento che fallisce non deve far perdere la consegna gia'
+            // registrata: si continua e si avvisa soltanto.
+            let fotoFallite = 0;
+            for (const pagina of fotoDocumento) {
+              try {
+                await caricaFotoArrivo.mutateAsync({ id: risposta.id, file: pagina.file });
+              } catch {
+                fotoFallite++;
+              } finally {
+                URL.revokeObjectURL(pagina.url);
+              }
+            }
+            for (const r of daRegistrare) {
+              if (!r.foto) continue;
+              const lottoCreato = risposta.lotti.find((l) => l.ingredienteId === r.ingredienteId);
+              if (lottoCreato) {
+                try {
+                  await caricaFotoLotto.mutateAsync({ id: lottoCreato.id, file: r.foto.file });
+                } catch {
+                  fotoFallite++;
+                }
+              } else {
+                fotoFallite++;
+              }
+              URL.revokeObjectURL(r.foto.url);
+            }
+            const messaggioBase =
+              `Registrati ${plurale(risposta.lotti.length, "lotto", "lotti")}, già aperti.` +
+              (risposta.conPiuLottiAperti.length
+                ? ` ${risposta.conPiuLottiAperti.join(", ")}: ora ${risposta.conPiuLottiAperti.length === 1 ? "ha" : "hanno"} più lotti aperti; chiudi il vecchio quando finisce.`
+                : "");
+            avvisa(fotoFallite > 0 ? `${messaggioBase} ${plurale(fotoFallite, "foto non caricata", "foto non caricate")}: la consegna resta registrata comunque.` : messaggioBase);
+            navigate(destinazioneFine);
+          },
+          onError: (errore) => {
+            if (errore instanceof ErroreRichiesta && errore.stato === 409 && errore.corpo?.richiedeConferma) {
+              setDoppione(errore.corpo.errore);
+              return;
+            }
+            avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a registrare la consegna.");
+          },
+        },
+      );
+    },
+    [daRegistrare, fornitoreAltro, fornitoreId, fornitoreNomeAltro, data, documento, fotoDocumento, registraArrivo, caricaFotoArrivo, caricaFotoLotto, avvisa, navigate, destinazioneFine],
+  );
+
   const registra = useCallback(() => {
     if (!daRegistrare.length) {
       avvisa("Aggiungi almeno un ingrediente arrivato.");
       return;
     }
-    registraArrivo.mutate(
-      {
-        fornitoreId: !fornitoreAltro && fornitoreId !== null ? fornitoreId : undefined,
-        fornitoreNome: fornitoreAltro && fornitoreNomeAltro.trim() ? fornitoreNomeAltro.trim() : undefined,
-        data,
-        documento: documento.trim() || undefined,
-        righe: daRegistrare.map((r) => ({
-          ingredienteId: r.ingredienteId,
-          lotto: r.lotto.trim() || undefined,
-          scadenza: r.scadenza || undefined,
-          quantita: r.quantita.trim() || undefined,
-        })),
-      },
-      {
-        onSuccess: async (risposta) => {
-          // Solo ora l'arrivo e i lotti esistono per davvero sul servizio:
-          // le foto scelte durante la compilazione si caricano adesso, non
-          // prima (docs/api.md, "Foto dei lotti e dei documenti"). Un
-          // caricamento che fallisce non deve far perdere la consegna gia'
-          // registrata: si continua e si avvisa soltanto.
-          let fotoFallite = 0;
-          for (const pagina of fotoDocumento) {
-            try {
-              await caricaFotoArrivo.mutateAsync({ id: risposta.id, file: pagina.file });
-            } catch {
-              fotoFallite++;
-            } finally {
-              URL.revokeObjectURL(pagina.url);
-            }
-          }
-          for (const r of daRegistrare) {
-            if (!r.foto) continue;
-            const lottoCreato = risposta.lotti.find((l) => l.ingredienteId === r.ingredienteId);
-            if (lottoCreato) {
-              try {
-                await caricaFotoLotto.mutateAsync({ id: lottoCreato.id, file: r.foto.file });
-              } catch {
-                fotoFallite++;
-              }
-            } else {
-              fotoFallite++;
-            }
-            URL.revokeObjectURL(r.foto.url);
-          }
-          const messaggioBase =
-            `Registrati ${plurale(risposta.lotti.length, "lotto", "lotti")}, già aperti.` +
-            (risposta.conPiuLottiAperti.length
-              ? ` ${risposta.conPiuLottiAperti.join(", ")}: ora ${risposta.conPiuLottiAperti.length === 1 ? "ha" : "hanno"} più lotti aperti; chiudi il vecchio quando finisce.`
-              : "");
-          avvisa(fotoFallite > 0 ? `${messaggioBase} ${plurale(fotoFallite, "foto non caricata", "foto non caricate")}: la consegna resta registrata comunque.` : messaggioBase);
-          navigate(destinazioneFine);
-        },
-        onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a registrare la consegna."),
-      },
-    );
-  }, [daRegistrare, fornitoreAltro, fornitoreId, fornitoreNomeAltro, data, documento, fotoDocumento, registraArrivo, caricaFotoArrivo, caricaFotoLotto, avvisa, navigate, destinazioneFine]);
+    if (righeSenzaTracce.length > 0) {
+      setConfermaIncompletaChiesta(true);
+      return;
+    }
+    invia(false);
+  }, [daRegistrare.length, righeSenzaTracce.length, invia, avvisa]);
+  const tornaACompilare = useCallback(() => setConfermaIncompletaChiesta(false), []);
+  const registraSenzaTracce = useCallback(() => {
+    setConfermaIncompletaChiesta(false);
+    invia(false);
+  }, [invia]);
+  const nonRegistrareDoppione = useCallback(() => setDoppione(null), []);
+  const registraDoppioneComunque = useCallback(() => {
+    setDoppione(null);
+    invia(true);
+  }, [invia]);
+
+  // Perche' «Registra» e' spento, detto vicino al bottone e non solo col colore
+  // (2 ottobre 2026): l'unica cosa che manca e' almeno un ingrediente arrivato.
+  const motivoNonRegistra = daRegistrare.length ? null : "Manca l'ingrediente: aggiungi cosa è arrivato.";
 
   const portaleAzioni = usePortaleAzioni(
     <>
@@ -394,13 +501,18 @@ export default function MerceArrivata() {
       <button type="button" className="btn azioneAnnulla" onClick={clicAnnulla}>
         Annulla
       </button>
-      <button type="button" className="btn primario azioneRegistra" disabled={!daRegistrare.length || registraArrivo.isPending} onClick={registra}>
+      <button
+        type="button"
+        className="btn primario azioneRegistra"
+        disabled={!daRegistrare.length || registraArrivo.isPending}
+        onClick={registra}
+        aria-describedby={motivoNonRegistra ? "motivo-non-registra" : undefined}
+        title={motivoNonRegistra ?? undefined}
+      >
         {daRegistrare.length ? `Registra ${plurale(daRegistrare.length, "lotto", "lotti")}` : "Registra"}
       </button>
     </>,
   );
-
-  const placeholderLotto = testoLottoAutomatico(documento, data);
 
   return (
     <div className="schermo">
@@ -437,24 +549,21 @@ export default function MerceArrivata() {
           </div>
         </div>
         <div className="campo">
-          <div className="etichettina">Foto del documento</div>
-          <div className="flex gap-2 flex-wrap">
-            {fotoDocumento.map((f, indice) => (
-              <AnteprimaBozza key={f.url} url={f.url} didascalia={`Pag. ${indice + 1}`} />
-            ))}
-            {fotoDocumento.length > 0 ? (
-              <FotoVuota testo="Altra pagina" onCaricaFile={aggiungiFotoDocumento} />
-            ) : (
-              <>
-                <span className="soloTel">
-                  <FotoVuota testo="Fotografa" onCaricaFile={aggiungiFotoDocumento} />
-                </span>
-                <span className="soloPC">
-                  <FotoVuota testo="Carica" onCaricaFile={aggiungiFotoDocumento} />
-                </span>
-              </>
-            )}
+          {/* Come nell'intestazione di una riga ingrediente: il bottone
+              compatto sta accanto al titolo ed e' sempre disponibile (il
+              documento puo' avere piu' pagine); le miniature stanno sotto,
+              solo se ce n'e' almeno una. */}
+          <div className="capoFoto">
+            <div className="etichettina">Foto del documento</div>
+            <FotoVuota compatto testo="Aggiungi una foto del documento" onCaricaFile={aggiungiFotoDocumento} />
           </div>
+          {fotoDocumento.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {fotoDocumento.map((f, indice) => (
+                <PaginaDocumento key={f.url} url={f.url} numero={indice + 1} onTogli={togliFotoDocumento} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -463,9 +572,14 @@ export default function MerceArrivata() {
           {/* Via il sottotitolo/descrizione sotto il titolo (deciso da
               Gianluca, 25/09/2026): il titolo resta da solo. */}
           <div className="h text-[19px] font-semibold">Cosa è arrivato</div>
+          {motivoNonRegistra && (
+            <div id="motivo-non-registra" className="text-[13px] text-[var(--tenue)]" role="status">
+              {motivoNonRegistra}
+            </div>
+          )}
         </div>
         {righe.map((r) => (
-          <RigaArrivo key={r.ingredienteId} riga={r} placeholderLotto={placeholderLotto} onCambia={cambiaRiga} onCambiaFoto={cambiaFotoRiga} onRimuovi={rimuoviRiga} />
+          <RigaArrivo key={r.ingredienteId} riga={r} onCambia={cambiaRiga} onCambiaFoto={cambiaFotoRiga} onTogliFoto={togliFotoRiga} onRimuovi={rimuoviRiga} />
         ))}
 
         <button
@@ -480,7 +594,7 @@ export default function MerceArrivata() {
         {scegliAperto && (
           <div className="vassoio gap-2">
             {nomeFornitoreCorrente && liberiOrdinati.length > 0 && (
-              <div className="text-[12.5px] text-[var(--tenue)] px-1.5">Prima quelli che porta di solito {nomeFornitoreCorrente}.</div>
+              <div className="text-[12.5px] text-[var(--tenue)] px-1.5">{`Prima quelli che porta di solito ${nomeFornitoreCorrente}.`}</div>
             )}
             <div className="flex flex-wrap gap-2 px-1">
               {liberiOrdinati.map((i) => (
@@ -520,6 +634,54 @@ export default function MerceArrivata() {
             </>
           }
         />
+      )}
+
+      {/* Una consegna senza lotto del fornitore, senza scadenza e senza
+          nessuna origine (fornitore o documento): si puo' registrare, ma prima
+          si dice cosa si perde (2 ottobre 2026). */}
+      {confermaIncompletaChiesta && (
+        <Finestra
+          titolo="Registrare lo stesso?"
+          sottotitolo="Senza lotto del fornitore e scadenza non potrai ricostruire da dove viene."
+          onChiudi={tornaACompilare}
+          piede={
+            <>
+              <button type="button" className="btn" onClick={tornaACompilare} data-focus-iniziale>
+                Torna a compilare
+              </button>
+              <button type="button" className="btn primario" onClick={registraSenzaTracce}>
+                Registra lo stesso
+              </button>
+            </>
+          }
+        >
+          <div className="text-[14px] leading-relaxed">
+            {`Mancano lotto del fornitore e scadenza di ${righeSenzaTracce.map((r) => r.nome).join(", ")}, e la consegna non ha né un fornitore né un documento.`}
+          </div>
+        </Finestra>
+      )}
+
+      {/* Il servizio dice che questa consegna sembra gia' registrata: si
+          chiede se e' davvero un'altra (due sacchi con lo stesso codice) o un
+          doppio inserimento. Il bottone sicuro e' «Non registrare». */}
+      {doppione !== null && (
+        <Finestra
+          titolo="Questa consegna è già registrata?"
+          sottotitolo={doppione}
+          onChiudi={nonRegistrareDoppione}
+          piede={
+            <>
+              <button type="button" className="btn" onClick={nonRegistrareDoppione} data-focus-iniziale>
+                Non registrare
+              </button>
+              <button type="button" className="btn primario" onClick={registraDoppioneComunque}>
+                Registra comunque
+              </button>
+            </>
+          }
+        >
+          <div className="text-[14px] leading-relaxed">Se è un altro sacco con lo stesso lotto del fornitore, registralo comunque. Se l&apos;avevi già inserita, non registrarla di nuovo.</div>
+        </Finestra>
       )}
     </div>
   );

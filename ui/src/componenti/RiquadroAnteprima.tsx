@@ -1,17 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 import type React from "react";
 import type { Rotolo } from "../api/tipi";
-import { BORDO_CORNICE_PX, useAdattaAnteprima } from "../hooks/useAdattaAnteprima";
-import { IconaLente } from "./Icone";
+import { useAdattaAnteprima } from "../hooks/useAdattaAnteprima";
 import LenteEtichetta from "./LenteEtichetta";
 
 interface ProprietaRiquadroAnteprima {
   src: string | undefined;
   caricando?: boolean;
   titolo: string;
-  sottotitolo?: string;
   rotolo: Rotolo;
-  misure: { larghezzaMm: number; altezzaMm: number; avvisi: string[] } | undefined;
+  misure: { larghezzaMm: number; altezzaMm: number; avvisi: string[]; troncata?: boolean } | undefined;
   // 232px in Stampa, 200px in Etichette (anteprima(p,et,maxW,maxH) del
   // prototipo): il budget di altezza della cornice, cresciuto del 38% sul
   // rotolo da 102 mm - la stessa proporzione dell'altro lato, altrimenti
@@ -28,25 +26,68 @@ interface ProprietaRiquadroAnteprima {
   // (.cornice.compatta, index.css: max-width/max-height + auto, come
   // object-fit:contain) invece di adattarsi alla larghezza: maxH qui sotto
   // non conta piu' per lei (vedi il resto del file), l'altezza e' quella
-  // fissa del CSS. Mai piu' tagliata, mai una barra di scorrimento.
+  // fissa del CSS, circa un quarto dello schermo visibile (il resto e'
+  // dell'editor sotto: 29/09/2026, Gianluca). Mai piu' tagliata, mai una
+  // barra di scorrimento; per vederla grande si tocca (lente a tutto
+  // schermo, vedi sotto).
   compatta?: boolean;
+  // L'anteprima LEGGIBILE dell'editor su PC (2 ottobre 2026, prove con
+  // utenti simulati: con un'etichetta lunga la cornice "contain" si stringeva
+  // fino a 65-140 px, illeggibile). Qui l'etichetta prende la LARGHEZZA del
+  // posto a disposizione (mai sotto ~280 px: la colonna ha un minimo, vedi
+  // Etichette.tsx) e, se e' piu' alta dello spazio concesso, SCORRE dentro la
+  // cornice invece di rimpicciolirsi. Chi la usa passa a scala la larghezza
+  // vera (useScalaAnteprimaDoppia), cosi' il PNG arriva alla risoluzione
+  // giusta. Stampa continua a usare la cornice "contain" di sempre.
+  leggibile?: boolean;
+  // L'immagine alla scala piena (300 dpi) per la lente a tutto schermo: chi
+  // ha una bozza non salvata (un blob locale) la chiede al servizio quando la
+  // lente si apre, vedi onLente. Senza, si ricava dall'indirizzo ("scala=…" ->
+  // "scala=1") se e' un GET della resa, altrimenti la lente usa "src".
+  srcPiena?: string;
+  // Dice a chi ospita il riquadro quando la lente si apre e si chiude, per
+  // preparare srcPiena.
+  onLente?: (aperta: boolean) => void;
 }
 
-// L'anteprima con la lente del prototipo (".anteprima" + ".cornice" +
-// ".lupa"): un riquadro con l'etichetta come uscira', che si tocca per
-// vederla a schermo intero. src arriva gia' pronto dal chiamante (un hook
-// diverso per l'anteprima di un prodotto salvato e per una bozza in
+// L'avviso quando l'etichetta supera i 500 mm di nastro (docs/api.md, "misure":
+// troncata): il servizio la taglia in fondo e prima non lo diceva a nessuno,
+// ma in fondo ci sono scadenza, lotto, produttore.
+const AVVISO_TRONCATA = "Questa etichetta è più lunga di 500 mm: il fondo verrà tagliato.";
+
+// Per una PNG della resa chiesta con un GET (Stampa) la lente puo' chiedere la
+// stessa immagine a scala piena cambiando solo il parametro; un blob locale
+// (la bozza dell'editor) no: se ne occupa chi ospita il riquadro (srcPiena).
+function indirizzoAScalaPiena(src: string): string {
+  if (!src.startsWith("/api/resa/")) return src;
+  if (/[?&]scala=/.test(src)) return src.replace(/([?&]scala=)[^&]*/, "$11");
+  return src + (src.includes("?") ? "&" : "?") + "scala=1";
+}
+
+// L'anteprima del prototipo (".anteprima" + ".cornice"): un riquadro con
+// l'etichetta come uscira', che si tocca (o si clicca, o Invio/Spazio) per
+// vederla a tutto schermo. Niente icona della lente a ricordarlo sopra il
+// disegno (tolta, copriva l'etichetta): sul telefono e' il gesto, su PC c'e'
+// anche un bottone con il nome scritto sotto (2 ottobre 2026: un bottone
+// senza parole non lo trovava nessuno). src arriva gia' pronto dal chiamante
+// (un hook diverso per l'anteprima di un prodotto salvato e per una bozza in
 // modifica: vedi useAnteprimaProdottoSrc e useAnteprimaEtichetta). La
 // cornice si adatta come nel prototipo (adatta()): sempre "contain",
 // l'etichetta intera dentro lo spazio a disposizione, mai piu' larga di lui
 // (R8, deciso dal cliente, 25/09/2026: niente piu' scorrimento orizzontale
-// per le etichette molto piu' larghe che alte, tipiche del rotolo 102 -
-// "si vede sempre intera subito, per ingrandirla c'e' la lente") - vedi
-// useAdattaAnteprima.
-export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo, rotolo, misure, maxH, compatta }: ProprietaRiquadroAnteprima) {
+// per le etichette molto piu' larghe che alte, tipiche del rotolo 102 - "si
+// vede sempre intera subito, per ingrandirla si tocca") - vedi
+// useAdattaAnteprima. Fa eccezione "leggibile" (sopra).
+export default function RiquadroAnteprima({ src, caricando, titolo, rotolo, misure, maxH, compatta, leggibile, srcPiena, onLente }: ProprietaRiquadroAnteprima) {
   const [lenteAperta, setLenteAperta] = useState(false);
-  const apriLente = useCallback(() => setLenteAperta(true), []);
-  const chiudiLente = useCallback(() => setLenteAperta(false), []);
+  const apriLente = useCallback(() => {
+    setLenteAperta(true);
+    onLente?.(true);
+  }, [onLente]);
+  const chiudiLente = useCallback(() => {
+    setLenteAperta(false);
+    onLente?.(false);
+  }, [onLente]);
 
   const maxHEffettivo = rotolo === 102 ? Math.round(maxH * 1.38) : maxH;
   // Le proporzioni vere vengono dai pixel della PNG (vedi useAdattaAnteprima);
@@ -60,15 +101,16 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
   // "compatta" non passa piu' da qui (vedi il commento su
   // ProprietaRiquadroAnteprima.compatta): il contenimento e' CSS puro,
   // useAdattaAnteprima serve solo alla cornice normale (PC, e Stampa).
-  const { rif, misura, maxW } = useAdattaAnteprima(aspetto, maxHEffettivo);
+  const { rif, misura } = useAdattaAnteprima(aspetto, maxHEffettivo);
 
-  // La parte "misure" da sola (rotolo e mm): e' quella che ha ancora senso
-  // dentro la lente gia' aperta (sottotitolo di LenteEtichetta piu' sotto).
-  // Niente piu' l'invito "tocca per ingrandirla"/"scorri..." (deciso da
-  // Gianluca, 25/09/2026: resta al massimo la misura).
+  // Solo le misure (rotolo e mm), niente inviti (deciso da Gianluca,
+  // 25/09/2026: resta al massimo la misura).
   const misureTesto = misure
     ? `Anteprima rotolo ${rotolo} mm · ${misure.larghezzaMm.toLocaleString("it-IT")} × ${misure.altezzaMm.toLocaleString("it-IT")} mm`
     : undefined;
+  // Troncata: il servizio lo dichiara (troncata); su un servizio vecchio che non
+  // manda il campo si riconosce l'avviso di sempre, che parla di «500 mm».
+  const troncata = !!misure && (misure.troncata ?? misure.avvisi.some((a) => a.includes("500 mm")));
 
   // Stile in linea (dimensioni vere, decise da useAdattaAnteprima): un
   // useMemo a testa cosi' l'oggetto non e' nuovo a ogni resa
@@ -81,36 +123,11 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
     () => (misura ? { width: misura.immagineLarghezzaPx, height: misura.immagineAltezzaPx, maxWidth: "none" as const } : undefined),
     [misura],
   );
-
-  // La lente (IconaLente) NON sta piu' sopra l'immagine (copriva il testo
-  // dell'etichetta quando l'etichetta arrivava fin sotto l'angolo, R2,
-  // seconda review 25/09/2026: successo su "Base pizza low carb", "LOW"
-  // sparito sotto la lente): sorella della cornice dentro ".anteprima",
-  // SUBITO A DESTRA del suo angolo in alto quando c'e' posto - il caso
-  // comune, un'etichetta piu' stretta dello spazio (quasi sempre sul 62,
-  // la compatta del telefono lo risolve da sola col flex-wrap di
-  // ".anteprima", index.css: ".cornice" non si stringe mai per farle posto,
-  // e' lei a spostarsi). Quando l'immagine occupa gia' tutto lo spazio (un
-  // rotolo largo, o un'etichetta corta e larga) e a destra non resta posto,
-  // scende sulla riga della didascalia (solo la cornice "misurata" ce l'ha:
-  // la compatta, senza didascalia, la manda comunque sotto da sola via
-  // flex-wrap - vedi piu' in basso). Mai piu' sopra il disegno: la cornice
-  // resta comunque tutta toccabile per aprire la lente, l'icona e' solo
-  // un'indicazione visiva (aria-hidden, non un bottone a parte).
-  const LARGHEZZA_LENTE_CON_MARGINE = 38; // 30px di lupa + 8px di respiro
-  // Solo la cornice "misurata" (PC, Stampa) sa gia' quanto spazio resta a
-  // destra (maxW - corniceLarghezzaPx, dallo stesso calcolo che decide la
-  // larghezza dell'immagine): per la compatta non serve, non ha una riga di
-  // didascalia a cui appoggiarsi comunque. + BORDO_CORNICE_PX: corniceLarghezzaPx
-  // e' la larghezza del CONTENUTO (".cornice.misurata" e' content-box), la
-  // cornice vera in pagina e' 2px piu' larga di lei (R7, 25/09/2026).
-  const spazioDestraCornice = !compatta && misura ? maxW - (misura.corniceLarghezzaPx + BORDO_CORNICE_PX) : null;
-  const lenteAccantoAllaCornice = spazioDestraCornice === null || spazioDestraCornice >= LARGHEZZA_LENTE_CON_MARGINE;
-  const lente = src && (
-    <span className="lupa" aria-hidden="true">
-      <IconaLente larghezza={16} spessoreTratto={2.2} />
-    </span>
-  );
+  // "leggibile": larghezza piena del posto, ma non oltre un tetto (un 62 mm
+  // largo 900 px sarebbe alto un metro); il tetto del 102 e' piu' alto perche'
+  // l'etichetta e' piu' larga di suo. Oltre l'altezza concessa scorre.
+  const stileLeggibile = useMemo(() => ({ maxWidth: rotolo === 102 ? 560 : 400 }), [rotolo]);
+  const srcLente = srcPiena ?? (src ? indirizzoAScalaPiena(src) : undefined);
 
   return (
     <div className="flex flex-col gap-2 min-w-0">
@@ -121,16 +138,25 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
             // il commento su ProprietaRiquadroAnteprima.compatta): niente
             // style in linea, il contenimento lo fa ".cornice.compatta" in
             // index.css.
-            <button type="button" className="cornice compatta" onClick={apriLente} aria-label={`Ingrandisci l'anteprima di ${titolo}`}>
+            <button type="button" className="cornice compatta" onClick={apriLente} aria-label="Apri l'anteprima a tutto schermo">
               <img src={src} alt={`Anteprima dell'etichetta di ${titolo}`} onLoad={suImmagineCaricata} />
             </button>
+          ) : leggibile ? (
+            // Il bordo e lo sfondo bianco come ".cornice", ma la cornice qui
+            // scorre in verticale (".cornice" e' overflow:hidden). Il
+            // bottone dentro e' l'etichetta stessa: toccarla la ingrandisce.
+            <div className="w-full mx-auto overflow-y-auto overflow-x-hidden bg-white border border-[#C6B7A3] rounded-[2px] max-h-[min(58vh,620px)]" style={stileLeggibile}>
+              <button type="button" className="block w-full cursor-zoom-in" onClick={apriLente} aria-label="Apri l'anteprima a tutto schermo">
+                <img src={src} alt={`Anteprima dell'etichetta di ${titolo}`} className="block w-full h-auto" onLoad={suImmagineCaricata} />
+              </button>
+            </div>
           ) : (
             <button
               type="button"
               className="cornice misurata"
               style={stileCornice}
               onClick={apriLente}
-              aria-label={`Ingrandisci l'anteprima di ${titolo}`}
+              aria-label="Apri l'anteprima a tutto schermo"
             >
               <img src={src} alt={`Anteprima dell'etichetta di ${titolo}`} style={stileImmagine} onLoad={suImmagineCaricata} />
             </button>
@@ -140,26 +166,22 @@ export default function RiquadroAnteprima({ src, caricando, titolo, sottotitolo,
             {caricando === false ? "Nessuna anteprima" : "Preparo l'anteprima…"}
           </div>
         )}
-        {lenteAccantoAllaCornice && lente}
       </div>
       {/* Centrata sotto la cornice (S1/P1, deciso da Gianluca, 25/09/2026:
-          prima stava a sinistra come la cornice) - a meno che la lente non
-          sia scesa qui perche' non c'e' piu' posto accanto alla cornice
-          (R2): in quel caso il testo resta centrato nello spazio che
-          avanza, la lente si prende il bordo destro della riga. */}
+          prima stava a sinistra come la cornice). */}
       {!compatta && misureTesto && (
-        <div className={"text-[12px] text-[var(--spento)] flex items-center gap-2" + (lenteAccantoAllaCornice ? " justify-center" : "")}>
-          <span className={lenteAccantoAllaCornice ? "" : "flex-1 text-center"}>{caricando ? "Aggiorno l'anteprima…" : misureTesto}</span>
-          {!lenteAccantoAllaCornice && lente}
+        <div className="text-[12px] text-[var(--spento)] text-center">{caricando ? "Aggiorno l'anteprima…" : misureTesto}</div>
+      )}
+      {/* L'etichetta oltre i 500 mm (2 ottobre 2026): il fondo - scadenza,
+          lotto, produttore - viene tagliato e prima non lo diceva nessuno. Gli
+          altri avvisi della resa ("Il titolo e' stato mandato a capo") restano
+          muti (deciso da Gianluca, 25/09/2026). Compare anche sul telefono. */}
+      {troncata && (
+        <div role="status" className="rounded-xl border border-[var(--rossobordo)] bg-[var(--rossochiaro)] text-[var(--rosso)] px-3 py-2 text-[13px] font-bold leading-snug">
+          {AVVISO_TRONCATA}
         </div>
       )}
-      {/* Gli avvisi della resa ("Il titolo e' stato mandato a capo" e simili)
-          non si mostrano piu' sotto l'anteprima (deciso da Gianluca,
-          25/09/2026), ne' su PC ne' sul telefono: "misure.avvisi" resta nel
-          contratto ma qui non si legge piu'. */}
-      {lenteAperta && src && (
-        <LenteEtichetta titolo={titolo} sottotitolo={sottotitolo ?? misureTesto} src={src} onChiudi={chiudiLente} />
-      )}
+      {lenteAperta && src && <LenteEtichetta titolo={titolo || "Anteprima dell'etichetta"} sottotitolo={misureTesto} src={srcLente ?? src} onChiudi={chiudiLente} />}
     </div>
   );
 }

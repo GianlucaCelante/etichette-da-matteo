@@ -51,16 +51,26 @@ public class ImpostazioniController {
     @PutMapping("/logo")
     public Map<String, Object> caricaLogo(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "file: obbligatorio");
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Scegli un file da caricare.");
         }
         if (!TIPI_LOGO_AMMESSI.contains(file.getContentType())) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "file: deve essere PNG o JPEG");
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Formato non supportato: il logo deve essere un'immagine PNG o JPEG.");
         }
         if (file.getSize() > LogoService.DIMENSIONE_MASSIMA_BYTE) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "file: massimo 2 MB");
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il file è troppo grande: il logo può pesare al massimo 2 MB.");
         }
         LogoService.Dimensioni dimensioni = logo.salva(file);
         return Map.of("larghezza", dimensioni.larghezza(), "altezza", dimensioni.altezza());
+    }
+
+    /**
+     * {@code GET /api/impostazioni/logo} (2 ottobre 2026): c'e' un logo? {"presente": true|false}, sempre 200.
+     * Serve all'interfaccia per sapere se mostrare l'immagine SENZA chiedere {@code logo.png} e prendersi
+     * un 404 (rumore in console) a ogni apertura della pagina quando il logo non c'e'.
+     */
+    @GetMapping("/logo")
+    public Map<String, Object> statoLogo() {
+        return Map.of("presente", logo.esiste());
     }
 
     /** {@code GET /api/impostazioni/logo.png}: 404 se non e' mai stato caricato nessun logo. */
@@ -89,7 +99,7 @@ public class ImpostazioniController {
     @Transactional
     public Map<String, String> aggiorna(@RequestBody Map<String, String> nuove) {
         nuove.forEach(ImpostazioniController::valida);
-        nuove.forEach((chiave, valore) -> repository.save(new Impostazione(chiave, valore)));
+        nuove.forEach((chiave, valore) -> repository.save(new Impostazione(chiave, canonico(chiave, valore))));
         return tutte();
     }
 
@@ -107,8 +117,40 @@ public class ImpostazioniController {
                     throw new ErroreApi(HttpStatus.BAD_REQUEST, "taglio_ogni_etichetta: valore non ammesso: " + valore);
                 }
             }
-            case "margine_mm" -> validaNumero(chiave, valore, 3);
+            case "margine_mm" -> validaMargine(valore);
             default -> throw new ErroreApi(HttpStatus.BAD_REQUEST, "impostazione non riconosciuta: " + chiave);
+        }
+    }
+
+    /** Il valore come si salva: il margine con il punto decimale («3,5» -> «3.5»), cosi' chi lo legge (StampeService) lo parsa sempre. */
+    private static String canonico(String chiave, String valore) {
+        return "margine_mm".equals(chiave) ? valore.strip().replace(',', '.') : valore;
+    }
+
+    /** Margine iniziale e finale, in mm: da {@link #MARGINE_MINIMO_MM} a {@link #MARGINE_MASSIMO_MM}. */
+    static final double MARGINE_MINIMO_MM = 3;
+    static final double MARGINE_MASSIMO_MM = 20;
+
+    /**
+     * Il margine (2 ottobre 2026, prove con utenti simulati: 50 e 500 mm venivano accettati, 0/2/testo
+     * tornavano a 3 senza dire niente): un numero fra 3 e 20 mm, con la virgola o il punto decimale
+     * («3,5» e «3.5» sono la stessa cosa). Il minimo e' quello della stampante; il massimo e' una
+     * misura ragionevole - oltre, il nastro si spreca e non e' mai servito. Fuori intervallo, non
+     * numerico (anche «NaN» o «Infinity») o vuoto: 400 col messaggio che l'interfaccia mostra
+     * vicino al campo.
+     */
+    private static void validaMargine(String valore) {
+        double numero = numeroDelMargine(valore);
+        if (!Double.isFinite(numero) || numero < MARGINE_MINIMO_MM || numero > MARGINE_MASSIMO_MM) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il margine deve essere un numero fra 3 e 20 mm.");
+        }
+    }
+
+    private static double numeroDelMargine(String valore) {
+        try {
+            return Double.parseDouble(valore == null ? "" : valore.strip().replace(',', '.'));
+        } catch (NumberFormatException e) {
+            return Double.NaN;
         }
     }
 

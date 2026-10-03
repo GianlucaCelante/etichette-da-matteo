@@ -1,8 +1,9 @@
 import type {
-  AggiornaScadenzaLottoRichiesta,
+  AggiornaLottoRichiesta,
   Arrivo,
   ArrivoRichiesta,
   ArrivoRisposta,
+  Cartelle,
   CatenaStorico,
   CorpoErrore,
   CorreggiCatenaRichiesta,
@@ -20,6 +21,7 @@ import type {
   IngredienteProposta,
   IngredienteRichiesta,
   IngredienteSimile,
+  LavoroAttivo,
   LogoRisposta,
   Lotto,
   LottoIngrediente,
@@ -43,6 +45,7 @@ import type {
   StampaRisposta,
   Stampante,
   StoricoRiga,
+  TotaliStorico,
   UltimeValide,
   Versione,
 } from "./tipi";
@@ -97,6 +100,11 @@ export const api = {
   provaStampa: () => richiedi<ProvaStampaRisposta>("/stampante/prova", { method: "POST" }),
   annullaStampa: (lavoroId: string) =>
     richiedi<void>(`/stampe/${encodeURIComponent(lavoroId)}/annulla`, { method: "POST" }),
+  // I lavori accettati e non ancora conclusi, in ordine di coda (docs/api.md,
+  // 2/10/2026): da qui la vista Stampa ricostruisce il pannello «Stampa in
+  // corso» dopo F5, un cambio di vista, la riconnessione o su un altro
+  // dispositivo.
+  stampeAttive: () => richiedi<LavoroAttivo[]>("/stampe/attive"),
   // Risposta alla domanda "nastro" del pannello di pausa (docs/api.md,
   // "Errore di nastro a meta' copia"): 204, 404 lavoro sconosciuto, 409 se
   // il lavoro non sta (piu') aspettando una risposta.
@@ -116,6 +124,9 @@ export const api = {
   // copie. 400 se la cartella non esiste o non e' scrivibile.
   salvaCartellaBackup: (cartella: string | null) =>
     richiedi<Programma>("/programma/backup", { method: "PUT", body: JSON.stringify({ cartella }) }),
+  // Le sottocartelle di un percorso assoluto, o le unita' se manca (per
+  // l'esploratore di cartelle); 400 se il percorso non c'e' o non e' assoluto.
+  cartelle: (percorso: string | null) => richiedi<Cartelle>(`/programma/cartelle${stringaQuery({ percorso: percorso ?? undefined })}`),
   // Esegue subito una copia e risponde con l'esito appena scritto (lo stesso
   // oggetto "ultima" di GET /api/programma); 409 senza cartella configurata
   // o con una copia gia' in corso.
@@ -130,6 +141,11 @@ export const api = {
   creaProdotto: (dati?: NuovoProdotto) =>
     richiedi<Prodotto>("/prodotti", { method: "POST", body: dati ? JSON.stringify(dati) : undefined }),
   duplicaProdotto: (id: number) => richiedi<Prodotto>(`/prodotti/${id}/duplica`, { method: "POST" }),
+  // Le bozze di «Nuova etichetta» e «Duplica» (2 ottobre 2026): il prodotto di
+  // partenza SENZA salvare niente (id null). Il prodotto nasce al primo «Salva
+  // etichetta» con creaProdotto(corpo intero).
+  prodottoNuovo: () => richiedi<Prodotto>("/prodotti/nuovo"),
+  prodottoCopia: (id: number) => richiedi<Prodotto>(`/prodotti/${id}/copia`),
   aggiornaProdotto: (id: number, dati: Prodotto) =>
     richiedi<Prodotto>(`/prodotti/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
   eliminaProdotto: (id: number) => richiedi<void>(`/prodotti/${id}`, { method: "DELETE" }),
@@ -168,8 +184,14 @@ export const api = {
         lavoroId: parametri?.lavoroId,
         limite: parametri?.limite,
         primaDi: parametri?.primaDi,
+        da: parametri?.da,
+        a: parametri?.a,
       })}`,
     ),
+  // Quante stampe e quante etichette ha un filtro (periodo, ricerca, intervallo):
+  // il totale in fondo allo Storico, una sola richiesta di conteggio.
+  storicoTotali: (parametri: { periodo?: PeriodoStorico; q?: string; da?: string; a?: string }) =>
+    richiedi<TotaliStorico>(`/storico/totali${stringaQuery({ periodo: parametri.periodo, q: parametri.q, da: parametri.da, a: parametri.a })}`),
   // L'ultima stampa valida di ogni semilavorato chiesto (docs/api.md): la
   // striscia dei lotti in Stampa, senza scaricare lo storico intero.
   ultimeValide: (prodotti: number[]) =>
@@ -238,8 +260,13 @@ export const api = {
   // 409 se e' scaduto e l'ingrediente ha gia' un altro lotto aperto non
   // scaduto: il servizio lo richiuderebbe da solo.
   riapriLottoIngrediente: (id: number) => richiedi<void>(`/lotti-ingrediente/${id}/riapri`, { method: "POST" }),
-  aggiornaScadenzaLotto: (id: number, dati: AggiornaScadenzaLottoRichiesta) =>
+  // Correzione a mano di codice, quantita', scadenza, fornitore e data di arrivo: solo
+  // i campi mandati cambiano (docs/api.md). 400 se una data non e' valida.
+  aggiornaLotto: (id: number, dati: AggiornaLottoRichiesta) =>
     richiedi<LottoIngrediente>(`/lotti-ingrediente/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
+  // Solo un lotto mai stampato: 409 con il messaggio del servizio se e' gia' nello
+  // storico (allora resta solo "Chiudi lotto").
+  eliminaLottoIngrediente: (id: number) => richiedi<void>(`/lotti-ingrediente/${id}`, { method: "DELETE" }),
   // Il foglio di richiamo di un lotto: le stampe fatte con quello, dalla
   // piu' recente (docs/api.md). Non ancora usato da nessuna vista di questo
   // giro (solo la catena dello storico, che e' l'altro verso), ma fa parte
@@ -255,20 +282,24 @@ export const percorsoEventi = `${BASE}/eventi`;
 // L'URL di GET /api/storico/esporta (Excel/PDF/CSV): niente fetch, e' per un
 // <a download> (EsportaElenco.tsx). Stessi filtri di api.storico, senza
 // "limite" - l'esportazione prende sempre TUTTE le righe del filtro.
-export function percorsoEsportaStorico(parametri: { formato: "xlsx" | "pdf" | "csv"; periodo?: PeriodoStorico; q?: string }): string {
-  return `${BASE}/storico/esporta${stringaQuery({ formato: parametri.formato, periodo: parametri.periodo, q: parametri.q })}`;
+export function percorsoEsportaStorico(parametri: { formato: "xlsx" | "pdf" | "csv"; periodo?: PeriodoStorico; q?: string; da?: string; a?: string }): string {
+  return `${BASE}/storico/esporta${stringaQuery({ formato: parametri.formato, periodo: parametri.periodo, q: parametri.q, da: parametri.da, a: parametri.a })}`;
 }
 
 // L'anteprima di un prodotto gia' salvato: un GET semplice, adatto a un <img src>.
 // I parametri assenti fanno usare al servizio i valori proposti dal prodotto.
 export function percorsoResaProdotto(id: number, opzioni: ParametriResa): string {
-  return `${BASE}/resa/prodotti/${id}.png${stringaQuery({
+  const query = stringaQuery({
     rotolo: opzioni.rotolo,
     scala: opzioni.scala,
     quantita: opzioni.quantita,
     scadenza: opzioni.scadenza,
     lotto: opzioni.lotto,
-  })}`;
+  });
+  // "porzioni" a parte: qui una stringa VUOTA conta (nessuna porzione per
+  // questa stampa, il blocco non esce), mentre stringaQuery salta i vuoti.
+  const porzioni = opzioni.porzioni === undefined ? "" : `${query ? "&" : "?"}porzioni=${encodeURIComponent(opzioni.porzioni)}`;
+  return `${BASE}/resa/prodotti/${id}.png${query}${porzioni}`;
 }
 
 // L'anteprima di un prodotto in modifica, non ancora salvato (etichetta
@@ -313,11 +344,16 @@ export async function misureProdottoInModifica(corpo: {
 // L'immagine del logo, come il QR: un src diretto, niente client JSON.
 export const percorsoLogo = `${BASE}/impostazioni/logo.png`;
 
-// Nessun endpoint dedicato per "c'e' un logo?": si chiede l'immagine con HEAD
-// e si guarda se risponde 200 o 404 (docs del compito: "404 = nessun logo").
+// "C'e' un logo?": GET /api/impostazioni/logo risponde sempre 200 con
+// {"presente": true|false} (2 ottobre 2026). Prima si chiedeva l'immagine con
+// HEAD e si leggeva il 404, che a ogni apertura senza logo finiva in console
+// come errore. Se il servizio e' una versione vecchia (404 qui) si ripiega sul
+// vecchio HEAD, cosi' l'interfaccia non si rompe.
 export async function logoEsiste(): Promise<boolean> {
-  const risposta = await fetch(percorsoLogo, { method: "HEAD" });
-  return risposta.ok;
+  const risposta = await fetch(`${BASE}/impostazioni/logo`);
+  if (risposta.ok) return ((await risposta.json()) as { presente: boolean }).presente;
+  const vecchia = await fetch(percorsoLogo, { method: "HEAD" });
+  return vecchia.ok;
 }
 
 export async function caricaLogo(file: File): Promise<LogoRisposta> {

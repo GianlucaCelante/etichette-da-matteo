@@ -54,6 +54,10 @@ public class Prodotto {
     @Column(name = "quantita")
     private String quantita;
 
+    /** Il valore di partenza del blocco "Porzioni" (v14-porzioni-grassetto.yaml): come {@code quantita}, ma per le porzioni. */
+    @Column(name = "porzioni")
+    private String porzioni;
+
     /** JSON: valori nutrizionali, ordine libero. */
     @Column(name = "valori_nutrizionali")
     private String valoriNutrizionali;
@@ -159,6 +163,14 @@ public class Prodotto {
 
     public void setQuantita(String quantita) {
         this.quantita = quantita;
+    }
+
+    public String getPorzioni() {
+        return porzioni;
+    }
+
+    public void setPorzioni(String porzioni) {
+        this.porzioni = porzioni;
     }
 
     public String getValoriNutrizionali() {

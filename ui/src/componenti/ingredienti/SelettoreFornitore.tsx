@@ -79,7 +79,7 @@ export default function SelettoreFornitore({
             // Chromium applica davvero l'ellissi al testo del <select> chiuso
             // con queste tre regole (provato il 23 settembre 2026): un nome
             // lungo finisce con "…" invece di tagliarsi a meta' parola.
-            className="w-full h-[50px] px-3.5 bg-transparent cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+            className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
           >
             <option value="">{segnaposto}</option>
             {fornitori.map((f) => (

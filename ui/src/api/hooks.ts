@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useDebounced } from "../hooks/useDebounced";
 import {
   anteprimaProdottoBlob,
@@ -14,9 +14,11 @@ import {
   percorsoResaProdotto,
 } from "./client";
 import type {
+  AggiornaLottoRichiesta,
   ArrivoRichiesta,
   CorreggiCatenaRichiesta,
   EventoStampa,
+  FiltroStoricoAPagine,
   FiltroIngredienti,
   Impostazioni,
   IngredienteRichiesta,
@@ -25,7 +27,6 @@ import type {
   OrdineProdotti,
   ParametriResa,
   ParametriStorico,
-  PeriodoStorico,
   Prodotto,
   Programma,
   ProvaProdottoRichiesta,
@@ -46,6 +47,16 @@ export const chiaviQuery = {
   rete: ["rete"] as QueryKey,
   versione: ["versione"] as QueryKey,
   lavoroStampa: ["lavoroStampa"] as QueryKey,
+  // I lavori di stampa attivi (GET /api/stampe/attive) e l'ultimo evento SSE
+  // di OGNI lavoro (non solo dell'ultimo arrivato, come lavoroStampa): la
+  // vista Stampa segue il SUO lavoro anche mentre un altro dispositivo
+  // stampa (2/10/2026, pannello "fantasma" con due dispositivi).
+  stampeAttive: ["stampe", "attive"] as QueryKey,
+  eventiStampa: ["stampe", "eventi"] as QueryKey,
+  // false = l'SSE e' caduto e non si e' ancora ricollegato (eventi.ts): la
+  // pastiglia della stampante dice che il programma sul PC non risponde,
+  // invece di restare sull'ultimo stato noto.
+  connessione: ["connessione"] as QueryKey,
 
   prodotti: (opzioni?: { q?: string; ordine?: OrdineProdotti }) => ["prodotti", "elenco", opzioni ?? {}] as QueryKey,
   prodotto: (id: number) => ["prodotti", "uno", id] as QueryKey,
@@ -62,7 +73,7 @@ export const chiaviQuery = {
   storico: (parametri?: ParametriStorico) => ["storico", parametri ?? {}] as QueryKey,
   // Una chiave a parte per le pagine della vista Storico: la cache di una
   // query "infinita" ha un'altra forma ({pages, pageParams}) di una lista.
-  storicoAPagine: (filtro: { periodo: PeriodoStorico; q?: string }) => ["storico", "pagine", filtro] as QueryKey,
+  storicoAPagine: (filtro: FiltroStoricoAPagine) => ["storico", "pagine", filtro] as QueryKey,
   ultimeValide: (prodotti: number[]) => ["storico", "ultimeValide", prodotti] as QueryKey,
   catenaStorico: (id: number) => ["storico", "catena", id] as QueryKey,
 
@@ -126,6 +137,19 @@ export function useSalvaCartellaBackup() {
   return useMutation({
     mutationFn: (cartella: string | null) => api.salvaCartellaBackup(cartella),
     onSuccess: (dati) => client.setQueryData(chiaviQuery.programma, dati),
+  });
+}
+
+// L'esploratore di cartelle: si rilegge ogni volta che si apre una cartella
+// (il disco puo' cambiare), ma tenendo a schermo quella di prima finche'
+// arriva la nuova, cosi' la lista non lampeggia.
+export function useCartelle(percorso: string | null) {
+  return useQuery({
+    queryKey: ["cartelle", percorso] as QueryKey,
+    queryFn: () => api.cartelle(percorso),
+    placeholderData: keepPreviousData,
+    gcTime: 0,
+    retry: false,
   });
 }
 
@@ -198,6 +222,47 @@ export function useLavoroStampa() {
   });
 }
 
+// I lavori accettati e non ancora conclusi (docs/api.md, 2/10/2026), riletti
+// a ogni montaggio della vista (F5, cambio vista) e a ogni riconnessione
+// dell'SSE (eventi.ts); fra una lettura e l'altra li tengono aggiornati gli
+// eventi "stampa". Mentre c'e' un lavoro si rilegge anche ogni tanto: se un
+// evento si perde, il pannello non resta fermo.
+export function useStampeAttive() {
+  return useQuery({
+    queryKey: chiaviQuery.stampeAttive,
+    queryFn: api.stampeAttive,
+    refetchOnMount: "always",
+    refetchInterval: (query) => (query.state.data?.length ? 10_000 : false),
+  });
+}
+
+// L'ultimo evento ricevuto per ogni lavoro (eventi.ts), con l'ora d'arrivo
+// sul dispositivo (serve al conto alla rovescia della ristampa automatica).
+// Non si legge da una GET: la queryFn restituisce quello che c'e' gia', cosi'
+// un'invalidazione non lo cancella.
+export type EventoStampaRicevuto = EventoStampa & { ricevutoIl: number };
+export function useEventiStampa() {
+  const client = useQueryClient();
+  return useQuery<Record<string, EventoStampaRicevuto>>({
+    queryKey: chiaviQuery.eventiStampa,
+    queryFn: () => client.getQueryData<Record<string, EventoStampaRicevuto>>(chiaviQuery.eventiStampa) ?? {},
+    initialData: {},
+    staleTime: Infinity,
+  });
+}
+
+// L'SSE e' collegato? (eventi.ts) Stessa forma di useEventiStampa: scritto
+// solo da eventi.ts, mai letto da una GET.
+export function useConnessione() {
+  const client = useQueryClient();
+  return useQuery<boolean>({
+    queryKey: chiaviQuery.connessione,
+    queryFn: () => client.getQueryData<boolean>(chiaviQuery.connessione) ?? true,
+    initialData: true,
+    staleTime: Infinity,
+  }).data;
+}
+
 /* ============================ prodotti ============================ */
 
 export function useProdotti(opzioni?: { q?: string; ordine?: OrdineProdotti }) {
@@ -212,6 +277,22 @@ export function useProdotto(id: number | undefined) {
     queryKey: chiaviQuery.prodotto(id ?? -1),
     queryFn: () => api.prodotto(id as number),
     enabled: id !== undefined,
+  });
+}
+
+// La bozza di «Nuova etichetta» (da === null) o di «Duplica» (da = id
+// dell'originale): il prodotto di partenza dal servizio, SENZA creare niente
+// (id null, che qui si legge come 0: ID_BOZZA). "istanza" cambia a ogni nuova
+// bozza, cosi' ogni «Nuova etichetta» riparte da una copia pulita. Fuori dal
+// prefisso ["prodotti"] di proposito: salvare altro non deve rileggerla.
+export const ID_BOZZA = 0;
+export function useProdottoBozza(attiva: boolean, da: number | null, istanza: number) {
+  return useQuery({
+    queryKey: ["bozzaProdotto", da, istanza] as QueryKey,
+    queryFn: async () => ({ ...(da === null ? await api.prodottoNuovo() : await api.prodottoCopia(da)), id: ID_BOZZA }),
+    enabled: attiva,
+    staleTime: Infinity,
+    gcTime: 0,
   });
 }
 
@@ -260,7 +341,16 @@ export function useEliminaProdotto() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.eliminaProdotto(id),
-    onSuccess: () => invalidaProdotti(client),
+    onSuccess: (_risposta, id) => {
+      // Prima si tolgono dalla cache le query dell'etichetta appena eliminata
+      // (scheda, misure): la pagina le ha ancora attive finche' non cambia
+      // l'indirizzo, e l'invalidazione qui sotto le rileggerebbe subito, con un
+      // 404 in console per un prodotto che non esiste piu'.
+      client.removeQueries({
+        predicate: (q) => q.queryKey[0] === "prodotti" && (q.queryKey[1] === "uno" || q.queryKey[1] === "misure") && q.queryKey[2] === id,
+      });
+      invalidaProdotti(client);
+    },
   });
 }
 
@@ -336,8 +426,10 @@ export function useEliminaLogo() {
 
 /* ============================ storico ============================ */
 
-export function useStorico(parametri?: ParametriStorico) {
-  return useQuery({ queryKey: chiaviQuery.storico(parametri), queryFn: () => api.storico(parametri) });
+// "abilitato" false = non chiedere niente (Storico.tsx lo usa per sapere se in
+// tutto lo storico c'e' almeno una stampa, solo quando l'elenco filtrato e' vuoto).
+export function useStorico(parametri?: ParametriStorico, abilitato = true) {
+  return useQuery({ queryKey: chiaviQuery.storico(parametri), queryFn: () => api.storico(parametri), enabled: abilitato });
 }
 
 // Le righe di una pagina della vista Storico: qualche giorno di lavoro, poco
@@ -356,12 +448,23 @@ function paginaDopo(ultima: StoricoRiga[]): number | undefined {
 // Un'invalidazione (fine stampa, correzione) rilegge tutte le pagine gia'
 // caricate, dalla prima: con primaDi le pagine restano attaccate giuste anche
 // se nel frattempo sono arrivate stampe nuove in cima.
-export function useStoricoAPagine(filtro: { periodo: PeriodoStorico; q?: string }) {
+export function useStoricoAPagine(filtro: FiltroStoricoAPagine, abilitato = true) {
   return useInfiniteQuery({
     queryKey: chiaviQuery.storicoAPagine(filtro),
     queryFn: ({ pageParam }) => api.storico({ ...filtro, limite: RIGHE_PER_PAGINA_STORICO, primaDi: pageParam }),
     initialPageParam: undefined as number | undefined,
     getNextPageParam: paginaDopo,
+    enabled: abilitato,
+  });
+}
+
+// Il totale in fondo alla vista Storico: segue ricerca e periodo (o intervallo)
+// come l'elenco, e dopo ogni stampa si rilegge insieme al resto di ["storico"].
+export function useTotaliStorico(filtro: FiltroStoricoAPagine, abilitato = true) {
+  return useQuery({
+    queryKey: ["storico", "totali", filtro] as QueryKey,
+    queryFn: () => api.storicoTotali(filtro),
+    enabled: abilitato,
   });
 }
 
@@ -651,11 +754,35 @@ export function useRiapriLottoIngrediente() {
   });
 }
 
-export function useAggiornaScadenzaLotto() {
+// Correzione a mano di un lotto (docs/api.md): codice, quantita', scadenza,
+// fornitore, data di arrivo - solo i campi mandati. Si vede anche nelle
+// stampe gia' fatte (lo storico punta al lotto), quindi si rileggono anche la
+// catena e l'elenco dello Storico; il fornitore o la data possono spostare il
+// lotto su un'altra consegna, quindi anche gli arrivi e i conteggi dei fornitori.
+export function useAggiornaLotto() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, scadenza }: { id: number; scadenza: string }) => api.aggiornaScadenzaLotto(id, { scadenza }),
-    onSuccess: () => invalidaIngredienti(client),
+    mutationFn: ({ id, dati }: { id: number; dati: AggiornaLottoRichiesta }) => api.aggiornaLotto(id, dati),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+      void client.invalidateQueries({ queryKey: ["arrivi"] });
+      void client.invalidateQueries({ queryKey: ["storico"] });
+    },
+  });
+}
+
+// Elimina un lotto mai stampato (409 se e' gia' nello storico: allora resta
+// solo "Chiudi lotto"). Con lui puo' sparire la consegna rimasta vuota.
+export function useEliminaLottoIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.eliminaLottoIngrediente(id),
+    onSuccess: () => {
+      invalidaIngredienti(client);
+      invalidaFornitori(client);
+      void client.invalidateQueries({ queryKey: ["arrivi"] });
+    },
   });
 }
 

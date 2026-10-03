@@ -2,10 +2,13 @@ import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "reac
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
-import { IconaCestino, IconaManiglia } from "../Icone";
+import { IconaCestino, IconaGiu, IconaManiglia, IconaSu } from "../Icone";
+import { InterruttoreCompatto } from "../Interruttore";
 import type { BloccoBozza } from "./bozza";
 import { BottoniAllineamento } from "./ControlloAllineamento";
 import { BottoniPosizione } from "./ControlloPosizione";
+import ControlloGrassetto from "./ControlloGrassetto";
+import { grassettoEffettivo, haGrassetto } from "./corpoBlocco";
 
 // Per il blocco "Logo" il corpo non e' un corpo in punti ma l'altezza del
 // logo in mm (5...30, proposta 10): stessa tendina, scaletta diversa.
@@ -19,6 +22,17 @@ interface ProprietaBloccoRiga {
   onCambiaColonna: (chiave: string, colonna: ColonnaBlocco) => void;
   onRimuovi: (chiave: string) => void;
   onCambiaAllineamento: (chiave: string, allineamento: AllineamentoBlocco) => void;
+  onCambiaGrassetto: (chiave: string, grassetto: boolean) => void;
+  // «Sposta su» / «Sposta giù» (2 ottobre 2026): il riordino anche senza
+  // trascinare, da tastiera o con un tocco. puoSu/puoGiu spengono il bottone
+  // in cima e in fondo alla lista.
+  onSposta: (chiave: string, verso: "su" | "giu") => void;
+  puoSu: boolean;
+  puoGiu: boolean;
+  // Il blocco appena aggiunto: la riga lampeggia un attimo (index.css, ".nuovo").
+  nuovo?: boolean;
+  // Il numero dopo il nome, se ci sono piu' blocchi «Testo libero» (numeroDelTesto).
+  numero?: number;
 }
 
 // Una riga del vassoio, tutto in linea (deciso da Gianluca, 10 settembre:
@@ -52,6 +66,12 @@ export default function BloccoRiga({
   onCambiaColonna,
   onRimuovi,
   onCambiaAllineamento,
+  onCambiaGrassetto,
+  onSposta,
+  puoSu,
+  puoGiu,
+  nuovo,
+  numero,
 }: ProprietaBloccoRiga) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: blocco.chiave });
   const stile = useMemo<CSSProperties>(
@@ -61,7 +81,8 @@ export default function BloccoRiga({
 
   const eLogo = blocco.tipo === "logo";
   const mostraAllineamento = !BLOCCHI_SENZA_ALLINEAMENTO.includes(blocco.tipo);
-  const nome = NOMIBLOCCO[blocco.tipo];
+  const mostraGrassetto = haGrassetto(blocco.tipo);
+  const nome = NOMIBLOCCO[blocco.tipo] + (numero ? ` ${numero}` : "");
 
   const clicSw = useCallback(() => onToggleAcceso(blocco.chiave), [onToggleAcceso, blocco.chiave]);
   const cambiaCorpo = useCallback(
@@ -69,6 +90,8 @@ export default function BloccoRiga({
     [onCambiaCorpo, blocco.chiave],
   );
   const clicVia = useCallback(() => onRimuovi(blocco.chiave), [onRimuovi, blocco.chiave]);
+  const clicSu = useCallback(() => onSposta(blocco.chiave, "su"), [onSposta, blocco.chiave]);
+  const clicGiu = useCallback(() => onSposta(blocco.chiave, "giu"), [onSposta, blocco.chiave]);
   const cambiaAllineamento = useCallback(
     (a: AllineamentoBlocco) => onCambiaAllineamento(blocco.chiave, a),
     [onCambiaAllineamento, blocco.chiave],
@@ -77,20 +100,25 @@ export default function BloccoRiga({
     (c: ColonnaBlocco) => onCambiaColonna(blocco.chiave, c),
     [onCambiaColonna, blocco.chiave],
   );
+  const cambiaGrassetto = useCallback(
+    (g: boolean) => onCambiaGrassetto(blocco.chiave, g),
+    [onCambiaGrassetto, blocco.chiave],
+  );
 
   return (
     <div
       ref={setNodeRef}
       style={stile}
-      className={"blocco" + (blocco.acceso ? "" : " spento") + (isDragging ? " trascina" : "")}
+      data-chiave={blocco.chiave}
+      className={"blocco" + (blocco.acceso ? "" : " spento") + (isDragging ? " trascina" : "") + (nuovo ? " nuovo" : "")}
       {...listeners}
     >
       <div className="testa">
-        <span className="maniglia" {...attributes} aria-label={`Trascina per riordinare ${nome}`}>
+        <span className="maniglia" {...attributes} aria-label={`Trascina per riordinare ${nome} (o usa Sposta su e Sposta giù)`}>
           <span className="posto">{indice + 1}</span>
           <IconaManiglia larghezza={14} spessoreTratto={1.5} />
         </span>
-        <button type="button" className={"sw" + (blocco.acceso ? "" : " off")} onClick={clicSw} aria-pressed={blocco.acceso} aria-label={blocco.acceso ? `Spegni ${nome}` : `Accendi ${nome}`} />
+        <InterruttoreCompatto acceso={blocco.acceso} nome={nome} onClick={clicSw} />
         <span className="nome" title={nome}>{nome}</span>
         {/* Il corpo, il gruppo allineamento/posizione e il cestino, insieme
             (index.css, ".gruppoValori"): quando la riga ci sta tutta in una,
@@ -116,6 +144,7 @@ export default function BloccoRiga({
               ))}
             </select>
           )}
+          {mostraGrassetto && <ControlloGrassetto attivo={grassettoEffettivo(blocco)} nomeBlocco={nome} onCambia={cambiaGrassetto} autonomo />}
           <div className="azioniBlocco" role="group" aria-label={`Allineamento e larghezza di ${nome}`}>
             {mostraAllineamento && (
               <>
@@ -125,7 +154,15 @@ export default function BloccoRiga({
             )}
             <BottoniPosizione valore={blocco.colonna} nomeBlocco={nome} onCambia={cambiaColonna} />
           </div>
-          <button type="button" className="cestino" onClick={clicVia} title={`Togli il blocco ${nome}`} aria-label={`Togli il blocco ${nome}`}>
+          <div className="azioniBlocco" role="group" aria-label={`Ordine di ${nome}`}>
+            <button type="button" className="disabled:opacity-30" data-sposta="su" onClick={clicSu} disabled={!puoSu} title={`Sposta su ${nome}`} aria-label={`Sposta su ${nome}`}>
+              <IconaSu larghezza={13} spessoreTratto={2.2} />
+            </button>
+            <button type="button" className="disabled:opacity-30" data-sposta="giu" onClick={clicGiu} disabled={!puoGiu} title={`Sposta giù ${nome}`} aria-label={`Sposta giù ${nome}`}>
+              <IconaGiu larghezza={13} spessoreTratto={2.2} />
+            </button>
+          </div>
+          <button type="button" className="cestino" onClick={clicVia} title={`Togli ${nome} dall'etichetta`} aria-label={`Togli ${nome} dall'etichetta`}>
             <IconaCestino larghezza={14} spessoreTratto={2} />
           </button>
         </div>

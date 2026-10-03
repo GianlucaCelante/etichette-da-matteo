@@ -38,3 +38,9 @@ databaseChangeLog:
   - include:
       file: v13-ingredienti-archiviati.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v14-porzioni-grassetto.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v15-correzioni-lotti-e-catene.yaml
+      relativeToChangelogFile: true

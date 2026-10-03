@@ -1,6 +1,6 @@
-import { useCallback, useState, type ReactNode } from "react";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   BLOCCHI_DATI,
   BLOCCHI_LIBERI,
@@ -11,17 +11,25 @@ import {
   type LarghezzaDestra,
   type TipoBlocco,
 } from "../../api/tipi";
+import { useAvviso } from "../../hooks/useAvviso";
 import { IconaPiu } from "../Icone";
 import type { BloccoBozza } from "./bozza";
-import { nuovaChiave } from "./bozza";
-import { corpoIniziale } from "./corpoBlocco";
+import { bloccoNuovo, numeroDelTesto } from "./corpoBlocco";
+import { spostaBlocco } from "./riordino";
+import { useBloccoNuovo } from "./useBloccoNuovo";
 import BloccoRiga from "./BloccoRiga";
+import { ACCESSIBILITA_RIORDINO_BLOCCHI, AUTOSCROLL_RIORDINO, useSensoriRiordino } from "./sensoriRiordino";
+
+// Le quote della colonna di destra a parole (prove con utenti simulati, 2
+// ottobre 2026: «destra 1/4 1/3 1/2 2/3» non lo capiva nessuno). I valori
+// salvati restano quelli di sempre.
+const PAROLE_QUOTA: Record<LarghezzaDestra, string> = { "1/4": "un quarto", "1/3": "un terzo", "1/2": "metà", "2/3": "due terzi" };
 
 function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; attivo: boolean; onScegli: (v: LarghezzaDestra) => void }) {
   const clic = useCallback(() => onScegli(valore), [onScegli, valore]);
   return (
-    <button type="button" className={attivo ? "on" : ""} onClick={clic}>
-      {valore}
+    <button type="button" className={attivo ? "on" : ""} onClick={clic} aria-pressed={attivo} aria-label={`La colonna di destra occupa ${PAROLE_QUOTA[valore]}`}>
+      {PAROLE_QUOTA[valore]}
     </button>
   );
 }
@@ -29,7 +37,8 @@ function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; a
 // L'intestazione del gruppo "due colonne" (deciso da Gianluca): niente piu'
 // bottoni sinistra/destra (confondevano, e non servivano: il bottone ◧/◨ di
 // ogni riga basta gia' per spostare un blocco fra le colonne). Resta solo
-// l'etichetta e, a destra, le quote della colonna destra.
+// l'etichetta e, a destra, quanto spazio prende la colonna di destra, a parole
+// (un quarto, un terzo, metà, due terzi).
 function IntestazioneZona({
   larghezzaDestra,
   onCambiaLarghezzaDestra,
@@ -41,8 +50,8 @@ function IntestazioneZona({
     <div className="zonaTesta">
       <span className="etichettina">Due colonne</span>
       <div className="zonaDestra">
-        <span>destra</span>
-        <div className="quote">
+        <span>La colonna di destra occupa:</span>
+        <div className="quote" role="group" aria-label="Quanto spazio occupa la colonna di destra">
           {LARGHEZZE_DESTRA.map((v) => (
             <BottoneQuota key={v} valore={v} attivo={larghezzaDestra === v} onScegli={onCambiaLarghezzaDestra} />
           ))}
@@ -52,8 +61,6 @@ function IntestazioneZona({
   );
 }
 
-// Esportato: lo riusa anche BlocchiTelefono.tsx (lo stesso vassoio "Aggiungi
-// un blocco" del telefono, con le righe semplificate).
 export function BottoneTavolozza({
   tipo,
   usato,
@@ -73,15 +80,20 @@ export function BottoneTavolozza({
 }
 
 // Il pannello dei blocchi disponibili ("Dati dell'etichetta" / "Blocchi
-// liberi"): identico per il vassoio PC e per quello del telefono.
+// liberi"): lo stesso nel vassoio PC e nel foglio «Aggiungi un blocco» del
+// telefono (FoglioAggiungiBlocco.tsx).
 export function PannelloTavolozza({ blocchi, onAggiungi }: { blocchi: BloccoBozza[]; onAggiungi: (tipo: TipoBlocco) => void }) {
+  // Solo i blocchi che si possono ancora aggiungere (deciso da Gianluca,
+  // 30/09/2026): i "dati" gia' presenti nell'etichetta non si mostrano, i
+  // "liberi" si possono aggiungere piu' volte. Una sezione senza voci sparisce.
+  const dati = BLOCCHI_DATI.filter((tipo) => !blocchi.some((b) => b.tipo === tipo));
   return (
     <div className="flex flex-col gap-1.5 mt-1.5">
-      <div className="etichettina mt-1">Dati dell&apos;etichetta</div>
-      {BLOCCHI_DATI.map((tipo) => (
-        <BottoneTavolozza key={tipo} tipo={tipo} usato={blocchi.some((b) => b.tipo === tipo)} onAggiungi={onAggiungi} />
+      {dati.length > 0 && <div className="etichettina mt-1">Informazioni dell&apos;etichetta</div>}
+      {dati.map((tipo) => (
+        <BottoneTavolozza key={tipo} tipo={tipo} usato={false} onAggiungi={onAggiungi} />
       ))}
-      <div className="etichettina mt-1">Blocchi liberi</div>
+      <div className="etichettina mt-1">Testi e spazi liberi</div>
       {BLOCCHI_LIBERI.map((tipo) => (
         <BottoneTavolozza key={tipo} tipo={tipo} usato={false} onAggiungi={onAggiungi} />
       ))}
@@ -98,7 +110,7 @@ interface ProprietaBlocchiEditor {
 
 // Il vassoio dei blocchi: si accendono, si misurano in punti, si mettono a
 // piena larghezza o in una delle due colonne, si riordinano trascinando
-// (anche su touch: la maniglia ha touch-action:none). Dove comincia una
+// (al tocco con la pressione lunga, vedi sensoriRiordino.ts). Dove comincia una
 // zona a due colonne compare l'intestazione coi due lati e le quote. Il
 // trascinamento parte da qualunque punto libero della riga, non solo dalla
 // maniglia (deciso da Gianluca, 24/09/2026: BloccoRiga mette gli "ascoltatori"
@@ -110,7 +122,22 @@ interface ProprietaBlocchiEditor {
 // click nativo del controllo arriva comunque a destinazione.
 export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestra, onCambiaLarghezzaDestra }: ProprietaBlocchiEditor) {
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
-  const sensori = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensori = useSensoriRiordino();
+  const avvisa = useAvviso();
+  const { rifVassoio, chiaveNuova, segnaNuovo } = useBloccoNuovo();
+  // Il bottone «Sposta su/giù» premuto da tastiera: dopo lo spostamento la riga
+  // ha cambiato posto nel DOM e il browser può aver perso il fuoco - si rimette
+  // sullo stesso bottone (o sull'altro, se la riga è arrivata in cima o in fondo).
+  const fuocoDopoSposta = useRef<{ chiave: string; verso: "su" | "giu" } | null>(null);
+  useLayoutEffect(() => {
+    const richiesta = fuocoDopoSposta.current;
+    if (!richiesta) return;
+    fuocoDopoSposta.current = null;
+    const riga = Array.from(rifVassoio.current?.querySelectorAll<HTMLElement>("[data-chiave]") ?? []).find((r) => r.dataset.chiave === richiesta.chiave);
+    const voluto = riga?.querySelector<HTMLButtonElement>(`button[data-sposta="${richiesta.verso}"]`);
+    const altro = riga?.querySelector<HTMLButtonElement>(`button[data-sposta="${richiesta.verso === "su" ? "giu" : "su"}"]`);
+    (voluto && !voluto.disabled ? voluto : altro)?.focus();
+  }, [blocchi, rifVassoio]);
 
   const onToggleAcceso = useCallback(
     (chiave: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, acceso: !b.acceso } : b))),
@@ -135,6 +162,28 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     [blocchi, onCambiaBlocchi],
   );
 
+  const onCambiaGrassetto = useCallback(
+    (chiave: string, grassetto: boolean) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, grassetto } : b))),
+    [blocchi, onCambiaBlocchi],
+  );
+
+  // Trascinamento e bottoni passano da qui: se un blocco a tutta larghezza cadrebbe
+  // IN MEZZO a un gruppo «due colonne» il gruppo non si spezza (vedi spostaBlocco) e
+  // si dice dove è finito il blocco.
+  const sposta = useCallback(
+    (da: number, a: number) => {
+      const spostato = blocchi[da];
+      const esito = spostaBlocco(blocchi, da, a);
+      if (esito.nuovi === blocchi) return;
+      onCambiaBlocchi(esito.nuovi);
+      if (esito.fuoriDalGruppo && spostato) {
+        avvisa(
+          `${NOMIBLOCCO[spostato.tipo]} è finito ${esito.fuoriDalGruppo} le due colonne, che restano unite. Per metterlo in mezzo, scegli prima «colonna sinistra» o «colonna destra» per lui.`,
+        );
+      }
+    },
+    [blocchi, onCambiaBlocchi, avvisa],
+  );
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
       const { active, over } = evento;
@@ -142,19 +191,29 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
       const da = blocchi.findIndex((b) => b.chiave === active.id);
       const a = blocchi.findIndex((b) => b.chiave === over.id);
       if (da < 0 || a < 0) return;
-      onCambiaBlocchi(arrayMove(blocchi, da, a));
+      sposta(da, a);
     },
-    [blocchi, onCambiaBlocchi],
+    [blocchi, sposta],
+  );
+  const onSposta = useCallback(
+    (chiave: string, verso: "su" | "giu") => {
+      const da = blocchi.findIndex((b) => b.chiave === chiave);
+      const a = verso === "su" ? da - 1 : da + 1;
+      if (da < 0 || a < 0 || a >= blocchi.length) return;
+      fuocoDopoSposta.current = { chiave, verso };
+      sposta(da, a);
+    },
+    [blocchi, sposta],
   );
 
   const aggiungiBlocco = useCallback(
     (tipo: TipoBlocco) => {
-      const nuovo: BloccoBozza = { chiave: nuovaChiave(), tipo, acceso: true, corpo: corpoIniziale(tipo), colonna: "piena" };
-      if (tipo === "testo" || tipo === "testoGrande") nuovo.testo = "";
+      const nuovo = bloccoNuovo(tipo);
       onCambiaBlocchi([...blocchi, nuovo]);
+      segnaNuovo(nuovo.chiave);
       setTavolozzaAperta(false);
     },
-    [blocchi, onCambiaBlocchi],
+    [blocchi, onCambiaBlocchi, segnaNuovo],
   );
 
   const apriChiudiTavolozza = useCallback(() => setTavolozzaAperta((a) => !a), []);
@@ -185,6 +244,12 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         onCambiaColonna={onCambiaColonna}
         onRimuovi={onRimuovi}
         onCambiaAllineamento={onCambiaAllineamento}
+        onCambiaGrassetto={onCambiaGrassetto}
+        onSposta={onSposta}
+        puoSu={indice > 0}
+        puoGiu={indice < blocchi.length - 1}
+        nuovo={b.chiave === chiaveNuova}
+        numero={numeroDelTesto(blocchi, b.chiave)}
       />
     );
     if (b.colonna === "piena") {
@@ -203,15 +268,15 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
   chiudiGruppo();
 
   return (
-    <div className="vassoio">
-      <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento}>
+    <div className="vassoio" ref={rifVassoio}>
+      <DndContext sensors={sensori} autoScroll={AUTOSCROLL_RIORDINO} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_RIORDINO_BLOCCHI}>
         <SortableContext items={blocchi.map((b) => b.chiave)} strategy={verticalListSortingStrategy}>
           {nodi}
         </SortableContext>
       </DndContext>
       <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
         <IconaPiu larghezza={20} spessoreTratto={2.2} />
-        <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi un blocco"}</span>
+        <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi una voce all'etichetta"}</span>
       </button>
       {tavolozzaAperta && <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />}
     </div>

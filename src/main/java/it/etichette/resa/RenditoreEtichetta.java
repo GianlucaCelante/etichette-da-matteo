@@ -104,7 +104,12 @@ public class RenditoreEtichetta {
     private static final int ALTEZZA_MINIMA_CASO_A_PT = 300;
     /** Altezza massima del candidato verticale (lungo il nastro): oltre, avviso e contenuto tagliato. */
     private static final float ALTEZZA_MASSIMA_VERTICALE_MM = 500f;
-    private static final String AVVISO_CONTENUTO_NON_STA_VERTICALE = "Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi";
+    /**
+     * L'avviso che la resa dichiara quando il contenuto supera il tetto del verticale (2 ottobre 2026: testo
+     * semplice, lo mostra l'anteprima cosi' com'e' - prima parlava di «corpi» e «blocchi»). Pubblico perche'
+     * {@code ResaController} lo riconosce e lo espone anche come {@code troncata} nelle misure.
+     */
+    public static final String AVVISO_CONTENUTO_NON_STA_VERTICALE = "Questa etichetta è più lunga di 500 mm: il fondo verrà tagliato";
     /** Lunghezza massima lungo il nastro per la ricerca del candidato orizzontale: 300 mm. */
     private static final int LUNGHEZZA_MASSIMA_PT = 3543;
     private static final Pattern PAROLA = Pattern.compile("\\p{L}+");
@@ -373,6 +378,12 @@ public class RenditoreEtichetta {
     /** Blocchi accesi e con contenuto (i blocchi spenti o senza contenuto non occupano spazio). */
     private List<BloccoDto> filtraRenderizzabili(EtichettaProdottoDto etichetta, ProdottoDto prodotto, ParametriStampa parametri) {
         List<BloccoDto> out = new ArrayList<>();
+        // La stampa di prova porta in cima una banda «PROVA» (ParametriStampa#prova): e' un blocco
+        // sintetico, a piena larghezza, che passa dal motore di layout come gli altri - cosi' le
+        // misure (e la scelta dell'orientamento) la contano, e non si disegna mai fuori posto.
+        if (parametri != null && parametri.prova()) {
+            out.add(new BloccoDto(TIPO_BANDA_PROVA, true, CORPO_BANDA_PROVA_PT, "piena", null));
+        }
         if (etichetta.blocchi() == null) {
             return out;
         }
@@ -401,6 +412,7 @@ public class RenditoreEtichetta {
             // lo salta senza errori invece di disegnare qualcosa.
             case "lotto" -> nonVuoto(parametri.lotto());
             case "quantita" -> risolviQuantita(prodotto, parametri) != null;
+            case "porzioni" -> risolviPorzioni(prodotto, parametri) != null;
             // Presente solo se almeno una riga ha un valore non vuoto (deciso da Gianluca,
             // 25/09/2026: l'editor precarica le voci obbligatorie col valore vuoto, da riempire -
             // una riga senza valore, o senza voce, non conta - vedi righeValoriDaStampare).
@@ -412,7 +424,10 @@ public class RenditoreEtichetta {
             // "qr": nessun contenuto, mai disegnato, anche per un'etichetta vecchia che lo avesse
             // ancora salvato (ProdottiConversioni lo toglie comunque in lettura/scrittura, questo
             // e' un secondo livello di sicurezza, come gia' per "qr").
-            case "testo", "testoGrande" -> nonVuoto(b.testo());
+            // "testoGrande" non c'e' piu' dal 29/09/2026 (Contratto#TIPI_BLOCCO_LIBERI): cade nel
+            // "default -> false" sotto, come "qr" e "sigla" - ProdottiConversioni lo trasforma in
+            // "testo" in grassetto prima che arrivi qui, quindi un'etichetta vecchia non lo perde.
+            case "testo" -> nonVuoto(b.testo());
             case "logo" -> logo.esiste(); // senza logo caricato, il blocco non occupa spazio
             default -> false;
         };
@@ -497,10 +512,14 @@ public class RenditoreEtichetta {
                                  List<String> avvisi) {
         float corpoPt = b.corpo();
         String allineamento = b.allineamento();
+        // Il grassetto (BloccoDto#grassetto, 29/09/2026): null = quello di sempre del tipo (il
+        // secondo argomento di fontBlocco), true/false forzano tutto il blocco. Nei blocchi con
+        // parti diverse (scadenza: dicitura regolare + data in grassetto; ingredienti, puoContenere)
+        // ogni parte ha il suo default, ma una scelta esplicita le porta tutte allo stesso stile.
         switch (b.tipo()) {
             case "titolo" -> {
                 String testo = titoloTesto(prodotto);
-                EsitoParagrafo r = disegnaParagrafo(g, frc, List.of(new Segmento(testo, caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento);
+                EsitoParagrafo r = disegnaParagrafo(g, frc, List.of(new Segmento(testo, fontBlocco(b, true, corpoPt))), x, y, larghezza, allineamento);
                 if (r.righe() > 1) {
                     avvisi.add("Il titolo è stato mandato a capo");
                 }
@@ -509,14 +528,14 @@ public class RenditoreEtichetta {
                 g.drawLine(Math.round(x), Math.round(y), Math.round(x + larghezza), Math.round(y));
                 y += mmInPx(0.8f);
             }
-            case "ingredienti" -> y = disegnaParagrafo(g, frc, segmentiIngredienti(prodotto.ingredienti(), corpoPt), x, y, larghezza, allineamento).y();
-            case "puoContenere" -> y = disegnaParagrafo(g, frc, segmentiPuoContenere(prodotto.allergeni(), corpoPt), x, y, larghezza, allineamento).y();
-            case "modoUso" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(prodotto.modoUso(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
+            case "ingredienti" -> y = disegnaParagrafo(g, frc, segmentiIngredienti(prodotto.ingredienti(), corpoPt, b.grassetto()), x, y, larghezza, allineamento).y();
+            case "puoContenere" -> y = disegnaParagrafo(g, frc, segmentiPuoContenere(prodotto.allergeni(), corpoPt, b.grassetto()), x, y, larghezza, allineamento).y();
+            case "modoUso" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(prodotto.modoUso(), fontBlocco(b, false, corpoPt))), x, y, larghezza, allineamento).y();
             case "scadenza" -> {
                 String dicitura = etichetta.dicituraScadenza() != null ? etichetta.dicituraScadenza() + " " : "";
                 List<Segmento> segs = List.of(
-                        new Segmento(dicitura, caratteri.regolare(corpoPt)),
-                        new Segmento(testoScadenza(prodotto, parametri, etichetta.formatoData()), caratteri.grassetto(corpoPt)));
+                        new Segmento(dicitura, fontBlocco(b, false, corpoPt)),
+                        new Segmento(testoScadenza(prodotto, parametri, etichetta.formatoData()), fontBlocco(b, true, corpoPt)));
                 y = disegnaParagrafo(g, frc, segs, x, y, larghezza, allineamento).y();
             }
             // Dal 24/09/2026 la conservazione non e' piu' una riga dentro "scadenza" (sopra): e'
@@ -524,20 +543,26 @@ public class RenditoreEtichetta {
             // aggiunge questo blocco da sola a un'etichetta vecchia che non lo avesse, subito dopo
             // "scadenza" e con lo stesso corpo, cosi' la stampa resta identica a prima del cambio).
             case "conservazione" -> y = disegnaParagrafo(g, frc,
-                    List.of(new Segmento(prodotto.conservazione().toUpperCase(Locale.ITALY), caratteri.regolare(corpoPt))),
+                    List.of(new Segmento(prodotto.conservazione().toUpperCase(Locale.ITALY), fontBlocco(b, false, corpoPt))),
                     x, y, larghezza, allineamento).y();
-            case "lotto" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(parametri.lotto(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
+            case "lotto" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(parametri.lotto(), fontBlocco(b, false, corpoPt))), x, y, larghezza, allineamento).y();
             // Solo il valore dal 25/09/2026 (deciso da Gianluca: via la riga "Quantità" in
             // grassetto 8 pt che stava sopra - il valore grande basta). La chiave del blocco resta
             // "quantita" (compatibilita' dei dati), il nome mostrato e' "Peso" (Contratto#nomeBlocco).
-            case "quantita" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
-            case "valori" -> y = disegnaTabellaValori(g, frc, righeValoriDaStampare(prodotto.valoriNutrizionali()), corpoPt, x, y, larghezza);
-            case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
-            case "dataProduzione" -> y = disegnaParagrafo(g, frc,
-                    List.of(new Segmento(testoDataProduzione(etichetta.formatoData()), caratteri.regolare(corpoPt))),
+            case "quantita" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(risolviQuantita(prodotto, parametri), fontBlocco(b, true, corpoPt))), x, y, larghezza, allineamento).y();
+            // Dal 29/09/2026 (deciso dal cliente): «Porzioni: 4» - col prefisso, perche' un «4» da
+            // solo non dice nulla. Grassetto di default come il Peso (stesso posto nell'etichetta,
+            // stesso peso visivo); il valore si sceglie alla stampa come quello del Peso
+            // (risolviPorzioni). Vuoto = blocco assente (haContenuto).
+            case "porzioni" -> y = disegnaParagrafo(g, frc,
+                    List.of(new Segmento("Porzioni: " + risolviPorzioni(prodotto, parametri).strip(), fontBlocco(b, true, corpoPt))),
                     x, y, larghezza, allineamento).y();
-            case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.regolare(corpoPt))), x, y, larghezza, allineamento).y();
-            case "testoGrande" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), caratteri.grassetto(corpoPt))), x, y, larghezza, allineamento).y();
+            case "valori" -> y = disegnaTabellaValori(g, frc, righeValoriDaStampare(prodotto.valoriNutrizionali()), corpoPt, x, y, larghezza);
+            case "produttore" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(testoProduttore(etichetta.produttore()), fontBlocco(b, false, corpoPt))), x, y, larghezza, allineamento).y();
+            case "dataProduzione" -> y = disegnaParagrafo(g, frc,
+                    List.of(new Segmento(testoDataProduzione(etichetta.formatoData()), fontBlocco(b, false, corpoPt))),
+                    x, y, larghezza, allineamento).y();
+            case "testo" -> y = disegnaParagrafo(g, frc, List.of(new Segmento(b.testo(), fontBlocco(b, false, corpoPt))), x, y, larghezza, allineamento).y();
             case "riga" -> {
                 y += mmInPx(0.8f);
                 g.setStroke(new BasicStroke(2f));
@@ -546,11 +571,51 @@ public class RenditoreEtichetta {
             }
             case "spazio" -> y += corpoPt * Caratteri.PX_PER_PT;
             case "logo" -> y = disegnaLogo(g, corpoPt, x, y, larghezza, allineamento);
+            case TIPO_BANDA_PROVA -> y = disegnaBandaProva(g, corpoPt, x, y, larghezza);
             default -> {
                 // nessun altro tipo di blocco previsto
             }
         }
         return y + mmInPx(SPAZIO_TRA_BLOCCHI_MM);
+    }
+
+    /** Tipo SINTETICO del blocco che disegna la banda «PROVA» (mai nei dati salvati, solo dentro {@link #filtraRenderizzabili}). */
+    static final String TIPO_BANDA_PROVA = "_prova";
+    /** Corpo della scritta della banda «PROVA», in punti: grande abbastanza da leggersi da lontano, non quanto il titolo. */
+    private static final int CORPO_BANDA_PROVA_PT = 14;
+    private static final String TESTO_BANDA_PROVA_LUNGO = "PROVA · NON VALIDA";
+    private static final String TESTO_BANDA_PROVA = "PROVA";
+
+    /**
+     * La banda «PROVA» (2 ottobre 2026): un rettangolo NERO a tutta larghezza con la scritta in
+     * bianco, centrata. «PROVA · NON VALIDA» se ci sta nella larghezza, altrimenti solo «PROVA».
+     * Pieno e non a contorno perche' l'immagine e' a 1 bit: un tratto sottile, in stampa, si
+     * perderebbe fra il testo vero, mentre un blocco nero si vede anche con l'etichetta in mano
+     * a un metro.
+     */
+    private float disegnaBandaProva(Graphics2D g, float corpoPt, float x, float y, float larghezza) {
+        Font font = caratteri.grassetto(corpoPt);
+        FontMetrics fm = g.getFontMetrics(font);
+        String testo = fm.stringWidth(TESTO_BANDA_PROVA_LUNGO) <= larghezza - mmInPx(2f) ? TESTO_BANDA_PROVA_LUNGO : TESTO_BANDA_PROVA;
+        int altezza = fm.getHeight() + mmInPx(1.2f);
+        g.setColor(Color.BLACK);
+        g.fillRect(Math.round(x), Math.round(y), Math.round(larghezza), altezza);
+        g.setColor(Color.WHITE);
+        g.setFont(font);
+        int xTesto = Math.round(x + Math.max(0, (larghezza - fm.stringWidth(testo)) / 2f));
+        g.drawString(testo, xTesto, Math.round(y) + (altezza - fm.getHeight()) / 2 + fm.getAscent());
+        g.setColor(Color.BLACK);
+        return y + altezza;
+    }
+
+    /** Il font di una parte di blocco: {@code b.grassetto()} se il blocco lo forza, altrimenti il {@code grassettoDiDefault} di quella parte (vedi {@link #disegnaBlocco}). */
+    private Font fontBlocco(BloccoDto b, boolean grassettoDiDefault, float corpoPt) {
+        return fontConGrassetto(b.grassetto(), grassettoDiDefault, corpoPt);
+    }
+
+    private Font fontConGrassetto(Boolean forzato, boolean grassettoDiDefault, float corpoPt) {
+        boolean grassetto = forzato != null ? forzato : grassettoDiDefault;
+        return grassetto ? caratteri.grassetto(corpoPt) : caratteri.regolare(corpoPt);
     }
 
     /**
@@ -658,7 +723,60 @@ public class RenditoreEtichetta {
         if (valori == null) {
             return List.of();
         }
-        return valori.stream().filter(v -> nonVuoto(v.voce()) && nonVuoto(v.valore())).toList();
+        return valori.stream()
+                .filter(v -> nonVuoto(v.voce()) && nonVuoto(v.valore()))
+                .map(v -> new ValoreNutrizionaleDto(v.voce(), valoreNutrizionaleDaStampare(v.voce(), v.valore())))
+                .toList();
+    }
+
+    /** Un numero con virgola italiana e nient'altro, come «4,1» o «7» (dopo {@link #conVirgolaDecimale}). */
+    private static final Pattern SOLO_NUMERO = Pattern.compile("\\d+(,\\d+)?");
+    /** Un numero con il punto decimale dentro un testo qualunque: «4.1», «0.7 g», non «1.066 kJ» (migliaia) ne' «v1.2.3». */
+    private static final Pattern NUMERO_CON_PUNTO = Pattern.compile("(?<![\\d.,])(\\d+)\\.(\\d+)(?![\\d.])");
+    /** Le voci che si misurano in grammi: chi scrive solo il numero ha scritto grammi (docs/api.md, «Valori nutrizionali»). */
+    private static final String[] VOCI_IN_GRAMMI = {"grassi", "saturi", "carboidrat", "zuccher", "protein", "fibr", "sale"};
+
+    /**
+     * Il valore di una riga cosi' come esce sull'etichetta (2 ottobre 2026, prove con utenti
+     * simulati: «4.1» usciva col punto e «7» senza unita', e il «g» grigio del campo faceva credere
+     * che lo mettesse l'app). Il valore resta testo libero; due soli ritocchi, entrambi pensati per
+     * non cambiare mai cio' che l'utente ha scritto di sua mano con cura:
+     * <ol>
+     *   <li>la <b>virgola decimale italiana</b>: «4.1» diventa «4,1», «0.7 g» diventa «0,7 g». Il
+     *       punto con TRE cifre dopo (e una parte intera diversa da 0) resta com'e': e' il separatore
+     *       delle migliaia («1.066 kJ»), non un decimale;</li>
+     *   <li>l'<b>unita'</b>, solo se il valore e' un NUMERO PURO (dopo il punto trasformato in
+     *       virgola) e la voce e' fra quelle in grammi (grassi, saturi, carboidrati, zuccheri,
+     *       proteine, fibre, sale): «7» sotto «Proteine» esce «7 g». L'energia non riceve mai
+     *       un'unita' (kJ o kcal? l'editor chiede di scriverle) e nemmeno una voce sconosciuta.</li>
+     * </ol>
+     */
+    static String valoreNutrizionaleDaStampare(String voce, String valore) {
+        String v = conVirgolaDecimale(valore.strip());
+        if (SOLO_NUMERO.matcher(v).matches()) {
+            String minuscola = voce == null ? "" : voce.toLowerCase(Locale.ITALY);
+            if (!minuscola.contains("energia")) {
+                for (String parte : VOCI_IN_GRAMMI) {
+                    if (minuscola.contains(parte)) {
+                        return v + " g";
+                    }
+                }
+            }
+        }
+        return v;
+    }
+
+    private static String conVirgolaDecimale(String testo) {
+        Matcher m = NUMERO_CON_PUNTO.matcher(testo);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String intera = m.group(1);
+            String decimali = m.group(2);
+            boolean migliaia = decimali.length() == 3 && !"0".equals(intera);
+            m.appendReplacement(out, Matcher.quoteReplacement(migliaia ? m.group() : intera + "," + decimali));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     private float disegnaTabellaValori(Graphics2D g, FontRenderContext frc, List<ValoreNutrizionaleDto> valori, float corpoPt, float x, float y, float larghezza) {
@@ -945,36 +1063,60 @@ public class RenditoreEtichetta {
         return corrente;
     }
 
-    /** "INGREDIENTI: " in grassetto + il testo; ogni parola tutta maiuscola di almeno 3 lettere e' un allergene in grassetto. */
+    /** Come sotto, con i grassetti di sempre (nessun grassetto forzato): per i test. */
     List<Segmento> segmentiIngredienti(String testo, float corpoPt) {
+        return segmentiIngredienti(testo, corpoPt, null);
+    }
+
+    /**
+     * "INGREDIENTI: " in grassetto + il testo; ogni parola tutta maiuscola di almeno 3 lettere e'
+     * un allergene in grassetto. Con {@code grassetto} forzato (BloccoDto#grassetto, 29/09/2026)
+     * tutto il blocco prende quello stile, e proprio perche' il grassetto non distingue piu' gli
+     * allergeni dal resto (con {@code true} sono grassetto come tutto, con {@code false} sono
+     * regolari come tutto) gli allergeni si sottolineano - l'evidenza di legge (Reg. UE 1169/2011,
+     * art. 21) resta, con un altro mezzo. Con {@code grassetto} nullo il disegno e' identico a
+     * prima: nessuna sottolineatura.
+     */
+    List<Segmento> segmentiIngredienti(String testo, float corpoPt, Boolean grassetto) {
+        boolean forzato = grassetto != null;
         List<Segmento> out = new ArrayList<>();
-        out.add(new Segmento("INGREDIENTI: ", caratteri.grassetto(corpoPt)));
+        out.add(new Segmento("INGREDIENTI: ", fontConGrassetto(grassetto, true, corpoPt)));
         Matcher m = PAROLA.matcher(testo);
         int pos = 0;
         while (m.find()) {
             if (m.start() > pos) {
-                out.add(new Segmento(testo.substring(pos, m.start()), caratteri.regolare(corpoPt)));
+                out.add(new Segmento(testo.substring(pos, m.start()), fontConGrassetto(grassetto, false, corpoPt)));
             }
             String parola = m.group();
             boolean allergene = parola.length() >= 3 && parola.equals(parola.toUpperCase(Locale.ITALY));
-            out.add(new Segmento(parola, allergene ? caratteri.grassetto(corpoPt) : caratteri.regolare(corpoPt)));
+            Font font = fontConGrassetto(grassetto, allergene, corpoPt);
+            out.add(new Segmento(parola, allergene && forzato ? sottolineato(font) : font));
             pos = m.end();
         }
         if (pos < testo.length()) {
-            out.add(new Segmento(testo.substring(pos), caratteri.regolare(corpoPt)));
+            out.add(new Segmento(testo.substring(pos), fontConGrassetto(grassetto, false, corpoPt)));
         }
         return out;
     }
 
-    /** "Può contenere: " + gli allergeni del prodotto in grassetto, separati da virgola. */
-    private List<Segmento> segmentiPuoContenere(List<String> allergeni, float corpoPt) {
+    private static Font sottolineato(Font font) {
+        return font.deriveFont(java.util.Map.of(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON));
+    }
+
+    /**
+     * "Può contenere: " + gli allergeni del prodotto in grassetto, separati da virgola. Con
+     * {@code grassetto} forzato tutto il blocco (etichetta compresa) prende quello stile: qui gli
+     * allergeni sono l'intero contenuto e «Può contenere:» li introduce, quindi non serve nessuna
+     * sottolineatura.
+     */
+    private List<Segmento> segmentiPuoContenere(List<String> allergeni, float corpoPt, Boolean grassetto) {
         List<Segmento> out = new ArrayList<>();
-        out.add(new Segmento("Può contenere: ", caratteri.regolare(corpoPt)));
+        out.add(new Segmento("Può contenere: ", fontConGrassetto(grassetto, false, corpoPt)));
         for (int i = 0; i < allergeni.size(); i++) {
             if (i > 0) {
-                out.add(new Segmento(", ", caratteri.regolare(corpoPt)));
+                out.add(new Segmento(", ", fontConGrassetto(grassetto, false, corpoPt)));
             }
-            out.add(new Segmento(allergeni.get(i), caratteri.grassetto(corpoPt)));
+            out.add(new Segmento(allergeni.get(i), fontConGrassetto(grassetto, true, corpoPt)));
         }
         return out;
     }
@@ -1005,6 +1147,14 @@ public class RenditoreEtichetta {
             return parametri.quantita();
         }
         return nonVuoto(prodotto.quantita()) ? prodotto.quantita() : null;
+    }
+
+    /** Come {@link #risolviQuantita}, per le porzioni (29/09/2026): quelle della stampa, altrimenti quelle del prodotto; {@code null} se nessuna e' scritta. */
+    private String risolviPorzioni(ProdottoDto prodotto, ParametriStampa parametri) {
+        if (parametri != null && nonVuoto(parametri.porzioni())) {
+            return parametri.porzioni();
+        }
+        return nonVuoto(prodotto.porzioni()) ? prodotto.porzioni() : null;
     }
 
     /** Pacchetto-privato per i test: {@code "Prodotto il " + la data di oggi nel formatoData dell'etichetta} (docs/api.md). */

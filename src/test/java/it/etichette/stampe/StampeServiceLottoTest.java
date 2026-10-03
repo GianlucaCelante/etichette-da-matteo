@@ -132,7 +132,7 @@ class StampeServiceLottoTest {
         String proposta = lotti.prossimoConSchema("data");
 
         Long lottoChiusoId = lottoChiuso.getId();
-        assertThatThrownBy(() -> stampe.stampa(1L, 1, null, null, null, Map.of(ingrediente.getId(), java.util.List.of(lottoChiusoId)), "PC"))
+        assertThatThrownBy(() -> stampe.stampa(1L, 1, null, null, null, null, Map.of(ingrediente.getId(), java.util.List.of(lottoChiusoId)), "PC"))
                 .isInstanceOf(ErroreApi.class)
                 .isInstanceOfSatisfying(ErroreApi.class, e -> {
                     assertThat(e.getStato()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -153,7 +153,7 @@ class StampeServiceLottoTest {
     void laStampanteNonProntaRispondeConflittoESenzaBruciareIlProgressivo() {
         String proposta = lotti.prossimoConSchema("data");
 
-        assertThatThrownBy(() -> stampe.stampa(1L, 1, null, null, null, null, "PC"))
+        assertThatThrownBy(() -> stampe.stampa(1L, 1, null, null, null, null, null, "PC"))
                 .isInstanceOf(ErroreApi.class)
                 .extracting(e -> ((ErroreApi) e).getStato())
                 .isEqualTo(HttpStatus.CONFLICT);

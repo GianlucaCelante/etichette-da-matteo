@@ -5,8 +5,15 @@ import { convertiInJpeg } from "./convertiFoto";
 interface ProprietaFotoVuota {
   // Il testo del riquadro: "Foto etichetta", "Carica", "Fotografa"... chi lo
   // usa sceglie la parola giusta per il punto in cui compare.
+  // Con "compatto" non e' scritto nel riquadro: diventa l'etichetta e il
+  // suggerimento del solo bottone-icona.
   testo: string;
   disabilitato?: boolean;
+  // Solo l'icona della fotocamera, in un bottone quadrato alto --d-tap (per
+  // l'intestazione di una riga, dove il riquadro da 58x74 non ci sta): stessa
+  // logica del riquadro (PC: selettore file; telefono: menu delle due scelte),
+  // il menu si apre pero' ancorato al bottone invece che in basso.
+  compatto?: boolean;
   // Il file scelto (gia' convertito in JPEG, vedi convertiFoto.ts): chi
   // chiama decide dove va (foto di un lotto o di un arrivo) e con quale
   // mutazione lo manda - questo componente non lo sa e non e' legato a
@@ -34,14 +41,17 @@ function ContenutoFoto({ testo }: { testo: string }) {
 // senza "capture" su Android apre SOLO la galleria, mai la fotocamera - il
 // cliente vuole poter scegliere. Un tocco apre un piccolo menu con le due
 // scelte esplicite ("Scatta una foto" / "Scegli dalla galleria"), ognuna col
-// suo <input> nascosto (capture="environment" solo per la fotocamera).
+// suo <input> nascosto (capture="environment" solo per la fotocamera); i due
+// input nascosti hanno comunque un nome (prima erano «SENZA NOME» nell'elenco
+// dei controlli, 2 ottobre 2026), anche se nessuno ci arriva col Tab.
 // Qualunque file scelto passa da convertiInJpeg prima di arrivare a chi
 // chiama: ridimensionato e in JPEG, cosi' va sempre a buon fine (vedi
 // convertiFoto.ts).
-export default function FotoVuota({ testo, disabilitato, onCaricaFile }: ProprietaFotoVuota) {
+export default function FotoVuota({ testo, disabilitato, compatto, onCaricaFile }: ProprietaFotoVuota) {
   const [menuAperto, setMenuAperto] = useState(false);
   const [convertendo, setConvertendo] = useState(false);
   const contenitoreRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputFotocameraRef = useRef<HTMLInputElement>(null);
   const inputGalleriaRef = useRef<HTMLInputElement>(null);
 
@@ -96,31 +106,61 @@ export default function FotoVuota({ testo, disabilitato, onCaricaFile }: Proprie
     };
   }, [menuAperto]);
 
+  // Il menu ancorato sta sotto il bottone, magari sotto l'ultima riga di una
+  // colonna che scorre: lo si porta in vista invece di lasciarlo tagliato.
+  useEffect(() => {
+    if (menuAperto && compatto) menuRef.current?.scrollIntoView({ block: "nearest" });
+  }, [menuAperto, compatto]);
+
   const spento = disabilitato || convertendo;
 
   return (
-    <div className="relative inline-block" ref={contenitoreRef}>
-      <div className={"foto vuota" + (spento ? " opacity-60 pointer-events-none" : "")}>
-        {/* PC: come sempre, il tocco apre subito il selettore file - niente
-            fotocamera da scegliere su un computer. */}
-        <label className="soloPC w-full h-full flex flex-col items-center justify-center gap-[2px]">
-          <ContenutoFoto testo={convertendo ? "Un attimo…" : testo} />
-          <input type="file" accept="image/*" onChange={cambiaFile} disabled={spento} aria-label={testo} />
-        </label>
-        {/* Telefono: apre il menu con le due scelte esplicite. */}
-        <button
-          type="button"
-          className="soloTel w-full h-full flex flex-col items-center justify-center gap-[2px]"
-          onClick={apriMenu}
-          disabled={spento}
-          aria-haspopup="true"
-          aria-expanded={menuAperto}
-        >
-          <ContenutoFoto testo={convertendo ? "Un attimo…" : testo} />
-        </button>
-      </div>
+    // Compatto: senza "relative", perche' il menu si ancora all'antenato
+    // posizionato (l'intestazione della riga, vedi ".tendinaFoto.ancorata").
+    <div className={compatto ? "flex shrink-0" : "relative inline-block"} ref={contenitoreRef}>
+      {compatto ? (
+        <>
+          {/* PC: il <label> e' il bottone, l'input file sopra di lui invisibile. */}
+          <label className={"fotoCompatta soloPC" + (spento ? " spenta" : "")} title={testo}>
+            <IconaFotocamera larghezza={20} spessoreTratto={2} />
+            <input type="file" accept="image/*" onChange={cambiaFile} disabled={spento} aria-label={testo} />
+          </label>
+          <button
+            type="button"
+            className="fotoCompatta soloTel"
+            onClick={apriMenu}
+            disabled={spento}
+            title={testo}
+            aria-label={testo}
+            aria-haspopup="true"
+            aria-expanded={menuAperto}
+          >
+            <IconaFotocamera larghezza={20} spessoreTratto={2} />
+          </button>
+        </>
+      ) : (
+        <div className={"foto vuota" + (spento ? " opacity-60 pointer-events-none" : "")}>
+          {/* PC: come sempre, il tocco apre subito il selettore file - niente
+              fotocamera da scegliere su un computer. */}
+          <label className="soloPC w-full h-full flex flex-col items-center justify-center gap-[2px]">
+            <ContenutoFoto testo={convertendo ? "Un attimo…" : testo} />
+            <input type="file" accept="image/*" onChange={cambiaFile} disabled={spento} aria-label={testo} />
+          </label>
+          {/* Telefono: apre il menu con le due scelte esplicite. */}
+          <button
+            type="button"
+            className="soloTel w-full h-full flex flex-col items-center justify-center gap-[2px]"
+            onClick={apriMenu}
+            disabled={spento}
+            aria-haspopup="true"
+            aria-expanded={menuAperto}
+          >
+            <ContenutoFoto testo={convertendo ? "Un attimo…" : testo} />
+          </button>
+        </div>
+      )}
       {menuAperto && (
-        <div className="tendinaFoto soloTel">
+        <div className={"tendinaFoto soloTel" + (compatto ? " ancorata" : "")} ref={menuRef}>
           <button type="button" className="voceEsporta" onClick={scattaUnaFoto}>
             <IconaFotocamera larghezza={18} spessoreTratto={2} />
             <span className="t">
@@ -143,6 +183,7 @@ export default function FotoVuota({ testo, disabilitato, onCaricaFile }: Proprie
         onChange={cambiaFile}
         disabled={spento}
         aria-hidden="true"
+        aria-label={`${testo}: scatta una foto`}
         tabIndex={-1}
         className="hidden"
       />
@@ -153,6 +194,7 @@ export default function FotoVuota({ testo, disabilitato, onCaricaFile }: Proprie
         onChange={cambiaFile}
         disabled={spento}
         aria-hidden="true"
+        aria-label={`${testo}: scegli dalla galleria`}
         tabIndex={-1}
         className="hidden"
       />

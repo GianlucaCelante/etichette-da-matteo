@@ -31,7 +31,9 @@ public class ArriviController {
     private record CorpoRigaArrivo(Long ingredienteId, String lotto, String scadenza, String quantita) {
     }
 
-    private record CorpoArrivo(Long fornitoreId, String fornitoreNome, String data, String documento, List<CorpoRigaArrivo> righe) {
+    /** {@code registraComunque} (docs/api.md): conferma di una consegna che il servizio ha rifiutato come doppione (409). */
+    private record CorpoArrivo(Long fornitoreId, String fornitoreNome, String data, String documento, List<CorpoRigaArrivo> righe,
+                               Boolean registraComunque) {
     }
 
     @PostMapping
@@ -40,7 +42,8 @@ public class ArriviController {
         List<ArriviService.RigaArrivoInput> righe = c.righe() == null ? List.of() : c.righe().stream()
                 .map(r -> new ArriviService.RigaArrivoInput(r.ingredienteId(), r.lotto(), r.scadenza(), r.quantita()))
                 .toList();
-        ArrivoRisultatoDto risultato = arrivi.registra(c.fornitoreId(), c.fornitoreNome(), c.data(), c.documento(), righe);
+        ArrivoRisultatoDto risultato = arrivi.registra(c.fornitoreId(), c.fornitoreNome(), c.data(), c.documento(), righe,
+                Boolean.TRUE.equals(c.registraComunque()));
         return ResponseEntity.status(HttpStatus.CREATED).body(risultato);
     }
 

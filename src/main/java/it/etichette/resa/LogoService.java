@@ -40,7 +40,7 @@ public class LogoService {
             throw new IllegalStateException("impossibile leggere il file caricato: " + e.getMessage(), e);
         }
         if (immagine == null) {
-            throw new ErroreApi(HttpStatus.BAD_REQUEST, "file: non e' un'immagine PNG o JPEG leggibile");
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il file non è un'immagine leggibile: scegli un PNG o un JPEG.");
         }
         try {
             Files.createDirectories(percorso.getParent());

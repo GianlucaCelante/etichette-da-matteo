@@ -1,14 +1,19 @@
 package it.etichette.tracciati;
 
 import it.etichette.api.AnelloCatenaDto;
+import it.etichette.api.AnelloPrimaDto;
 import it.etichette.api.CatenaDto;
+import it.etichette.api.CorrezioneCatenaDto;
 import it.etichette.api.ErroreApi;
 import it.etichette.api.FotoDto;
+import it.etichette.api.Json;
 import it.etichette.api.LottoCatenaDto;
 import it.etichette.api.StampaCatenaDto;
 import it.etichette.api.TracciatoDto;
 import it.etichette.dati.Arrivo;
 import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.CorrezioneCatena;
+import it.etichette.dati.CorrezioneCatenaRepository;
 import it.etichette.dati.Foto;
 import it.etichette.dati.Ingrediente;
 import it.etichette.dati.IngredienteRepository;
@@ -24,11 +29,13 @@ import it.etichette.dati.StoricoStampaRepository;
 import it.etichette.ingredienti.FotoService;
 import it.etichette.ingredienti.IngredientiConversioni;
 import it.etichette.ingredienti.LottiIngredienteService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,6 +55,7 @@ import java.util.stream.Collectors;
 public class CatenaService {
 
     private static final String FORNITORE_NON_INDICATO = "Fornitore non indicato";
+    private static final DateTimeFormatter DATA_ITALIANA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /**
      * Nome mostrato per un anello il cui ingrediente/prodotto e' stato cancellato dall'anagrafica
@@ -67,10 +75,15 @@ public class CatenaService {
     private final LottoIngredienteRepository lottiIngrediente;
     private final ArrivoRepository arrivi;
     private final FotoService foto;
+    private final CorrezioneCatenaRepository correzioni;
+    private final Json json;
 
     public CatenaService(StoricoStampaRepository storico, StoricoLottoRepository storicoLotti,
                           ProdottoRepository prodotti, IngredienteRepository ingredienti,
-                          LottoIngredienteRepository lottiIngrediente, ArrivoRepository arrivi, FotoService foto) {
+                          LottoIngredienteRepository lottiIngrediente, ArrivoRepository arrivi, FotoService foto,
+                          CorrezioneCatenaRepository correzioni, Json json) {
+        this.correzioni = correzioni;
+        this.json = json;
         this.storico = storico;
         this.storicoLotti = storicoLotti;
         this.prodotti = prodotti;
@@ -171,12 +184,49 @@ public class CatenaService {
             }
         }
 
+        // Una correzione che lascia tutto com'era (stessi lotti, stesso ordine) non e' una
+        // correzione: niente «corretto a mano», niente riga nel registro.
+        if (impronta(righeAttuali).equals(impronta(nuoveRighe))) {
+            return aCatenaDto(riga);
+        }
+
+        // Lo stato «prima» si conserva PRIMA di riscrivere (docs/api.md, difetto del 2 ottobre
+        // 2026: la correzione non lasciava traccia di com'era la catena). La prima riga del
+        // registro e' la catena al momento della stampa.
+        LocalDateTime ora = LocalDateTime.now();
+        List<AnelloPrimaDto> prima = aAnelli(righeAttuali).stream().map(CatenaService::aAnelloPrima).toList();
+        correzioni.save(new CorrezioneCatena(storicoId, ora, json.scrivi(prima)));
+
         storicoLotti.deleteByStoricoId(storicoId);
         storicoLotti.saveAll(nuoveRighe);
 
-        riga.setCorrettoIl(LocalDateTime.now());
+        riga.setCorrettoIl(ora);
         storico.save(riga);
         return aCatenaDto(riga);
+    }
+
+    /** Cosa c'e' in una catena, senza gli id delle righe: serve a riconoscere una correzione che non cambia nulla. */
+    private static List<List<Long>> impronta(List<StoricoLotto> righe) {
+        return righe.stream()
+                .map(r -> java.util.Arrays.asList(r.getIngredienteId(), r.getProdottoTracciatoId(), r.getLottoId(), r.getStampaStoricoId()))
+                .toList();
+    }
+
+    /** Un anello in testo leggibile, per il registro delle correzioni ({@link AnelloPrimaDto}). */
+    private static AnelloPrimaDto aAnelloPrima(AnelloCatenaDto anello) {
+        List<String> voci = new ArrayList<>();
+        if (TracciatoDto.PRODOTTO.equals(anello.collegato().tipo())) {
+            if (anello.stampa() != null) {
+                voci.add(anello.stampa().lotto() + " (stampata il " + anello.stampa().stampatoIl().toLocalDate().format(DATA_ITALIANA) + ")");
+            }
+        } else {
+            for (LottoCatenaDto l : anello.lotti()) {
+                String fornitore = l.fornitore() != null ? l.fornitore() : FORNITORE_NON_INDICATO.toLowerCase();
+                String scadenza = l.scadenza() != null ? "scad. " + LottiIngredienteService.formattaItaliano(l.scadenza()) : "senza scadenza";
+                voci.add(l.codice() + " (" + fornitore + ", " + scadenza + ")");
+            }
+        }
+        return new AnelloPrimaDto(anello.collegato().tipo(), anello.collegato().id(), anello.collegato().nome(), voci);
     }
 
     private static void aggiungiRigheLottoCorretto(List<StoricoLotto> nuoveRighe, Long storicoId, Long ingredienteId, List<Long> scelti) {
@@ -232,8 +282,34 @@ public class CatenaService {
 
     private CatenaDto aCatenaDto(StoricoStampa riga) {
         List<StoricoLotto> righeLotti = storicoLotti.findByStoricoIdOrderByIdAsc(riga.getId());
+        List<AnelloCatenaDto> anelli = aAnelli(righeLotti);
+        List<CorrezioneCatena> registro = correzioni.findByStoricoIdOrderByCorrettoIlAscIdAsc(riga.getId());
+        if (registro.isEmpty()) {
+            return new CatenaDto(riga.getId(), riga.getProdottoNome(), riga.getLotto(), riga.getCopie(), riga.getStampatoIl(),
+                    riga.getCorrettoIl(), anelli, List.of());
+        }
+        // L'anello vuoto era davvero «non registrato» solo se lo era gia' alla stampa: la prima riga
+        // del registro e' la catena com'era allora. Se i lotti c'erano e una correzione li ha tolti,
+        // la frase «non registrato al momento della stampa» sarebbe falsa.
+        List<AnelloPrimaDto> originale = leggiPrima(registro.get(0));
+        List<AnelloCatenaDto> corretti = anelli.stream().map(a -> {
+            boolean vuotoOra = TracciatoDto.PRODOTTO.equals(a.collegato().tipo()) ? a.stampa() == null : a.lotti().isEmpty();
+            boolean vuotoAllora = originale.stream()
+                    .filter(o -> o.tipo().equals(a.collegato().tipo()) && Objects.equals(o.id(), a.collegato().id()))
+                    .findFirst().map(o -> o.voci().isEmpty()).orElse(false);
+            return new AnelloCatenaDto(a.collegato(), a.lotti(), a.stampa(), vuotoOra && vuotoAllora);
+        }).toList();
+        // Dalla piu' recente: il registro e' in ordine cronologico, qui si rovescia.
+        List<CorrezioneCatenaDto> dalPiuRecente = new ArrayList<>();
+        for (int i = registro.size() - 1; i >= 0; i--) {
+            dalPiuRecente.add(new CorrezioneCatenaDto(registro.get(i).getCorrettoIl(), leggiPrima(registro.get(i))));
+        }
         return new CatenaDto(riga.getId(), riga.getProdottoNome(), riga.getLotto(), riga.getCopie(), riga.getStampatoIl(),
-                riga.getCorrettoIl(), aAnelli(righeLotti));
+                riga.getCorrettoIl(), corretti, dalPiuRecente);
+    }
+
+    private List<AnelloPrimaDto> leggiPrima(CorrezioneCatena c) {
+        return json.leggi(c.getPrima(), new TypeReference<List<AnelloPrimaDto>>() { }, List.of());
     }
 
     /**
@@ -303,7 +379,7 @@ public class CatenaService {
                         .map(r -> aLottoCatenaDto(lottiPerId.get(r.getLottoId()), arriviPerId, fotoLotti, fotoArrivi))
                         .filter(Objects::nonNull)
                         .toList();
-                anelli.add(new AnelloCatenaDto(new TracciatoDto(TracciatoDto.INGREDIENTE, id, nome), lottiAnello, null));
+                anelli.add(new AnelloCatenaDto(new TracciatoDto(TracciatoDto.INGREDIENTE, id, nome), lottiAnello, null, lottiAnello.isEmpty()));
             } else {
                 Long id = prima.getProdottoTracciatoId();
                 String nome = nomiProdotti.getOrDefault(id, PRODOTTO_ELIMINATO);
@@ -312,7 +388,7 @@ public class CatenaService {
                         .findFirst()
                         .map(r -> aStampaCatenaDto(stampePerId.get(r.getStampaStoricoId())))
                         .orElse(null);
-                anelli.add(new AnelloCatenaDto(new TracciatoDto(TracciatoDto.PRODOTTO, id, nome), null, stampa));
+                anelli.add(new AnelloCatenaDto(new TracciatoDto(TracciatoDto.PRODOTTO, id, nome), List.of(), stampa, stampa == null));
             }
         }
         return anelli;
@@ -331,7 +407,7 @@ public class CatenaService {
         String arrivatoIl = arrivo != null ? arrivo.getData() : null;
         List<FotoDto> fotoLotto = fotoLotti.getOrDefault(l.getId(), List.of());
         List<FotoDto> fotoDocumento = arrivo != null ? fotoArrivi.getOrDefault(arrivo.getId(), List.of()) : List.of();
-        return new LottoCatenaDto(l.getId(), codice, l.getScadenza(), fornitore, documento, arrivatoIl, fotoLotto, fotoDocumento);
+        return new LottoCatenaDto(l.getId(), codice, l.getScadenza(), fornitore, documento, arrivatoIl, fotoLotto, fotoDocumento, l.getQuantita());
     }
 
     /** {@code null} se la riga di storico della stampa tracciata non c'e' piu' in mappa (non dovrebbe succedere: lo storico non si cancella mai). */

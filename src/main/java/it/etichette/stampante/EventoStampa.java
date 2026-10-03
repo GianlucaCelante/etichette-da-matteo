@@ -12,13 +12,30 @@ package it.etichette.stampante;
  * /api/stampe/{lavoroId}/prosegui} o {@code /ristampa}); {@code null} (il valore di default, vedi
  * il costruttore a 6 argomenti) in tutti gli altri eventi, coperchio aperto compreso (resta
  * automatico).
+ *
+ * <p>{@code copiaCorrente} (corretto il 2/10/2026, prove con utenti: la domanda diceva «copia 2 di
+ * 6» per un errore sulla terza): con "in_corso" e "in_pausa" e' la copia IN LAVORAZIONE, contata da
+ * 1 (quella appena mandata, o quella interrotta/in attesa della stampante); con gli esiti finali
+ * ("completata", "annullata", "errore") e' quante copie sono uscite davvero.
  */
 public record EventoStampa(String lavoroId, int copiaCorrente, int copieTotali, String stato, String messaggio,
-                            boolean prova, String domanda) {
+                            boolean prova, String domanda, Integer secondiAllaRistampa) {
 
     /** Compatibilita' con i chiamanti esistenti che non specificano la domanda: nessuna. */
     public EventoStampa(String lavoroId, int copiaCorrente, int copieTotali, String stato, String messaggio, boolean prova) {
         this(lavoroId, copiaCorrente, copieTotali, stato, messaggio, prova, null);
+    }
+
+    /**
+     * Compatibilita' con i chiamanti che non danno {@code secondiAllaRistampa}: nessun conto alla
+     * rovescia. Quel campo (2/10/2026, prove con utenti: la ristampa automatica partiva «da sola»
+     * dopo un minuto senza che nessuno lo vedesse arrivare) c'e' solo nell'evento "in_pausa" con
+     * domanda "nastro" pubblicato quando la stampante e' tornata pulita: i secondi che mancano, in
+     * quel momento, alla ristampa automatica se nessuno risponde. {@code null} in tutti gli altri.
+     */
+    public EventoStampa(String lavoroId, int copiaCorrente, int copieTotali, String stato, String messaggio, boolean prova,
+                        String domanda) {
+        this(lavoroId, copiaCorrente, copieTotali, stato, messaggio, prova, domanda, null);
     }
 
     public static final String IN_CORSO = "in_corso";

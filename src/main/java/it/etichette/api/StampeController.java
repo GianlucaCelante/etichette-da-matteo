@@ -9,6 +9,7 @@ import it.etichette.stampe.StampeService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,9 +39,12 @@ public class StampeController {
         this.dispositivi = dispositivi;
     }
 
-    /** {@code lotti} (docs/api.md): facoltativo, chiave ingredienteId -> lotti scelti a mano; assente = regola di serie. */
+    /**
+     * {@code lotti} (docs/api.md): facoltativo, chiave ingredienteId -> lotti scelti a mano; assente = regola di serie.
+     * {@code porzioni} (29/09/2026): facoltativo, come {@code quantita}; assente = quelle del prodotto (in coda al record solo per ordine di aggiunta).
+     */
     private record RichiestaStampa(Long prodottoId, Integer copie, String quantita, String scadenza, String lotto,
-                                    Map<Long, List<Long>> lotti) {
+                                    Map<Long, List<Long>> lotti, String porzioni) {
     }
 
     private record RichiestaCopie(Integer copie) {
@@ -52,9 +56,23 @@ public class StampeController {
     @PostMapping
     public Map<String, Object> stampa(HttpServletRequest request, @RequestBody Map<String, Object> corpo) {
         RichiestaStampa r = json.converti(corpo, RichiestaStampa.class);
-        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.scadenza(), r.lotto(), r.lotti(),
-                dispositivi.nomePerStampa(request));
+        // La chiave per riconoscere il doppio tocco (StampeService#stampa, 2/10/2026) e' l'id del
+        // dispositivo, non il nome: due telefoni ancora senza nome si chiamano tutti e due "Sconosciuto".
+        Dispositivo chi = DispositiviService.corrente(request);
+        String nome = dispositivi.nomePerStampa(request);
+        RispostaStampa risposta = stampe.stampa(r.prodottoId(), r.copie(), r.quantita(), r.porzioni(), r.scadenza(), r.lotto(), r.lotti(),
+                nome, chi != null ? chi.getId() : nome);
         return corpoRisposta(risposta);
+    }
+
+    /**
+     * {@code GET /api/stampe/attive} (docs/api.md, 2/10/2026): i lavori accettati e non ancora
+     * conclusi, in ordine di coda - una pagina appena aperta (F5, cambio vista, un altro
+     * dispositivo, la riconnessione) ricostruisce da qui il pannello «Stampa in corso».
+     */
+    @GetMapping("/attive")
+    public List<StampeService.LavoroAttivo> attive() {
+        return stampe.lavoriAttivi();
     }
 
     /** {@code POST /api/stampe/prova-prodotto}: stampa di prova di un prodotto in modifica (anche non salvato, etichetta compresa). */
@@ -72,9 +90,14 @@ public class StampeController {
         return Map.of("lavoroId", risposta.lavoroId());
     }
 
+    /**
+     * Fermare un lavoro gia' concluso non e' un errore (decisione del 2/10/2026: «Ferma la serie»
+     * premuto da un altro dispositivo, o un attimo dopo l'ultima copia, dava 404 e «Non sono
+     * riuscito a fermare la stampa»): 204 senza fare nulla. 404 solo per un id mai visto.
+     */
     @PostMapping("/{lavoroId}/annulla")
     public ResponseEntity<Void> annulla(@PathVariable String lavoroId) {
-        if (!coda.annulla(lavoroId)) {
+        if (!coda.annulla(lavoroId) && !stampe.eConcluso(lavoroId)) {
             throw new ErroreApi(HttpStatus.NOT_FOUND, "lavoro di stampa non trovato: " + lavoroId);
         }
         return ResponseEntity.noContent().build();

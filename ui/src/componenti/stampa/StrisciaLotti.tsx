@@ -18,6 +18,11 @@ export type ScelteLotti = Record<number, number[]>;
 
 const MASSIMO_CHIUSI_MOSTRATI = 5;
 
+// Quali blocchi ingrediente sono stati aperti/chiusi a mano, ricordato solo
+// per la sessione (finche' la pagina resta aperta): chiave "prodotto:ingrediente".
+// Senza voce, decide daDecidere (piu' lotti aperti, avviso...).
+const apertureAMano = new Map<string, boolean>();
+
 // I lotti aperti "in gioco" per la striscia: quelli non scaduti, o - se sono
 // tutti scaduti (l'unico caso possibile: il servizio ne chiude altri da solo
 // alla scadenza quando ce n'e' un altro valido) - tutti quelli aperti, cosi'
@@ -219,6 +224,8 @@ function RigaIngrediente({
 }) {
   const avvisa = useAvviso();
   const [chiusiAperti, setChiusiAperti] = useState(false);
+  const chiaveAperta = `${prodottoId}:${riga.tracciato.id}`;
+  const [aMano, setAMano] = useState<boolean | undefined>(() => apertureAMano.get(chiaveAperta));
   const chiudiLotto = useChiudiLottoIngrediente();
   const riapriLotto = useRiapriLottoIngrediente();
 
@@ -286,6 +293,18 @@ function RigaIngrediente({
 
   const toggleChiusi = useCallback(() => setChiusiAperti((v) => !v), []);
 
+  // Espanso finche' c'e' qualcosa da decidere o da guardare (piu' lotti
+  // aperti fra cui scegliere, un avviso, nessun lotto); altrimenti una riga
+  // sola con nome e lotto scelto. Una scelta a mano vince sempre.
+  const daDecidere = inGioco.length !== 1 || livello !== null;
+  const aperto = aMano ?? daDecidere;
+  const toggleAperto = useCallback(() => {
+    const nuovo = !aperto;
+    apertureAMano.set(chiaveAperta, nuovo);
+    setAMano(nuovo);
+  }, [aperto, chiaveAperta]);
+  const idCorpo = `corpo-lotti-${chiaveAperta.replace(":", "-")}`;
+
   if (!ingrediente) {
     return (
       <div className="rl">
@@ -298,11 +317,19 @@ function RigaIngrediente({
 
   return (
     <div className={"rl" + (livello ? " " + livello : "")}>
-      <div className="testa">
+      <button type="button" className="testa testaApri" onClick={toggleAperto} aria-expanded={aperto} aria-controls={idCorpo}>
         <div className="ing" title={nome}>
           {nome}
         </div>
-      </div>
+        {!aperto && (
+          <span className="sintesi mono">{scelti.length ? scelti.map((l) => l.codice).join(" + ") : "nessun lotto"}</span>
+        )}
+        <span className={"freccia flex transition-transform" + (aperto ? " rotate-180" : "")}>
+          <IconaGiu larghezza={16} spessoreTratto={2.2} />
+        </span>
+      </button>
+      {aperto && (
+        <div id={idCorpo} className="corpoRiga">
       {inGioco.map((l) => {
         const usato = scelteId.includes(l.id);
         return (
@@ -351,6 +378,8 @@ function RigaIngrediente({
         </>
       )}
       {nota && <div className="nota">{nota}</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -503,8 +532,12 @@ const StrisciaLotti = forwardRef<HTMLDivElement, ProprietaStrisciaLotti>(functio
       </div>
       {chiusaSulTelefono && (
         <button type="button" className="riassunto soloTel" onClick={apri}>
-          <span className="b">{plurale(totaleLottiRegistrati, "lotto", "lotti")}</span>
-          <span className="tenue">· tutto a posto</span>
+          {/* Un solo elemento con uno spazio vero in mezzo: se fossero due figli
+              del flex, il vuoto sarebbe solo il "gap" e chi legge il testo (lettore
+              di schermo, copia) troverebbe uno spazio in piu' prima del punto. */}
+          <span>
+            <span className="b">{plurale(totaleLottiRegistrati, "lotto", "lotti")}</span> <span className="tenue">· tutto a posto</span>
+          </span>
           <span className="punta">
             <IconaGiu larghezza={18} spessoreTratto={2.2} />
           </span>

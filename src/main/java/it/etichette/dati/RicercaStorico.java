@@ -55,7 +55,8 @@ public class RicercaStorico {
     /**
      * Ogni campo {@code null} e' un filtro assente.
      *
-     * @param da         solo le righe stampate da questo momento in poi ({@code periodo})
+     * @param da         solo le righe stampate da questo momento in poi ({@code periodo}, o {@code da} dell'intervallo)
+     * @param prima      solo le righe stampate PRIMA di questo momento (estremo escluso: la mezzanotte dopo {@code a} dell'intervallo)
      * @param testo      {@code q} gia' in minuscolo: prodotto o lotto stampato che lo contengono,
      *                   oppure una stampa che ha registrato uno dei {@code lottoIds}
      * @param lottoIds   i lotti d'ingrediente il cui codice effettivo contiene {@code testo},
@@ -63,17 +64,56 @@ public class RicercaStorico {
      * @param primaDi    id di una riga ESISTENTE: solo le righe che nell'ordine vengono dopo di lei
      * @param limite     al massimo tante righe
      */
-    public record Filtro(LocalDateTime da, String testo, Collection<Long> lottoIds, Long prodottoId, String esito,
+    public record Filtro(LocalDateTime da, LocalDateTime prima, String testo, Collection<Long> lottoIds, Long prodottoId, String esito,
                          String lavoroId, Long primaDi, Integer limite) {
     }
 
+    /** Le condizioni WHERE (gia' con la parola WHERE, o vuote) e i loro parametri, per {@link #cerca} e {@link #totali}. */
+    private record Condizioni(String where, Map<String, Object> parametri) {
+    }
+
+    /** Le righe di un filtro: ordine, limite e paginazione compresi. */
     @Transactional // la funzione va registrata sulla STESSA connessione su cui gira la query
     public List<StoricoStampa> cerca(Filtro filtro) {
+        Condizioni c = condizioni(filtro);
+        String jpql = "SELECT s FROM StoricoStampa s" + c.where() + " ORDER BY s.stampatoIl DESC, s.id DESC";
+        TypedQuery<StoricoStampa> query = em.createQuery(jpql, StoricoStampa.class);
+        c.parametri().forEach(query::setParameter);
+        if (filtro.limite() != null) {
+            query.setMaxResults(filtro.limite());
+        }
+        return query.getResultList();
+    }
+
+    /** Quante stampe e quante etichette (somma delle copie) ha un filtro: il totale in fondo allo Storico, senza caricare le righe. */
+    public record Totali(long stampe, long etichette) {
+    }
+
+    /**
+     * I totali di un filtro con le STESSE condizioni di {@link #cerca} ({@code limite} e {@code primaDi}
+     * non contano: il totale e' di tutto cio' che corrisponde, non di una pagina).
+     */
+    @Transactional
+    public Totali totali(Filtro filtro) {
+        Condizioni c = condizioni(new Filtro(filtro.da(), filtro.prima(), filtro.testo(), filtro.lottoIds(), filtro.prodottoId(),
+                filtro.esito(), filtro.lavoroId(), null, null));
+        TypedQuery<Object[]> query = em.createQuery(
+                "SELECT COUNT(s), COALESCE(SUM(s.copie), 0) FROM StoricoStampa s" + c.where(), Object[].class);
+        c.parametri().forEach(query::setParameter);
+        Object[] riga = query.getSingleResult();
+        return new Totali(((Number) riga[0]).longValue(), ((Number) riga[1]).longValue());
+    }
+
+    private Condizioni condizioni(Filtro filtro) {
         List<String> condizioni = new ArrayList<>();
         Map<String, Object> parametri = new LinkedHashMap<>();
         if (filtro.da() != null) {
             condizioni.add("s.stampatoIl >= :da");
             parametri.put("da", filtro.da());
+        }
+        if (filtro.prima() != null) {
+            condizioni.add("s.stampatoIl < :prima");
+            parametri.put("prima", filtro.prima());
         }
         if (filtro.prodottoId() != null) {
             condizioni.add("s.prodottoId = :prodottoId");
@@ -115,15 +155,7 @@ public class RicercaStorico {
             condizioni.add("(" + String.join(" OR ", alternative) + ")");
         }
 
-        String jpql = "SELECT s FROM StoricoStampa s"
-                + (condizioni.isEmpty() ? "" : " WHERE " + String.join(" AND ", condizioni))
-                + " ORDER BY s.stampatoIl DESC, s.id DESC";
-        TypedQuery<StoricoStampa> query = em.createQuery(jpql, StoricoStampa.class);
-        parametri.forEach(query::setParameter);
-        if (filtro.limite() != null) {
-            query.setMaxResults(filtro.limite());
-        }
-        return query.getResultList();
+        return new Condizioni(condizioni.isEmpty() ? "" : " WHERE " + String.join(" AND ", condizioni), parametri);
     }
 
     /**

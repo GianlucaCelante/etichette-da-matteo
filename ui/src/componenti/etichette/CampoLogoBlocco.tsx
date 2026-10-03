@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
-import { percorsoLogo } from "../../api/client";
+import { ErroreRichiesta, percorsoLogo } from "../../api/client";
 import { useCaricaLogo, useEliminaLogo, useLogoEsiste } from "../../api/hooks";
 import { useAvviso } from "../../hooks/useAvviso";
 import { IconaCarica, IconaImmagine } from "../Icone";
@@ -30,12 +30,20 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
       const file = evento.target.files?.[0];
       evento.target.value = "";
       if (!file) return;
+      // Tre rifiuti, tre messaggi (2 ottobre 2026: prima «Non sono riuscito a caricare il logo» per tutto):
+      // non e' un'immagine / e' un'immagine di un formato che non si legge / e' troppo grande. Il quarto
+      // caso, un testo rinominato «.png» (il tipo dichiarato e' PNG ma i byte no), lo vede solo il
+      // servizio, che risponde con il suo messaggio (vedi onError).
+      if (!file.type.startsWith("image/")) {
+        avvisa("Questo file non è un'immagine: scegli un PNG o un JPEG.");
+        return;
+      }
       if (!TIPI_LOGO_VALIDI.includes(file.type)) {
-        avvisa("Serve un file PNG o JPEG.");
+        avvisa(`Formato non supportato (${file.type.replace("image/", "").toUpperCase()}): serve un PNG o un JPEG.`);
         return;
       }
       if (file.size > LOGO_MASSIMO_BYTE) {
-        avvisa("Il file supera i 2 MB.");
+        avvisa(`Il file è troppo grande (${(file.size / 1_000_000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB): il logo può pesare al massimo 2 MB.`);
         return;
       }
       carica.mutate(file, {
@@ -44,7 +52,8 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
           avvisa("Logo caricato.");
           onCambiato();
         },
-        onError: () => avvisa("Non sono riuscito a caricare il logo."),
+        onError: (errore) =>
+          avvisa(errore instanceof ErroreRichiesta && errore.corpo?.errore ? errore.corpo.errore : "Non sono riuscito a caricare il logo: riprova."),
       });
     },
     [carica, avvisa, onCambiato],
@@ -100,7 +109,11 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
         </div>
         <div className="text-[12px] text-[var(--spento)]">Il logo è unico per tutte le etichette.</div>
       </div>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={scegliFile} aria-label="Carica il logo" />
+      {/* Il campo vero e' nascosto e lo apre il bottone «Carica un'immagine»: senza
+          nome accessibile e fuori dalla tastiera, cosi' per i lettori di schermo il
+          controllo e' uno solo (il bottone) e non due campi file con lo stesso nome
+          «Carica il logo», uno per ogni copia del blocco (PC e telefono). */}
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={scegliFile} aria-hidden="true" tabIndex={-1} />
     </div>
   );
 }

@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useEventi } from "../api/eventi";
+import { useBarreFisse } from "../hooks/useBarreFisse";
+import { useTastieraVirtuale } from "../hooks/useTastieraVirtuale";
 import { Contesto as ContestoTestata } from "./contestoTestata";
 import ErroreVista from "./ErroreVista";
 import {
@@ -21,6 +23,17 @@ const VOCI = [
   { percorso: "/storico", etichetta: "Storico", Icona: IconaStorico },
   { percorso: "/impostazioni", etichetta: "Impostazioni", Icona: IconaImpostazioni },
 ] as const;
+
+// Il titolo della scheda del browser, per vista (prima era sempre «Etichette»:
+// chi usa lo schermo parlante o ha piu' schede aperte non capiva dove fosse).
+const TITOLI_PAGINA: Record<string, string> = {
+  "/stampa": "Stampa",
+  "/etichette": "Modifica etichette",
+  "/ingredienti": "Ingredienti",
+  "/ingredienti/arrivo": "Merce arrivata",
+  "/storico": "Storico",
+  "/impostazioni": "Impostazioni",
+};
 
 const TITOLI: Record<string, string> = {
   "/stampa": "Stampa etichetta",
@@ -61,9 +74,18 @@ export default function Guscio() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const titolo = TITOLI[posizione.pathname] ?? "Etichette";
+  const titoloPagina = TITOLI_PAGINA[posizione.pathname] ?? "Etichette";
+  const rifPrincipale = useRef<HTMLElement | null>(null);
+  const rifTestata = useRef<HTMLElement | null>(null);
+  // Le barre fisse dentro l'area che scorre (anteprima in alto, Modifica/Stampa
+  // in basso) e la testata, misurate in variabili CSS: il fuoco non finisce
+  // sotto di loro, e gli avvisi sul telefono partono sotto la testata.
+  useBarreFisse(rifPrincipale, rifTestata);
   // Montato una volta sola: apre /api/eventi e tiene la cache di TanStack
   // Query aggiornata per tutte le viste, non solo per quella aperta.
   useEventi();
+  // La tastiera virtuale del telefono (hooks/useTastieraVirtuale.ts).
+  useTastieraVirtuale();
 
   // Merce arrivata e' una vista a parte (non un pannello dentro Ingredienti):
   // la freccia per tornare indietro sta nella testata condivisa, sempre
@@ -95,8 +117,47 @@ export default function Guscio() {
     [nodoStrumenti, nodoAzioni],
   );
 
+  // Titolo della scheda del browser e fuoco a ogni cambio di vista (prove con
+  // utenti, 2 ottobre 2026: dopo aver scelto una voce del menu il fuoco restava
+  // dov'era o si perdeva, e il Tab ripartiva a caso). Il fuoco va alla regione
+  // principale (tabindex -1: non e' nell'ordine del Tab) senza scorrere, e di
+  // li' il Tab riparte dal primo controllo della vista. Con la stessa vista ma
+  // un altro indirizzo (un prodotto aperto: ?prodotto=...) ci va solo se il
+  // controllo che aveva il fuoco e' sparito. Non alla prima apertura: li' si
+  // parte dal salto al contenuto, come in ogni pagina. Il confronto con la
+  // posizione precedente (e non un "primo giro") regge anche StrictMode.
+  const prima = useRef({ percorso: posizione.pathname, ricerca: posizione.search });
+  useEffect(() => {
+    document.title = `${titoloPagina} · Etichette`;
+  }, [titoloPagina]);
+  useEffect(() => {
+    const { percorso, ricerca } = prima.current;
+    if (percorso !== posizione.pathname) {
+      prima.current = { percorso: posizione.pathname, ricerca: posizione.search };
+      rifPrincipale.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (ricerca === posizione.search) return;
+    prima.current = { percorso: posizione.pathname, ricerca: posizione.search };
+    const fotogramma = window.requestAnimationFrame(() => {
+      const attivo = document.activeElement;
+      if (!attivo || attivo === document.body) rifPrincipale.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(fotogramma);
+  }, [posizione.pathname, posizione.search]);
+
+  const saltaAlContenuto = useCallback((evento: MouseEvent<HTMLAnchorElement>) => {
+    // Niente "#contenuto" nell'indirizzo (il router lo prenderebbe per un altro posto).
+    evento.preventDefault();
+    rifPrincipale.current?.focus();
+  }, []);
+
   return (
     <div className="app">
+      {/* Il primo elemento a cui arriva il Tab; visibile solo col fuoco. */}
+      <a href="#contenuto" className="saltaAlContenuto" onClick={saltaAlContenuto}>
+        Salta al contenuto
+      </a>
       <nav className="rail" aria-label="Sezioni dell'app">
         <div className="marchio">
           <IconaMarchio larghezza={24} spessoreTratto={2} />
@@ -109,8 +170,22 @@ export default function Guscio() {
         ))}
       </nav>
 
+      {/* La barra in basso del telefono sta nel DOM PRIMA del contenuto (come il
+          menu laterale del PC): con Tab si arriva alle cinque voci subito, non dopo
+          tutti i prodotti (14 Tab con 9 prodotti). Si vede in fondo grazie a
+          "order" in index.css. Sul PC e' nascosta (display:none), sul telefono
+          lo e' il menu laterale: un solo menu per volta nell'albero. */}
+      <nav className="barrasotto" aria-label="Sezioni dell'app">
+        {VOCI.map(({ percorso, etichetta, Icona }) => (
+          <NavLink key={percorso} to={percorso} className={classeTab}>
+            <Icona />
+            <span>{etichetta}</span>
+          </NavLink>
+        ))}
+      </nav>
+
       <div className="corpo">
-        <header className={"testata" + (SENZA_AZIONI_TESTATA_TEL.has(posizione.pathname) ? " testataVuotaTel" : "")}>
+        <header ref={rifTestata} className={"testata" + (SENZA_AZIONI_TESTATA_TEL.has(posizione.pathname) ? " testataVuotaTel" : "")}>
           <div className="flex items-center gap-2.5 min-w-0">
             {/* soloPC (revisione grafica, 25/09/2026): su Merce arrivata la
                 freccia fa esattamente quello che fa gia' "Annulla" (stesso
@@ -139,19 +214,13 @@ export default function Guscio() {
               cambiando rotta - cambiare vista e' gia' la via d'uscita, la
               rete di sicurezza si azzera da sola invece di restare rotta
               anche su quella nuova (ErroreVista.tsx). */}
-          <ErroreVista key={posizione.pathname}>
-            <Outlet />
-          </ErroreVista>
+          <main id="contenuto" ref={rifPrincipale} tabIndex={-1} className="principale" aria-label={titolo}>
+            <ErroreVista key={posizione.pathname}>
+              <Outlet />
+            </ErroreVista>
+          </main>
         </ContestoTestata.Provider>
 
-        <nav className="barrasotto" aria-label="Sezioni dell'app">
-          {VOCI.map(({ percorso, etichetta, Icona }) => (
-            <NavLink key={percorso} to={percorso} className={classeTab}>
-              <Icona />
-              <span>{etichetta}</span>
-            </NavLink>
-          ))}
-        </nav>
       </div>
       <RichiediNomeDispositivo />
     </div>

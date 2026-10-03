@@ -81,6 +81,11 @@ public class Arrivo {
         return data;
     }
 
+    /** {@code PUT /api/lotti-ingrediente/{id}}: la data di arrivo corretta a mano (docs/api.md). */
+    public void setData(String data) {
+        this.data = data;
+    }
+
     public String getDocumento() {
         return documento;
     }

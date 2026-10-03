@@ -1,0 +1,57 @@
+databaseChangeLog:
+
+  # 29/09/2026 (deciso dal cliente): nasce il blocco «Porzioni» (chiave JSON "porzioni", il valore si
+  # sceglie alla stampa come quello del Peso) e sparisce il blocco «Testo grande», che diventa un
+  # blocco «Testo» con il grassetto acceso (BloccoDto#grassetto).
+
+  - changeSet:
+      id: 120-prodotti-porzioni
+      author: etichette
+      comment: >
+        Colonna porzioni su prodotti: il valore di partenza del blocco «Porzioni», come quantita lo e'
+        del Peso. Con SQL diretto e NON con addColumn: prodotti e' citata da chiavi esterne di altre
+        tabelle (storico_stampe, storico_lotti, ...) e l'addColumn di Liquibase su SQLite ricostruisce
+        la tabella e riscrive quelle chiavi - vedi v10-storico-lotti-chiavi-esterne.yaml e
+        SchemaChiaviEsterneTest.
+      changes:
+        - sql:
+            sql: ALTER TABLE prodotti ADD COLUMN porzioni TEXT
+
+  - changeSet:
+      id: 121-storico-stampe-porzioni
+      author: etichette
+      comment: >
+        Colonna porzioni su storico_stampe: le porzioni stampate, come quantita (la ristampa le riusa
+        e l'esportazione dello storico le ha in una colonna). Con SQL diretto e NON con addColumn:
+        storico_stampe e' citata da storico_lotti - vedi v10-storico-lotti-chiavi-esterne.yaml e
+        SchemaChiaviEsterneTest.
+      changes:
+        - sql:
+            sql: ALTER TABLE storico_stampe ADD COLUMN porzioni TEXT
+
+  - changeSet:
+      id: 122-testo-grande-in-testo-grassetto
+      author: etichette
+      comment: >
+        Riscrive nei dati salvati (prodotti.etichetta, JSON) ogni blocco di tipo testoGrande in un
+        blocco testo con "grassetto": true, tutto il resto del blocco invariato (corpo, testo,
+        colonna, allineamento, acceso): l'aspetto dell'etichetta resta identico, il testoGrande era
+        gia' un testo in grassetto. Con le funzioni JSON native di SQLite (json_each/json_set/
+        json_group_array, presenti dalla 3.38; il driver e' molto piu' recente), l'ordine dei blocchi
+        e' conservato (ORDER BY key). Idempotente: tocca solo le etichette che contengono ancora
+        testoGrande e hanno un JSON valido con i blocchi (CASE e non AND: il controllo di validita'
+        deve precedere json_type, che su un JSON rotto darebbe errore). La stessa trasformazione si applica anche in lettura
+        (ProdottiConversioni#normalizzaEtichetta), quindi un dato che sfuggisse qui non va comunque
+        mai in errore. Il servizio fa una copia del database prima di ogni aggiornamento
+        (BackupService): la riscrittura e' recuperabile.
+      changes:
+        - sql:
+            sql: |
+              UPDATE prodotti
+              SET etichetta = json_set(etichetta, '$.blocchi', json((
+                SELECT json_group_array(json(CASE WHEN json_extract(b.value, '$.tipo') = 'testoGrande'
+                    THEN json_set(b.value, '$.tipo', 'testo', '$.grassetto', json('true'))
+                    ELSE b.value END))
+                FROM (SELECT value FROM json_each(prodotti.etichetta, '$.blocchi') ORDER BY key) AS b)))
+              WHERE etichetta LIKE '%testoGrande%'
+                AND CASE WHEN json_valid(etichetta) THEN json_type(etichetta, '$.blocchi') = 'array' ELSE 0 END;

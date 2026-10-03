@@ -25,6 +25,9 @@ public interface LottoIngredienteRepository extends JpaRepository<LottoIngredien
 
     List<LottoIngrediente> findByArrivoId(Long arrivoId);
 
+    /** {@code GET /api/fornitori}: i lotti arrivati con le consegne di TUTTI i fornitori della pagina, una sola query. */
+    List<LottoIngrediente> findByArrivoIdIn(Collection<Long> arrivoIds);
+
     long countByIngredienteIdAndStato(Long ingredienteId, String stato);
 
     boolean existsByIngredienteId(Long ingredienteId);

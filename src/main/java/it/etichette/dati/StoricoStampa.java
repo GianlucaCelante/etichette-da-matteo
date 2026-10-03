@@ -46,6 +46,10 @@ public class StoricoStampa {
     @Column(name = "quantita")
     private String quantita;
 
+    /** Le porzioni stampate (v14-porzioni-grassetto.yaml), come {@code quantita}: la ristampa le riusa. {@code null} per le righe scritte prima di questa colonna o senza porzioni. */
+    @Column(name = "porzioni")
+    private String porzioni;
+
     @Column(name = "scadenza")
     private String scadenza;
 
@@ -129,6 +133,14 @@ public class StoricoStampa {
 
     public void setQuantita(String quantita) {
         this.quantita = quantita;
+    }
+
+    public String getPorzioni() {
+        return porzioni;
+    }
+
+    public void setPorzioni(String porzioni) {
+        this.porzioni = porzioni;
     }
 
     public String getScadenza() {

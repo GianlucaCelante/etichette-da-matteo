@@ -135,7 +135,46 @@ class DispositiviApiTest {
                 .containsExactlyInAnyOrder("PC", "Telefono della cucina");
     }
 
-    /** I senza nome fermi da piu' di 24 ore se ne vanno da soli; quelli con un nome restano per sempre. */
+    /** Un dispositivo con nome che non si vede da piu' di 60 giorni si toglie; il PC e i recenti restano. */
+    @Test
+    void laPuliziaTogliePureIConNomeDimenticatiDaDueMesi() {
+        java.time.LocalDateTime dueMesiEUnGiornoFa = java.time.LocalDateTime.now().minusDays(61);
+        it.etichette.dati.Dispositivo pc = new it.etichette.dati.Dispositivo("pc-locale", "PC", "pc");
+        pc.setUltimoAccesso(dueMesiEUnGiornoFa);
+        it.etichette.dati.Dispositivo dimenticato = new it.etichette.dati.Dispositivo("dimenticato", "Telefono vecchio", "telefono");
+        dimenticato.setUltimoAccesso(dueMesiEUnGiornoFa);
+        it.etichette.dati.Dispositivo recente = new it.etichette.dati.Dispositivo("recente", "Telefono della cucina", "telefono");
+        recente.setUltimoAccesso(java.time.LocalDateTime.now().minusDays(10));
+        dispositivi.saveAll(java.util.List.of(pc, dimenticato, recente));
+
+        assertThat(servizio.pulisci()).isEqualTo(1);
+
+        assertThat(dispositivi.findAll()).extracting(it.etichette.dati.Dispositivo::getId)
+                .containsExactlyInAnyOrder("pc-locale", "recente");
+    }
+
+    /** Oltre 30 dispositivi (PC escluso) restano i 30 piu' recenti. */
+    @Test
+    void ilNumeroDiDispositiviHaUnTetto() {
+        java.time.LocalDateTime adesso = java.time.LocalDateTime.now();
+        java.util.List<it.etichette.dati.Dispositivo> tutti = new java.util.ArrayList<>();
+        tutti.add(new it.etichette.dati.Dispositivo("pc-locale", "PC", "pc"));
+        for (int i = 0; i < 35; i++) {
+            it.etichette.dati.Dispositivo d = new it.etichette.dati.Dispositivo("tel-" + i, "Telefono " + i, "telefono");
+            d.setUltimoAccesso(adesso.minusHours(i)); // tel-0 il piu' recente
+            tutti.add(d);
+        }
+        dispositivi.saveAll(tutti);
+
+        assertThat(servizio.pulisci()).isEqualTo(5);
+
+        assertThat(dispositivi.findAll()).hasSize(31)
+                .extracting(it.etichette.dati.Dispositivo::getId)
+                .contains("pc-locale", "tel-0", "tel-29")
+                .doesNotContain("tel-30", "tel-34");
+    }
+
+    /** I senza nome fermi da piu' di 24 ore se ne vanno da soli; quelli con un nome restano fino a 60 giorni. */
     @Test
     void laPuliziaToglieSoloISenzaNomeVecchi() {
         java.time.LocalDateTime tantoTempoFa = java.time.LocalDateTime.now().minusDays(3);

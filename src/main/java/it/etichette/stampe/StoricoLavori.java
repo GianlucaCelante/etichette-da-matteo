@@ -87,8 +87,8 @@ public class StoricoLavori implements SmartInitializingSingleton {
     }
 
     /** I dati di una riga noti al momento della richiesta: tutti tranne il lotto (vedi {@link #apri}). */
-    public record NuovaRiga(String lavoroId, Long prodottoId, String prodottoNome, String quantita, String scadenza,
-                            String dispositivoNome, boolean prova, List<LottoDaRegistrare> righeLotti) {
+    public record NuovaRiga(String lavoroId, Long prodottoId, String prodottoNome, String quantita, String porzioni,
+                            String scadenza, String dispositivoNome, boolean prova, List<LottoDaRegistrare> righeLotti) {
     }
 
     /**
@@ -130,6 +130,7 @@ public class StoricoLavori implements SmartInitializingSingleton {
             riga.setProdottoId(dati.prodottoId());
             riga.setLotto(lottoUsato);
             riga.setQuantita(dati.quantita());
+            riga.setPorzioni(dati.porzioni());
             riga.setScadenza(dati.scadenza());
             riga.setDispositivoNome(dati.dispositivoNome());
             riga.setLavoroId(dati.lavoroId());

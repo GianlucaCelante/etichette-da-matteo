@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { ALLERGENI } from "../../api/tipi";
 import { IconaGiu } from "../Icone";
 
@@ -38,12 +38,52 @@ interface ProprietaCampoArea<C extends string> {
   placeholder?: string;
 }
 
+// "field-sizing: content" (index.css, "textarea.scorre") fa crescere la
+// textarea col testo da solo, ma non c'e' su Safari/iPhone precedenti al 26
+// ne' su Firefox Android vecchi (provato il 29/09/2026 con un motore che finge
+// di non averlo): li' la casella restava ferma a 3 righe, col testo tagliato e
+// la barra di scorrimento nascosta sul telefono. Senza il supporto, la stessa
+// altezza (fino al max-height del CSS) si calcola qui a mano.
+const SENZA_FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && !CSS.supports("field-sizing", "content");
+
+function adattaAltezza(area: HTMLTextAreaElement) {
+  // Nascosta (il ramo PC dentro il telefono e viceversa): niente da misurare,
+  // ci pensa l'osservatore di larghezza quando compare.
+  if (area.clientWidth === 0) return;
+  // Rimpicciolirla un attimo per misurare puo' far scendere lo scorrimento
+  // della schermata che la contiene: si rimette com'era.
+  const contenitore = area.parentElement?.closest<HTMLElement>(".schermo, .scorre");
+  const scorrimento = contenitore?.scrollTop ?? 0;
+  area.style.height = "auto";
+  area.style.height = `${area.scrollHeight + (area.offsetHeight - area.clientHeight)}px`;
+  if (contenitore) contenitore.scrollTop = scorrimento;
+}
+
 export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia, placeholder }: ProprietaCampoArea<C>) {
   const cambia = useCallback((evento: ChangeEvent<HTMLTextAreaElement>) => onCambia(campo, evento.target.value), [onCambia, campo]);
+  const areaRif = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    if (SENZA_FIELD_SIZING && areaRif.current) adattaAltezza(areaRif.current);
+  }, [valore]);
+  useEffect(() => {
+    const area = areaRif.current;
+    if (!SENZA_FIELD_SIZING || !area) return;
+    // Quando la larghezza cambia (la casella compare, si ruota il telefono) le
+    // righe vanno a capo diversamente: l'altezza si ricalcola.
+    let larghezza = area.clientWidth;
+    const osservatore = new ResizeObserver(() => {
+      if (area.clientWidth === larghezza) return;
+      larghezza = area.clientWidth;
+      adattaAltezza(area);
+    });
+    osservatore.observe(area);
+    return () => osservatore.disconnect();
+  }, []);
   return (
     <div className="campo">
       <div className="etichettina">{etichetta}</div>
       <textarea
+        ref={areaRif}
         value={valore}
         onChange={cambia}
         placeholder={placeholder}
@@ -55,7 +95,7 @@ export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia
         // commento in cima al file) - impediva di spegnerlo sul telefono da
         // li'. resize vive tutto in index.css adesso, vertical su PC,
         // none sul telefono.
-        className="scorre border border-[var(--bordo2)] rounded-xl bg-white px-3.5 py-2.5 text-[14px] leading-normal text-inherit"
+        className="scorre border border-[var(--bordocampo)] rounded-xl bg-white px-3.5 py-2.5 text-[14px] max-[860px]:text-[16px] leading-normal text-inherit"
       />
     </div>
   );
@@ -75,7 +115,7 @@ export function CampoSelezione<C extends string>({ etichetta, valore, campo, opz
     <div className="campo">
       <div className="etichettina">{etichetta}</div>
       <div className="casella p-0">
-        <select value={valore} onChange={cambia} aria-label={etichetta} className="w-full h-[50px] px-3.5 bg-transparent cursor-pointer">
+        <select value={valore} onChange={cambia} aria-label={etichetta} className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
           {opzioni.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -184,6 +224,15 @@ export function Gruppo({
     if (!evidenziato || !rif.current) return;
     const motionRidotto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     rif.current.scrollIntoView({ behavior: motionRidotto ? "auto" : "smooth", block: "center" });
+    // Il campo di testo che il blocco appena aggiunto vuole subito (Testo
+    // libero, valore delle Porzioni: data-fuoco-nuovo) va a fuoco - ma sul
+    // telefono solo se il carattere e' da 16px in su, sotto iOS zooma la
+    // pagina al fuoco. Senza rifare lo scorrimento (sopra, gia' in corso).
+    const campo = rif.current.querySelector<HTMLElement>("[data-fuoco-nuovo]");
+    if (!campo) return;
+    const telefono = window.matchMedia("(max-width: 860px)").matches;
+    if (telefono && parseFloat(getComputedStyle(campo).fontSize) < 16) return;
+    campo.focus({ preventScroll: true });
   }, [evidenziato]);
   return (
     <div ref={rif} className={"gruppo" + (aperto ? " aperto" : "") + (evidenziato ? " evidenziato" : "")}>

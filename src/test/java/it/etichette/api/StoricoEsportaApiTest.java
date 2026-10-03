@@ -48,6 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class StoricoEsportaApiTest {
 
     private static final DateTimeFormatter FORMATO_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    /** Le dieci colonne di sempre, in coda i lotti degli ingredienti e i fornitori (2 ottobre 2026). */
+    private static final String INTESTAZIONE_CSV = "Data;Ora;Etichetta;Copie;Lotto;Quantità;Porzioni;Scadenza;Da;Esito;Ingredienti e lotti del fornitore;Fornitori";
 
     private static Path cartellaDati;
 
@@ -92,7 +94,7 @@ class StoricoEsportaApiTest {
     @Test
     void csvHaIlBomLIntestazioneEVirgoletteSulPuntoEVirgola() throws Exception {
         LocalDateTime t = LocalDateTime.of(2026, 9, 20, 14, 35);
-        inserisci(t, 1L, "Pane; speciale \"di prova\"", "L 20260920-001", "2 pz", "2026-09-25", 3, "Telefono della cucina", "completata");
+        inserisciConPorzioni(t, 1L, "Pane; speciale \"di prova\"", "L 20260920-001", "2 pz", "4", "2026-09-25", 3, "Telefono della cucina", "completata");
 
         byte[] corpo = scarica("csv");
 
@@ -103,8 +105,11 @@ class StoricoEsportaApiTest {
 
         String testo = testoSenzaBom(corpo);
         String[] righe = testo.split("\r\n", -1);
-        assertThat(righe[0]).isEqualTo("Data;Ora;Etichetta;Copie;Lotto;Quantità;Scadenza;Da;Esito");
-        assertThat(righe[1]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;2 pz;25/09/2026;Telefono della cucina;stampata");
+        // Le prime due righe dichiarano il filtro e la generazione (2 ottobre 2026), poi l'intestazione.
+        assertThat(righe[0]).isEqualTo("Storico stampe · Tutto lo storico");
+        assertThat(righe[1]).startsWith("generato il ").endsWith(" · 1 stampe · 3 etichette");
+        assertThat(righe[2]).isEqualTo(INTESTAZIONE_CSV);
+        assertThat(righe[3]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;2 pz;4;25/09/2026;Telefono della cucina;stampata;;");
         // Split con limite -1: l'ultimo elemento vuoto conferma che il file finisce con l'ultimo
         // CRLF e niente altro dopo.
         assertThat(righe[righe.length - 1]).isEmpty();
@@ -112,9 +117,12 @@ class StoricoEsportaApiTest {
     }
 
     @Test
-    void csvConLoStoricoVuotoHaSoloLIntestazione() throws Exception {
-        byte[] corpo = scarica("csv");
-        assertThat(testoSenzaBom(corpo)).isEqualTo("Data;Ora;Etichetta;Copie;Lotto;Quantità;Scadenza;Da;Esito\r\n");
+    void csvConLoStoricoVuotoHaSoloLeRigheDiTestaELIntestazione() throws Exception {
+        String[] righe = testoSenzaBom(scarica("csv")).split("\r\n", -1);
+        assertThat(righe).hasSize(4); // titolo, generazione, intestazione e il vuoto dopo l'ultimo CRLF
+        assertThat(righe[0]).isEqualTo("Storico stampe · Tutto lo storico");
+        assertThat(righe[1]).endsWith(" · 0 stampe · 0 etichette");
+        assertThat(righe[2]).isEqualTo(INTESTAZIONE_CSV);
     }
 
     @Test
@@ -129,12 +137,12 @@ class StoricoEsportaApiTest {
 
         String testo = testoSenzaBom(scarica("csv"));
 
-        assertThat(testo).contains(";stampata\r\n");
-        assertThat(testo).contains(";serie fermata\r\n");
-        assertThat(testo).contains(";errore\r\n");
-        assertThat(testo).contains(";prova\r\n");
-        assertThat(testo).contains(";interrotta\r\n");
-        assertThat(testo).contains(";in stampa\r\n");
+        assertThat(testo).contains(";stampata;;\r\n");
+        assertThat(testo).contains(";serie fermata;;\r\n");
+        assertThat(testo).contains(";errore;;\r\n");
+        assertThat(testo).contains(";prova;;\r\n");
+        assertThat(testo).contains(";interrotta;;\r\n");
+        assertThat(testo).contains(";in stampa;;\r\n");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -143,7 +151,7 @@ class StoricoEsportaApiTest {
     @Test
     void xlsxEUnoZipValidoConIlNomeDelProdottoEIlContentTypeGiusto() throws Exception {
         LocalDateTime t = LocalDateTime.of(2026, 9, 20, 9, 15);
-        inserisci(t, 1L, "Impasto per pizza speciale", "L 20260920-004", "1200 g", "2026-09-27", 2, "PC", "completata");
+        inserisciConPorzioni(t, 1L, "Impasto per pizza speciale", "L 20260920-004", "1200 g", "6 porzioni", "2026-09-27", 2, "PC", "completata");
 
         MockHttpServletResponse risposta = scaricaRisposta(get("/api/storico/esporta").param("formato", "xlsx"));
         assertThat(risposta.getContentType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -151,7 +159,7 @@ class StoricoEsportaApiTest {
 
         byte[] corpo = risposta.getContentAsByteArray();
         String sheet1 = leggiVoceZip(corpo, "xl/worksheets/sheet1.xml");
-        assertThat(sheet1).contains("Impasto per pizza speciale");
+        assertThat(sheet1).contains("Impasto per pizza speciale").contains("Porzioni").contains("6 porzioni");
         assertThat(leggiVoceZip(corpo, "[Content_Types].xml")).isNotEmpty(); // e' davvero uno zip OOXML valido
     }
 
@@ -259,8 +267,13 @@ class StoricoEsportaApiTest {
 
     private void inserisci(LocalDateTime stampatoIl, Long prodottoId, String nome, String lotto, String quantita,
                             String scadenza, int copie, String dispositivoNome, String esito) {
-        jdbc.update("INSERT INTO storico_stampe (stampato_il, prodotto_id, prodotto_nome, lotto, quantita, scadenza, copie, "
-                        + "dispositivo_nome, esito) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                FORMATO_DB.format(stampatoIl), prodottoId, nome, lotto, quantita, scadenza, copie, dispositivoNome, esito);
+        inserisciConPorzioni(stampatoIl, prodottoId, nome, lotto, quantita, null, scadenza, copie, dispositivoNome, esito);
+    }
+
+    private void inserisciConPorzioni(LocalDateTime stampatoIl, Long prodottoId, String nome, String lotto, String quantita,
+                                       String porzioni, String scadenza, int copie, String dispositivoNome, String esito) {
+        jdbc.update("INSERT INTO storico_stampe (stampato_il, prodotto_id, prodotto_nome, lotto, quantita, porzioni, scadenza, copie, "
+                        + "dispositivo_nome, esito) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                FORMATO_DB.format(stampatoIl), prodottoId, nome, lotto, quantita, porzioni, scadenza, copie, dispositivoNome, esito);
     }
 }

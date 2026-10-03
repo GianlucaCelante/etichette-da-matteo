@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import it.etichette.dati.StoricoStampaRepository;
+import it.etichette.resa.ParametriStampa;
+import it.etichette.resa.RenditoreEtichetta;
 import it.etichette.stampante.PortaFinta;
 import it.etichette.stampante.RicercaPorta;
 import org.junit.jupiter.api.Test;
@@ -18,6 +20,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
@@ -26,6 +29,11 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -74,6 +82,9 @@ class ProvaProdottoNonAggiornaUsiTest {
     private StoricoStampaRepository storico;
     @Autowired
     private ObjectMapper mapper;
+    // Per vedere con che ParametriStampa la prova viene resa (la banda «PROVA», 2 ottobre 2026).
+    @MockitoSpyBean
+    private RenditoreEtichetta renderer;
 
     @Test
     void unaProvaProdottoCompletataNonAggiornaUsi() throws Exception {
@@ -123,6 +134,9 @@ class ProvaProdottoNonAggiornaUsiTest {
         String lavoroId = mapper.readTree(rispostaProva).get("lavoroId").asText();
 
         assertThat(aspettaUsiInvariatoOAggiornato(usiPrima)).as("usi deve restare invariato dopo una prova").isEqualTo(usiPrima);
+        // La prova viene resa con prova = true: e' questo che porta in cima all'etichetta la banda nera «PROVA»
+        // (la banda in se' la verificano i test di RenditoreEtichettaProvaValoriTest).
+        verify(renderer).rendi(any(), argThat((ParametriStampa p) -> p != null && p.prova()), anyInt(), anyDouble());
         // Dal 24/09/2026 una prova non scrive nessuna riga di storico (StoricoLavori#apri):
         // nessuna riga con questo lavoroId, ne' prima ne' dopo che il lavoro finisca.
         boolean rigaScritta = storico.findAll().stream().anyMatch(r -> lavoroId.equals(r.getLavoroId()));

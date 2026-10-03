@@ -12,4 +12,10 @@ public interface ArrivoRepository extends JpaRepository<Arrivo, Long> {
 
     /** {@code GET /api/fornitori}: gli arrivi di TUTTI i fornitori della pagina in una volta, non un giro per fornitore. */
     List<Arrivo> findByFornitoreIdIn(Collection<Long> fornitoreIds);
+
+    /**
+     * Le consegne rimaste senza fornitore (eliminato): se si ricrea un fornitore con lo stesso nome
+     * tornano a lui ({@code FornitoriService#riagganciaConsegne}).
+     */
+    List<Arrivo> findByFornitoreIdIsNull();
 }

@@ -140,8 +140,9 @@ class IngredientiApiTest {
         long farina1 = creaIngrediente("{\"nome\":\"Farina 1\"}");
         long uova = creaIngrediente("{\"nome\":\"Uova\"}");
 
-        // Farina 1 ha un lotto aperto valido -> "aperto" (non e' "attenzione").
-        registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + farina1 + ",\"lotto\":\"L1\"}]}");
+        // Farina 1 ha un lotto aperto valido, con una scadenza lontana -> "aperto" (non e' "attenzione"; senza
+        // scadenza sarebbe «senzaScadenza», 2 ottobre 2026: vedi LottiCorrezioniApiTest).
+        registraArrivo("{\"data\":\"2026-09-01\",\"righe\":[{\"ingredienteId\":" + farina1 + ",\"lotto\":\"L1\",\"scadenza\":\"2099-01-01\"}]}");
         // Uova ha un solo lotto aperto, gia' scaduto -> resta aperto, stato "scaduto" ("attenzione").
         registraArrivo("{\"data\":\"2026-01-01\",\"righe\":[{\"ingredienteId\":" + uova
                 + ",\"lotto\":\"U1\",\"scadenza\":\"2026-01-10\"}]}");

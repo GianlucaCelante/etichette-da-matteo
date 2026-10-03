@@ -28,6 +28,10 @@ interface ProprietaCampoNomeConSimili {
   // nuova. Il modale "Nuovo ingrediente" non ne ha bisogno, salva tutto
   // insieme al "Crea".
   onConferma?: () => void;
+  // solo Invio conferma, uscire dal campo no: la bozza di un nuovo
+  // ingrediente si crea con "Salva" o con Invio, mai perche' il fuoco si e'
+  // spostato (toccare "indietro" fa perdere il fuoco e non deve salvare).
+  soloInvio?: boolean;
 }
 
 // Il campo "Nome" di un ingrediente, con la tendina dei nomi simili sotto:
@@ -42,6 +46,7 @@ export default function CampoNomeConSimili({
   mettiFuoco,
   selezionaTutto,
   onConferma,
+  soloInvio,
 }: ProprietaCampoNomeConSimili) {
   const [fuoco, setFuoco] = useState(false);
   const { data: simili } = useIngredientiSimili(valore, escludiId);
@@ -50,13 +55,22 @@ export default function CampoNomeConSimili({
   const alFuoco = useCallback(() => setFuoco(true), []);
   const alBlur = useCallback(() => {
     setFuoco(false);
-    onConferma?.();
-  }, [onConferma]);
+    if (!soloInvio) onConferma?.();
+  }, [onConferma, soloInvio]);
   // Invio conferma come uscire dal campo: si passa dal blur, cosi' la
-  // logica di conferma resta una sola.
-  const alTasto = useCallback((evento: KeyboardEvent<HTMLInputElement>) => {
-    if (evento.key === "Enter") evento.currentTarget.blur();
-  }, []);
+  // logica di conferma resta una sola. Con soloInvio niente blur: si
+  // conferma direttamente e il campo tiene il fuoco (nome vuoto o segnaposto:
+  // si resta a scrivere).
+  const alTasto = useCallback(
+    (evento: KeyboardEvent<HTMLInputElement>) => {
+      if (evento.key !== "Enter") return;
+      if (soloInvio) {
+        evento.preventDefault();
+        onConferma?.();
+      } else evento.currentTarget.blur();
+    },
+    [onConferma, soloInvio],
+  );
 
   // niente autoFocus nativo (jsx-a11y/no-autofocus): si porta il fuoco col
   // ref, una volta sola al montaggio (il campo Nome della finestra "Nuovo

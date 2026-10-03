@@ -55,10 +55,11 @@ public class ResaController {
                                                @RequestParam(defaultValue = "" + ROTOLO_DI_DEFAULT) int rotolo,
                                                @RequestParam(defaultValue = "1.0") double scala,
                                                @RequestParam(required = false) String quantita,
+                                               @RequestParam(required = false) String porzioni,
                                                @RequestParam(required = false) String scadenza,
                                                @RequestParam(required = false) String lotto) {
         ProdottoDto p = prodottiConversioni.aDto(trovaProdotto(id));
-        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, scadenza, lotto, false), rotolo, scala);
+        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, porzioni, scadenza, lotto, false), rotolo, scala);
         return png(risultato.immagine());
     }
 
@@ -81,7 +82,7 @@ public class ResaController {
         ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
         double scala = richiesta.scala() != null ? richiesta.scala() : 1.0;
-        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, scala);
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, scala);
         return png(risultato.immagine());
     }
 
@@ -100,10 +101,11 @@ public class ResaController {
     public Map<String, Object> misure(@PathVariable Long id,
                                        @RequestParam(defaultValue = "" + ROTOLO_DI_DEFAULT) int rotolo,
                                        @RequestParam(required = false) String quantita,
+                                       @RequestParam(required = false) String porzioni,
                                        @RequestParam(required = false) String scadenza,
                                        @RequestParam(required = false) String lotto) {
         ProdottoDto p = prodottiConversioni.aDto(trovaProdotto(id));
-        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, scadenza, lotto, false), rotolo, 1.0);
+        RisultatoResa risultato = renderer.rendi(p, parametri(p, quantita, porzioni, scadenza, lotto, false), rotolo, 1.0);
         return misureDi(risultato);
     }
 
@@ -119,14 +121,20 @@ public class ResaController {
         CorpoAnteprima richiesta = json.converti(corpo, CorpoAnteprima.class);
         ProdottoDto prodottoDto = prodottoPerAnteprima(richiesta);
         int rotolo = richiesta.rotolo() != null ? richiesta.rotolo() : ROTOLO_DI_DEFAULT;
-        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, 1.0);
+        RisultatoResa risultato = renderer.rendi(prodottoDto, parametri(prodottoDto, null, null, null, null, richiesta.scadenzaSegnaposto()), rotolo, 1.0);
         return misureDi(risultato);
     }
 
-    /** Misure dell'etichetta in mano (docs/api.md): il lato sul nastro e' il rotolo nominale. */
+    /**
+     * Misure dell'etichetta in mano (docs/api.md): il lato sul nastro e' il rotolo nominale.
+     * {@code troncata} (2 ottobre 2026): vero quando il contenuto supera i 500 mm di nastro e il
+     * fondo viene tagliato (l'avviso corrispondente sta anche in {@code avvisi}); l'interfaccia lo
+     * legge per avvisare davanti all'anteprima, senza dover riconoscere un testo.
+     */
     private static Map<String, Object> misureDi(RisultatoResa risultato) {
         return Map.of("larghezzaMm", arrotonda(risultato.larghezzaMm()), "altezzaMm", arrotonda(risultato.altezzaMm()),
-                "avvisi", risultato.avvisi());
+                "avvisi", risultato.avvisi(),
+                "troncata", risultato.avvisi().contains(RenditoreEtichetta.AVVISO_CONTENUTO_NON_STA_VERTICALE));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -135,10 +143,12 @@ public class ResaController {
     }
 
     /** Lo schema si legge dal prodotto {@code p} (docs/api.md, 22/09/2026 sera: e' dell'etichetta, non del locale). */
-    private ParametriStampa parametri(ProdottoDto p, String quantita, String scadenza, String lotto, Boolean scadenzaSegnaposto) {
-        LocalDate scad = scadenza != null && !scadenza.isBlank() ? LocalDate.parse(scadenza) : null;
+    private ParametriStampa parametri(ProdottoDto p, String quantita, String porzioni, String scadenza, String lotto, Boolean scadenzaSegnaposto) {
+        // 400 in italiano per una scadenza non valida (anno a 5 cifre, data a meta'), non piu' un
+        // 500 «errore interno: Text ... could not be parsed» (prove con utenti del 2/10/2026).
+        LocalDate scad = it.etichette.stampe.Scadenze.leggi(scadenza);
         String lottoEffettivo = lotto != null && !lotto.isBlank() ? lotto : lotti.prossimoConSchema(schemaLottoDi(p));
-        return new ParametriStampa(quantita, scad, lottoEffettivo, Boolean.TRUE.equals(scadenzaSegnaposto));
+        return new ParametriStampa(quantita, scad, lottoEffettivo, Boolean.TRUE.equals(scadenzaSegnaposto), porzioni);
     }
 
     private static String schemaLottoDi(ProdottoDto p) {

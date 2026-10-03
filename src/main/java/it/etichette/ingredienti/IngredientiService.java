@@ -6,6 +6,7 @@ import it.etichette.api.IngredienteDto;
 import it.etichette.api.IngredienteSimileDto;
 import it.etichette.api.PropostaIngredienteDto;
 import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.CorrezioneLottoRepository;
 import it.etichette.dati.Foto;
 import it.etichette.dati.Fornitore;
 import it.etichette.dati.Ingrediente;
@@ -45,6 +46,7 @@ public class IngredientiService {
     private final StoricoLottoRepository storicoLotti;
     private final ArrivoRepository arrivi;
     private final FotoService foto;
+    private final CorrezioneLottoRepository correzioniLotti;
 
     /** Esito di {@code DELETE /api/ingredienti/{id}} (docs/api.md). */
     public static final String ELIMINATO = "eliminato";
@@ -53,7 +55,8 @@ public class IngredientiService {
     public IngredientiService(IngredienteRepository ingredienti, LottoIngredienteRepository lottiIngrediente,
                                ProdottoTracciatoRepository prodottiTracciati, FornitoriService fornitori,
                                IngredientiConversioni conversioni, StoricoLottoRepository storicoLotti,
-                               ArrivoRepository arrivi, FotoService foto) {
+                               ArrivoRepository arrivi, FotoService foto, CorrezioneLottoRepository correzioniLotti) {
+        this.correzioniLotti = correzioniLotti;
         this.storicoLotti = storicoLotti;
         this.arrivi = arrivi;
         this.foto = foto;
@@ -64,8 +67,8 @@ public class IngredientiService {
         this.conversioni = conversioni;
     }
 
-    /** {@code filtro=attenzione}: solo chi non ha un lotto aperto, o ce l'ha scaduto o in scadenza (docs/api.md). */
-    private static final Set<String> STATI_ATTENZIONE = Set.of("manca", "scaduto", "scade");
+    /** {@code filtro=attenzione}: solo chi non ha un lotto aperto, o ce l'ha scaduto, in scadenza o senza scadenza (docs/api.md). */
+    private static final Set<String> STATI_ATTENZIONE = Set.of("manca", "scaduto", "scade", "senzaScadenza");
 
     public List<IngredienteDto> elenco(String q, String filtro) {
         chiudiScadutiAutomaticamente();
@@ -214,6 +217,7 @@ public class IngredientiService {
                 arriviDeiLotti.add(l.getArrivoId());
             }
         }
+        correzioniLotti.deleteByLottoIdIn(lotti.stream().map(LottoIngrediente::getId).toList());
         lottiIngrediente.deleteAll(lotti);
         lottiIngrediente.flush();
         for (Long arrivoId : arriviDeiLotti) {

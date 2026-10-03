@@ -8,6 +8,7 @@ import it.etichette.dati.Fornitore;
 import it.etichette.dati.FornitoreRepository;
 import it.etichette.dati.Ingrediente;
 import it.etichette.dati.IngredienteRepository;
+import it.etichette.dati.LottoIngredienteRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,11 +33,14 @@ public class FornitoriService {
     private final FornitoreRepository fornitori;
     private final IngredienteRepository ingredienti;
     private final ArrivoRepository arrivi;
+    private final LottoIngredienteRepository lottiIngrediente;
 
-    public FornitoriService(FornitoreRepository fornitori, IngredienteRepository ingredienti, ArrivoRepository arrivi) {
+    public FornitoriService(FornitoreRepository fornitori, IngredienteRepository ingredienti, ArrivoRepository arrivi,
+                             LottoIngredienteRepository lottiIngrediente) {
         this.fornitori = fornitori;
         this.ingredienti = ingredienti;
         this.arrivi = arrivi;
+        this.lottiIngrediente = lottiIngrediente;
     }
 
     /**
@@ -49,16 +53,49 @@ public class FornitoriService {
         List<Long> ids = base.stream().map(Fornitore::getId).toList();
         Map<Long, Long> ingredientiPerFornitore = ingredienti.findByFornitoreIdInAndArchiviatoIlIsNull(ids).stream()
                 .collect(Collectors.groupingBy(Ingrediente::getFornitoreId, Collectors.counting()));
-        Map<Long, Long> arriviPerFornitore = arrivi.findByFornitoreIdIn(ids).stream()
+        List<Arrivo> arriviDeiFornitori = arrivi.findByFornitoreIdIn(ids);
+        Map<Long, Long> arriviPerFornitore = arriviDeiFornitori.stream()
                 .collect(Collectors.groupingBy(Arrivo::getFornitoreId, Collectors.counting()));
-        return base.stream().map(f -> aDettaglioDto(f, ingredientiPerFornitore, arriviPerFornitore)).toList();
+        // I lotti arrivati con quelle consegne (una query sola): dicono, prima di eliminare un
+        // fornitore, quanta storia resta col suo nome.
+        Map<Long, Long> fornitorePerArrivo = arriviDeiFornitori.stream().collect(Collectors.toMap(Arrivo::getId, Arrivo::getFornitoreId));
+        Map<Long, Long> lottiPerFornitore = lottiIngrediente.findByArrivoIdIn(fornitorePerArrivo.keySet()).stream()
+                .collect(Collectors.groupingBy(l -> fornitorePerArrivo.get(l.getArrivoId()), Collectors.counting()));
+        return base.stream().map(f -> aDettaglioDto(f, ingredientiPerFornitore, arriviPerFornitore, lottiPerFornitore)).toList();
     }
 
     private static FornitoreDettaglioDto aDettaglioDto(Fornitore f, Map<Long, Long> ingredientiPerFornitore,
-                                                         Map<Long, Long> arriviPerFornitore) {
+                                                         Map<Long, Long> arriviPerFornitore, Map<Long, Long> lottiPerFornitore) {
         int ingredienti = ingredientiPerFornitore.getOrDefault(f.getId(), 0L).intValue();
         int arrivi = arriviPerFornitore.getOrDefault(f.getId(), 0L).intValue();
-        return new FornitoreDettaglioDto(f.getId(), f.getNome(), ingredienti, arrivi);
+        int lotti = lottiPerFornitore.getOrDefault(f.getId(), 0L).intValue();
+        return new FornitoreDettaglioDto(f.getId(), f.getNome(), ingredienti, arrivi, lotti);
+    }
+
+    /** I lotti arrivati con le consegne di un fornitore (per il suo dettaglio dopo una rinomina o un riaggancio). */
+    private int contaLotti(List<Arrivo> consegne) {
+        if (consegne.isEmpty()) {
+            return 0;
+        }
+        return lottiIngrediente.findByArrivoIdIn(consegne.stream().map(Arrivo::getId).toList()).size();
+    }
+
+    /**
+     * Un fornitore eliminato e poi riscritto con lo stesso nome torna quello di prima, come un
+     * ingrediente archiviato che si ricrea col nome (docs/api.md): le consegne rimaste senza
+     * fornitore ma col suo stesso nome (stessa chiave normalizzata) tornano a puntare a lui, cosi'
+     * lo stesso fornitore non finisce con due identita' nei lotti. Torna le consegne riagganciate.
+     */
+    private List<Arrivo> riagganciaConsegne(Fornitore f) {
+        List<Arrivo> orfane = arrivi.findByFornitoreIdIsNull().stream()
+                .filter(a -> a.getFornitoreNome() != null && NomiSimili.chiave(a.getFornitoreNome()).equals(f.getNomeChiave()))
+                .toList();
+        orfane.forEach(a -> {
+            a.setFornitoreId(f.getId());
+            a.setFornitoreNome(f.getNome());
+        });
+        arrivi.saveAll(orfane);
+        return orfane;
     }
 
     public Optional<Fornitore> trova(Long id) {
@@ -99,7 +136,8 @@ public class FornitoriService {
         String chiave = NomiSimili.chiave(pulito);
         verificaNonDuplicato(chiave, null);
         Fornitore f = fornitori.save(new Fornitore(pulito, chiave));
-        return new FornitoreDettaglioDto(f.getId(), f.getNome(), 0, 0);
+        List<Arrivo> riagganciate = riagganciaConsegne(f);
+        return new FornitoreDettaglioDto(f.getId(), f.getNome(), 0, riagganciate.size(), contaLotti(riagganciate));
     }
 
     /**
@@ -123,7 +161,7 @@ public class FornitoriService {
         suoiArrivi.forEach(a -> a.setFornitoreNome(nome));
         arrivi.saveAll(suoiArrivi);
         int numeroIngredienti = (int) ingredienti.countByFornitoreIdAndArchiviatoIlIsNull(id);
-        return new FornitoreDettaglioDto(f.getId(), f.getNome(), numeroIngredienti, suoiArrivi.size());
+        return new FornitoreDettaglioDto(f.getId(), f.getNome(), numeroIngredienti, suoiArrivi.size(), contaLotti(suoiArrivi));
     }
 
     /**
@@ -147,7 +185,11 @@ public class FornitoriService {
 
     private Fornitore trovaOCrea(String nome) {
         String chiave = NomiSimili.chiave(nome);
-        return fornitori.findByNomeChiave(chiave).orElseGet(() -> fornitori.save(new Fornitore(nome, chiave)));
+        return fornitori.findByNomeChiave(chiave).orElseGet(() -> {
+            Fornitore nuovo = fornitori.save(new Fornitore(nome, chiave));
+            riagganciaConsegne(nuovo);
+            return nuovo;
+        });
     }
 
     private Fornitore trovaObbligatorio(Long id) {

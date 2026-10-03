@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ErroreRichiesta, percorsoQrRete } from "../api/client";
 import {
   useCercaStampante,
@@ -15,23 +15,42 @@ import {
   useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
-import type { Dispositivo, Stampante } from "../api/tipi";
+import type { Dispositivo, Stampante, TipoDispositivo } from "../api/tipi";
+import { copiaNegliAppunti } from "../hooks/copiaNegliAppunti";
 import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
 import { plurale } from "../componenti/stampa/formattazione";
+import { problemaStampante } from "../componenti/stampa/istruzioniStampante";
 import {
   IconaAllarme,
   IconaCercaDiNuovo,
   IconaCopia,
+  IconaDispositivo,
   IconaScarica,
   IconaSpunta,
   IconaStampa,
   IconaTelefono,
 } from "../componenti/Icone";
 import ConfermaInline from "../componenti/ConfermaInline";
+import Interruttore from "../componenti/Interruttore";
 import Sezione from "../componenti/Sezione";
+import FinestraCartella from "../componenti/programma/FinestraCartella";
 
+// Il margine iniziale e finale, in mm: da 3 (il minimo della stampante) a 20. Lo stesso intervallo
+// lo fa rispettare il servizio (400 «Il margine deve essere un numero fra 3 e 20 mm.»).
 const MARGINE_MINIMO_MM = 3;
+const MARGINE_MASSIMO_MM = 20;
+
+// Il margine scritto a mano -> il numero, o null se non e' un numero fra il minimo e il massimo.
+// Accetta la virgola e il punto decimale («3,5» e «3.5» sono 3,5 mm: prima diventavano 35).
+function leggiMargine(testo: string): number | null {
+  const pulito = testo.trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(pulito)) return null;
+  const numero = Number(pulito);
+  return numero >= MARGINE_MINIMO_MM && numero <= MARGINE_MASSIMO_MM ? numero : null;
+}
+// Il valore del servizio («3.5») come lo si scrive in italiano («3,5»).
+const margineInItaliano = (valore: string): string => valore.replace(".", ",");
 
 function Riga({
   titolo,
@@ -93,12 +112,12 @@ function PastigliaStampante({ stampante }: { stampante: Stampante | undefined })
   }
 
   if (stampante.stato === "pronta") {
-    // "Collegata" invece di "Pronta" (deciso da Gianluca, 25/09/2026: stesso
-    // cambio di StatoStampante.tsx) - la chiave dello stato resta "pronta".
+    // "Pronta" come in StatoStampante.tsx (2/10/2026, prove con utenti: «collegata»
+    // non diceva se si poteva stampare; il 25/09 era "Collegata").
     return (
       <span className="pastiglia pronta">
         <span className="punto" />
-        <b>Collegata</b>
+        <b>Pronta</b>
       </span>
     );
   }
@@ -119,10 +138,13 @@ function PastigliaStampante({ stampante }: { stampante: Stampante | undefined })
   }
 
   if (stampante.stato === "errore") {
+    // Il motivo breve («Coperchio aperto», «Rotolo finito»), come sul telefono; il
+    // messaggio intero sta nel riquadro qui sotto e nel title.
+    const problema = problemaStampante(stampante);
     return (
-      <span className="pastiglia guasta">
+      <span className="pastiglia guasta" title={stampante.messaggio || undefined}>
         <span className="punto" />
-        <b>Errore</b>
+        <b>{problema?.breve ?? "Errore"}</b>
       </span>
     );
   }
@@ -203,10 +225,16 @@ function SezioneStampante() {
   const avvisa = useAvviso();
   const [lavoroProva, setLavoroProva] = useState<string | null>(null);
   const [margine, setMargine] = useState("3");
+  // Il perche' un margine non vale, scritto vicino al campo (prima 0, 2 e testo tornavano a 3 in silenzio).
+  const [erroreMargine, setErroreMargine] = useState<string | null>(null);
+  const idMargine = useId();
   const { relativo, completo } = useOraRelativa(stampante?.ultimoControllo);
 
   useEffect(() => {
-    if (impostazioni?.margine_mm !== undefined) setMargine(impostazioni.margine_mm);
+    if (impostazioni?.margine_mm !== undefined) {
+      setMargine(margineInItaliano(impostazioni.margine_mm));
+      setErroreMargine(null);
+    }
   }, [impostazioni?.margine_mm]);
 
   const taglia = impostazioni?.taglio_ogni_etichetta !== "false"; // di default acceso, come nel prototipo
@@ -220,15 +248,38 @@ function SezioneStampante() {
     salvaImpostazioni.mutate({ taglio_ogni_etichetta: taglia ? "false" : "true" });
   }, [impostazioni, taglia, salvaImpostazioni]);
 
+  // Alla fine della scrittura (fuoco perso, o Invio): se vale si salva, altrimenti si dice perche' e il
+  // testo scritto resta com'e' (non si riscrive niente al posto di chi scrive).
   const confermaMargine = useCallback(() => {
     if (!impostazioni) return;
-    const numero = Math.max(MARGINE_MINIMO_MM, parseInt(margine, 10) || MARGINE_MINIMO_MM);
-    setMargine(String(numero));
-    salvaImpostazioni.mutate({ margine_mm: String(numero) });
-  }, [impostazioni, margine, salvaImpostazioni]);
+    const numero = leggiMargine(margine);
+    if (numero === null) {
+      setErroreMargine(
+        margine.trim() === ""
+          ? `Scrivi il margine: un numero da ${MARGINE_MINIMO_MM} a ${MARGINE_MASSIMO_MM} mm.`
+          : `«${margine.trim()}» non va bene: scrivi un numero da ${MARGINE_MINIMO_MM} a ${MARGINE_MASSIMO_MM} mm, per esempio 3,5.`,
+      );
+      return;
+    }
+    setErroreMargine(null);
+    setMargine(margineInItaliano(String(numero)));
+    if (Number(impostazioni.margine_mm) === numero) return;
+    salvaImpostazioni.mutate(
+      { margine_mm: String(numero) },
+      {
+        onSuccess: () => avvisa(`Margine salvato: ${margineInItaliano(String(numero))} mm.`),
+        onError: (errore) => setErroreMargine(errore instanceof ErroreRichiesta && errore.corpo?.errore ? errore.corpo.errore : "Non sono riuscito a salvare il margine."),
+      },
+    );
+  }, [impostazioni, margine, salvaImpostazioni, avvisa]);
 
+  // Solo cifre, virgola e punto: le lettere non entrano; il resto lo giudica confermaMargine.
   const cambiaMargine = useCallback((evento: ChangeEvent<HTMLInputElement>) => {
-    setMargine(evento.target.value.replace(/[^0-9]/g, ""));
+    setMargine(evento.target.value.replace(/[^0-9.,]/g, ""));
+    setErroreMargine(null);
+  }, []);
+  const tastoMargine = useCallback((evento: KeyboardEvent<HTMLInputElement>) => {
+    if (evento.key === "Enter") evento.currentTarget.blur();
   }, []);
 
   const stampaDiProva = useCallback(() => {
@@ -293,31 +344,37 @@ function SezioneStampante() {
           </span>
         </div>
       )}
-      <button type="button" className="riga w-full" onClick={cambiaTaglio}>
-        <div className="min-w-0 grow shrink basis-[84px]">
-          <div className="t">Taglia ogni etichetta</div>
-          <div className="s">Se spento, taglia solo alla fine della serie</div>
-        </div>
-        <span className={"interruttore" + (taglia ? "" : " off")} />
-      </button>
+      {/* role="switch" con aria-checked: lo schermo parlante dice «acceso» o «spento» (prove con utenti
+          simulati, 2 ottobre 2026: si leggeva come un bottone qualunque). */}
+      <Interruttore acceso={taglia} onCambia={cambiaTaglio} titolo="Taglia ogni etichetta" sotto="Se spento, taglia solo alla fine della serie" disabled={!impostazioni} />
       <div className="riga">
         <div className="min-w-0 grow shrink basis-[84px]">
           <div className="t">Margine iniziale e finale</div>
-          <div className="s">Minimo consentito dalla stampante: {MARGINE_MINIMO_MM} mm</div>
+          <div className="s" id={`${idMargine}-aiuto`}>
+            Da {MARGINE_MINIMO_MM} a {MARGINE_MASSIMO_MM} mm (il minimo è quello della stampante)
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="casella min-h-[44px] px-[10px] w-[58px]">
+          <div className={"casella min-h-[44px] px-[10px] w-[72px]" + (erroreMargine ? " border-[var(--rosso)]" : "")}>
             <input
               value={margine}
-              inputMode="numeric"
+              inputMode="decimal"
               aria-label="Margine iniziale e finale, in millimetri"
+              aria-invalid={erroreMargine !== null}
+              aria-describedby={erroreMargine ? `${idMargine}-errore` : `${idMargine}-aiuto`}
               className="font-bold text-center"
               onChange={cambiaMargine}
               onBlur={confermaMargine}
+              onKeyDown={tastoMargine}
             />
           </div>
           <span className="v">mm</span>
         </div>
+        {erroreMargine && (
+          <div id={`${idMargine}-errore`} role="alert" className="basis-full text-[13px] font-bold text-[var(--rosso)]">
+            {erroreMargine}
+          </div>
+        )}
       </div>
       {/* azioniSezione (G5, revisione grafica, 25/09/2026): "Stampa di
           prova" e "Cerca di nuovo" restavano alla loro larghezza naturale,
@@ -349,13 +406,14 @@ function SezioneStampante() {
 function RigaDispositivo({
   id,
   nome,
+  tipo,
   sistema,
   collegatoIl,
   ultimoAccesso,
 }: {
   id: string;
   nome: string;
-  tipo: "pc" | "telefono";
+  tipo: TipoDispositivo;
   sistema?: string | null;
   collegatoIl: string;
   ultimoAccesso: string;
@@ -385,7 +443,7 @@ function RigaDispositivo({
   return (
     <div className="riga telefonoRiga">
       <span className="text-[var(--tenue)] flex shrink-0">
-        <IconaTelefono larghezza={20} spessoreTratto={1.8} />
+        <IconaDispositivo tipo={tipo} larghezza={20} spessoreTratto={1.8} />
       </span>
       <div className="min-w-0 grow shrink basis-[84px]">
         <div className={senzaNome ? "t text-[var(--spento)] font-normal" : "t"}>{senzaNome ? "Senza nome" : nome}</div>
@@ -423,13 +481,28 @@ function ordinaDispositivi(a: Dispositivo, b: Dispositivo): number {
 // collega e l'elenco che li scollega sono la STESSA scheda (docs/api.md,
 // "Impostazioni come il prototipo"), non due come prima. L'intestazione
 // mostra "N collegati", come il prototipo.
+const DISPOSITIVI_VISIBILI = 5;
+// Il PC su cui gira il servizio (le richieste da 127.0.0.1) e' un dispositivo come gli altri per il
+// servizio, con un id fisso (DispositiviService#ID_PC): qui NON si elenca fra «Telefoni e tablet»
+// (2 ottobre 2026: compariva con il bottone «Scollega», e scollegare se stesso non ha senso).
+const ID_PC_LOCALE = "pc-locale";
+
 function SezioneTelefoni() {
   const { data: rete } = useRete();
   const { data: dispositivi } = useDispositivi();
   const eliminaSenzaNome = useEliminaDispositiviSenzaNome();
   const avvisa = useAvviso();
   const principale = rete?.principale ?? rete?.indirizzi[0];
-  const ceNeSenzaNome = (dispositivi ?? []).some((d) => !d.nome.trim());
+  const telefoni = (dispositivi ?? []).filter((d) => d.id !== ID_PC_LOCALE);
+  const ceNeSenzaNome = telefoni.some((d) => !d.nome.trim());
+  // L'elenco mostra i primi dispositivi (il PC e quelli con un nome, per primi:
+  // vedi ordinaDispositivi) e nasconde gli altri dietro «Mostra altri N»
+  // (deciso da Gianluca, 30/09/2026: cresceva troppo).
+  const [mostraTutti, setMostraTutti] = useState(false);
+  const alterna = useCallback(() => setMostraTutti((v) => !v), []);
+  const ordinati = [...telefoni].sort(ordinaDispositivi);
+  const visibili = mostraTutti ? ordinati : ordinati.slice(0, DISPOSITIVI_VISIBILI);
+  const nascosti = ordinati.length - DISPOSITIVI_VISIBILI;
 
   const togliSenzaNome = useCallback(() => {
     eliminaSenzaNome.mutate(undefined, {
@@ -445,11 +518,11 @@ function SezioneTelefoni() {
       destra={
         <div className="flex items-center gap-2.5">
           {ceNeSenzaNome && (
-            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={togliSenzaNome} disabled={eliminaSenzaNome.isPending}>
+            <button type="button" className="btn h-9 max-[860px]:h-[var(--d-tap)] px-3 text-[13px]" onClick={togliSenzaNome} disabled={eliminaSenzaNome.isPending}>
               Togli quelli senza nome
             </button>
           )}
-          {dispositivi && <span className="text-[13px] text-[var(--tenue)]">{plurale(dispositivi.length, "collegato", "collegati")}</span>}
+          {dispositivi && <span className="text-[13px] text-[var(--tenue)]">{plurale(telefoni.length, "collegato", "collegati")}</span>}
         </div>
       }
     >
@@ -465,7 +538,7 @@ function SezioneTelefoni() {
         {principale && <span className="mono text-[15px] font-bold text-[var(--testo)]">{principale}</span>}
         <span className="text-[12px] text-[var(--spento)]">Stessa rete Wi-Fi del PC.</span>
       </div>
-      {dispositivi && dispositivi.length === 0 && (
+      {dispositivi && telefoni.length === 0 && (
         <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">
           <span className="flex shrink-0">
             <IconaTelefono larghezza={18} spessoreTratto={1.8} />
@@ -473,9 +546,14 @@ function SezioneTelefoni() {
           <span>Nessun telefono collegato. Inquadra il QR qui sopra per collegarne uno.</span>
         </div>
       )}
-      {[...(dispositivi ?? [])].sort(ordinaDispositivi).map((d) => (
+      {visibili.map((d) => (
         <RigaDispositivo key={d.id} id={d.id} nome={d.nome} tipo={d.tipo} sistema={d.sistema} collegatoIl={d.collegatoIl} ultimoAccesso={d.ultimoAccesso} />
       ))}
+      {nascosti > 0 && (
+        <button type="button" className="btn h-9 max-[860px]:h-[var(--d-tap)] px-3 text-[13px] self-start mt-1" onClick={alterna} aria-expanded={mostraTutti}>
+          {mostraTutti ? "Mostra meno" : `Mostra altri ${nascosti}`}
+        </button>
+      )}
     </Sezione>
   );
 }
@@ -507,15 +585,14 @@ function formattaProssima(iso: string): string {
 // dove stanno i dati, le copie di sicurezza. Niente "Apri la cartella" (il
 // servizio gira come servizio di Windows, non puo' aprire una finestra sul
 // desktop di chi guarda - docs/api.md): il percorso si copia negli appunti,
-// e la cartella di backup si sceglie scrivendo il percorso (niente
-// finestre native: "Niente confirm() nativo", come ConfermaInline).
+// e la cartella di backup si sceglie sfogliando (FinestraCartella: il
+// servizio elenca i nomi delle cartelle, il browser non da' percorsi veri).
 function SezioneProgramma() {
   const { data: programma } = useProgramma();
   const salvaCartella = useSalvaCartellaBackup();
   const eseguiOra = useEseguiBackupOra();
   const avvisa = useAvviso();
-  const [modificaCartella, setModificaCartella] = useState(false);
-  const [valoreCartella, setValoreCartella] = useState("");
+  const [sceltaCartella, setSceltaCartella] = useState(false);
   // docs/api.md, "Copie ravvicinate e ultima copia buona" (22 settembre 2026
   // sera): "ultima" e' l'ultimo TENTATIVO (riuscito o fallito), "ultimaRiuscita"
   // e' l'ultima copia andata a buon fine - un tentativo fallito non deve far
@@ -525,9 +602,8 @@ function SezioneProgramma() {
 
   const copiaPercorso = useCallback(
     (percorso: string) => {
-      navigator.clipboard?.writeText(percorso).then(
-        () => avvisa("Percorso copiato."),
-        () => avvisa("Il browser non mi lascia copiare il percorso."),
+      void copiaNegliAppunti(percorso).then((copiato) =>
+        avvisa(copiato ? "Percorso copiato." : "Il browser non mi lascia copiare il percorso."),
       );
     },
     [avvisa],
@@ -542,22 +618,22 @@ function SezioneProgramma() {
     if (programma?.backup.cartella) copiaPercorso(programma.backup.cartella);
   }, [programma, copiaPercorso]);
 
-  const apriModificaCartella = useCallback(() => {
-    setValoreCartella(programma?.backup.cartella ?? "");
-    setModificaCartella(true);
-  }, [programma]);
-  const annullaModificaCartella = useCallback(() => setModificaCartella(false), []);
-  const cambiaValoreCartella = useCallback((evento: ChangeEvent<HTMLInputElement>) => setValoreCartella(evento.target.value), []);
-  const confermaCartella = useCallback(() => {
-    const nuova = valoreCartella.trim();
-    salvaCartella.mutate(nuova || null, {
-      onSuccess: () => {
-        setModificaCartella(false);
-        avvisa(nuova ? "Cartella di backup salvata." : "Copie di sicurezza spente.");
-      },
-      onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a salvarla."),
-    });
-  }, [valoreCartella, salvaCartella, avvisa]);
+  const apriSceltaCartella = useCallback(() => setSceltaCartella(true), []);
+  const chiudiSceltaCartella = useCallback(() => setSceltaCartella(false), []);
+  // Una cartella scelta, o null per spegnere le copie: si salva e si chiude.
+  const salvaScelta = useCallback(
+    (nuova: string | null) => {
+      salvaCartella.mutate(nuova, {
+        onSuccess: () => {
+          setSceltaCartella(false);
+          avvisa(nuova ? "Cartella di backup salvata." : "Copie di sicurezza spente.");
+        },
+        onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a salvarla."),
+      });
+    },
+    [salvaCartella, avvisa],
+  );
+  const spegniCopie = useCallback(() => salvaScelta(null), [salvaScelta]);
 
   const faiCopiaOra = useCallback(() => {
     eseguiOra.mutate(undefined, {
@@ -567,6 +643,8 @@ function SezioneProgramma() {
     });
   }, [eseguiOra, avvisa]);
 
+  const idMotivoCopia = useId();
+  const senzaCartella = !!programma && !programma.backup.cartella;
   const ultima = programma?.backup.ultima;
   const ultimaRiuscita = programma?.backup.ultimaRiuscita;
   // La riga "Ultima copia" racconta l'informazione che conta: i dati sono al
@@ -589,7 +667,7 @@ function SezioneProgramma() {
 
   return (
     <Sezione titolo="Programma" destra={<span className="text-[13px] text-[var(--tenue)]">Servizio «Etichette» su questo PC</span>} larga>
-      <Riga titolo="Versione" sotto="Aggiornamenti: si installa il nuovo MSI" valore={programma?.versione ?? "…"} />
+      <Riga titolo="Versione" sotto="Per aggiornare si installa il nuovo programma di installazione" valore={programma?.versione ?? "…"} />
       <Riga
         titolo="Cartella dei dati e delle foto"
         sotto="Etichette, ingredienti, lotti, storico e le foto di fatture ed etichette"
@@ -597,22 +675,14 @@ function SezioneProgramma() {
         valore={
           programma && (
             <span className="flex items-center gap-2 min-w-0">
-              {/* Tronca dall'INIZIO, non dalla fine: di un percorso la coda
-                  e' l'informazione utile ("prova-backup"), l'inizio e' quasi
-                  sempre prevedibile (docs/api.md, segnalato dopo la prova
-                  vera a 414px del 23 settembre 2026). dir="rtl" sposta i
-                  puntini di text-overflow a sinistra; text-left riallinea
-                  il testo. NIENTE unicode-bidi:plaintext: provato e tolto,
-                  con un percorso che inizia per lettera (quasi sempre) fa
-                  ripartire il verso LTR e vanifica il taglio dalla fine
-                  giusta - verificato leggendo il testo reso, non solo la
-                  regola (backslash e cifre restano nell'ordine giusto anche
-                  senza: sono l'UNICA riga con un'inversione di verso in
-                  tutto il progetto, testata a mano). */}
-              <span dir="rtl" className="mono font-bold text-[var(--testo)] truncate min-w-0 text-left">
+              {/* Il percorso INTERO, che va a capo dove serve (2 ottobre 2026): prima si
+                  troncava davanti con «…» (con dir="rtl") e chi lo doveva leggere o dettare non
+                  poteva. Si spezza in qualunque punto (overflow-wrap:anywhere) perche' un
+                  percorso non ha spazi; il bottone «Copia» resta accanto. */}
+              <span className="mono font-bold text-[var(--testo)] min-w-0 whitespace-normal [overflow-wrap:anywhere] text-left">
                 {programma.cartellaDati}
               </span>
-              <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={copiaCartellaDati}>
+              <button type="button" className="btn h-9 max-[860px]:h-[var(--d-tap)] px-3 text-[13px] shrink-0" onClick={copiaCartellaDati}>
                 <IconaCopia larghezza={16} />
                 <span>Copia</span>
               </button>
@@ -620,8 +690,7 @@ function SezioneProgramma() {
           )
         }
       />
-      {!modificaCartella ? (
-        <Riga
+      <Riga
           titolo="Copia di sicurezza"
           sotto="Ogni notte alle 3, su un'altra cartella o una chiavetta. Si tengono le ultime 10 copie, le più vecchie si cancellano da sole."
           titoloValore={programma?.backup.cartella ?? undefined}
@@ -630,49 +699,24 @@ function SezioneProgramma() {
               <span className="flex items-center gap-2 min-w-0">
                 {programma.backup.cartella ? (
                   <>
-                    <span dir="rtl" className="mono font-bold text-[var(--testo)] truncate min-w-0 text-left">
+                    <span className="mono font-bold text-[var(--testo)] min-w-0 whitespace-normal [overflow-wrap:anywhere] text-left">
                       {programma.backup.cartella}
                     </span>
-                    <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={copiaCartellaBackup}>
+                    <button type="button" className="btn h-9 max-[860px]:h-[var(--d-tap)] px-3 text-[13px] shrink-0" onClick={copiaCartellaBackup}>
                       <IconaCopia larghezza={16} />
                       <span>Copia</span>
                     </button>
                   </>
                 ) : (
-                  <span className="text-[var(--spento)]">Nessuna</span>
+                  <span className="text-[var(--spento)]">Nessuna cartella scelta</span>
                 )}
-                <button type="button" className="btn h-9 px-3 text-[13px] shrink-0" onClick={apriModificaCartella}>
+                <button type="button" className="btn h-9 max-[860px]:h-[var(--d-tap)] px-3 text-[13px] shrink-0" onClick={apriSceltaCartella}>
                   {programma.backup.cartella ? "Cambia…" : "Scegli…"}
                 </button>
               </span>
             )
           }
-        />
-      ) : (
-        <div className="riga">
-          <div className="min-w-0 grow shrink basis-[84px]">
-            <div className="t">Copia di sicurezza</div>
-            <div className="s">Il percorso completo della cartella, es. D:\Backup Etichette. Vuoto per spegnerle.</div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="casella min-h-[44px] px-3">
-              <input
-                value={valoreCartella}
-                onChange={cambiaValoreCartella}
-                placeholder="D:\Backup Etichette"
-                aria-label="Cartella delle copie di sicurezza"
-                className="mono text-[14px] font-bold min-w-[180px]"
-              />
-            </div>
-            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={confermaCartella} disabled={salvaCartella.isPending}>
-              Salva
-            </button>
-            <button type="button" className="btn h-9 px-3 text-[13px]" onClick={annullaModificaCartella} disabled={salvaCartella.isPending}>
-              Annulla
-            </button>
-          </div>
-        </div>
-      )}
+      />
       <Riga titolo="Ultima copia" valore={testoUltima} titoloValore={ultimaRiuscita ? riuscitaCompleta : undefined} />
       {tentativoFallitoDopo && (
         <div className="flex items-center gap-2.5 rounded-2xl border border-[var(--ambrabordo)] bg-[var(--ambrachiaro)] px-4 py-2.5 text-[13px] text-[var(--ambra)] mt-1">
@@ -689,7 +733,13 @@ function SezioneProgramma() {
           25/09/2026). */}
       <Riga
         titolo="Backup automatico"
-        valore={programma?.backup.prossima ? formattaProssima(programma.backup.prossima) : "Nessuna"}
+        valore={
+          programma?.backup.prossima
+            ? formattaProssima(programma.backup.prossima)
+            : programma && !programma.backup.cartella
+              ? "Spento: scegli prima una cartella"
+              : "Non ancora programmato"
+        }
       />
       <div className="flex flex-wrap gap-2.5 pt-3 azioniSezione">
         <button
@@ -697,11 +747,28 @@ function SezioneProgramma() {
           className="btn"
           onClick={faiCopiaOra}
           disabled={eseguiOra.isPending || !programma?.backup.cartella}
+          aria-describedby={senzaCartella ? idMotivoCopia : undefined}
         >
           <IconaScarica larghezza={20} />
           <span>Fai una copia adesso</span>
         </button>
+        {/* Il bottone spento dice perche' (2/10/2026, prove con utenti: un disabilitato muto). */}
+        {senzaCartella && (
+          <p id={idMotivoCopia} className="basis-full m-0 text-[13px] text-[var(--spento)]">
+            Per fare una copia scegli prima la cartella dove metterla («Scegli…» qui sopra).
+          </p>
+        )}
       </div>
+      {sceltaCartella && (
+        <FinestraCartella
+          inizio={programma?.backup.cartella ?? null}
+          puoiSpegnere={!!programma?.backup.cartella}
+          salvataggio={salvaCartella.isPending}
+          onUsa={salvaScelta}
+          onSpegni={spegniCopie}
+          onChiudi={chiudiSceltaCartella}
+        />
+      )}
     </Sezione>
   );
 }

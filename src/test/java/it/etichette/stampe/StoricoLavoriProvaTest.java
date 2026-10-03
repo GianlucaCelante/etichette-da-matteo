@@ -30,7 +30,7 @@ class StoricoLavoriProvaTest {
         StoricoLavori storicoLavori = new StoricoLavori(storico, prodotti, risolutoreLotti, transactionManager,
                 new long[0]);
 
-        NuovaRiga dati = new NuovaRiga("lavoro-1", 1L, "Impasto di prova", "1 kg", "2026-10-01",
+        NuovaRiga dati = new NuovaRiga("lavoro-1", 1L, "Impasto di prova", "1 kg", null, "2026-10-01",
                 "Telefono della cucina", true, List.of());
         RigaAperta riga = storicoLavori.apri(dati, () -> "L 20260924-001");
 

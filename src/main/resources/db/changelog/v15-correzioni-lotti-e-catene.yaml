@@ -1,0 +1,47 @@
+databaseChangeLog:
+
+  # 2 ottobre 2026 (prove con utenti simulati, correzioni): due registri che conservano lo stato
+  # «prima» di una correzione a mano, cosi' la tracciabilita' non perde la storia. Sono tabelle
+  # NUOVE (CREATE TABLE): nessuna colonna aggiunta a tabelle citate da altre, quindi nessun rischio
+  # per le chiavi esterne (vedi v10-storico-lotti-chiavi-esterne.yaml e SchemaChiaviEsterneTest).
+  # Nessun dato esistente viene toccato.
+
+  - changeSet:
+      id: 130-lotti-ingrediente-correzioni
+      author: etichette
+      comment: >
+        Una riga per ogni campo di un lotto d'ingrediente corretto a mano (codice, quantita',
+        scadenza, fornitore, data di arrivo): cosa c'era prima e cosa c'e' ora. La correzione si
+        riflette anche sulle stampe gia' fatte (lo storico punta al lotto per id), quindi il valore
+        precedente va conservato qui. I valori sono testo leggibile (le date gia' gg/mm/aaaa).
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE lotti_ingrediente_correzioni (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                lotto_id INTEGER NOT NULL,
+                corretto_il TEXT NOT NULL,
+                campo TEXT NOT NULL,
+                prima TEXT,
+                dopo TEXT
+              );
+              CREATE INDEX idx_lotti_correzioni_lotto ON lotti_ingrediente_correzioni(lotto_id);
+
+  - changeSet:
+      id: 131-storico-catena-correzioni
+      author: etichette
+      comment: >
+        Una riga per ogni correzione a mano della catena di una stampa (PUT /api/storico/{id}/catena):
+        lo stato della catena PRIMA della correzione, come JSON di testo leggibile (anello per anello:
+        nome, lotti con fornitore e scadenza). La prima riga di una stampa e' la catena com'era
+        al momento della stampa.
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE storico_catena_correzioni (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                storico_id INTEGER NOT NULL,
+                corretto_il TEXT NOT NULL,
+                prima TEXT NOT NULL
+              );
+              CREATE INDEX idx_catena_correzioni_storico ON storico_catena_correzioni(storico_id);

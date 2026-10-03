@@ -64,9 +64,19 @@ public class DispositiviService {
      * qualche prova l'elenco dei dispositivi si riempie di righe anonime che non sono dispositivi
      * veri (segnalato da Gianluca il 2026-09-10, otto righe di cui cinque anonime). I dispositivi
      * SENZA NOME che non si fanno vedere da piu' di questo tempo si tolgono da soli; quelli con un
-     * nome restano finche' non li si scollega a mano.
+     * nome restano fino a {@link #SCADENZA_CON_NOME} di inattivita' o finche' non li si scollega a mano.
      */
     private static final Duration SCADENZA_SENZA_NOME = Duration.ofHours(24);
+    /**
+     * Anche l'elenco dei dispositivi CON un nome cresceva senza fine (30/09/2026: ogni prova su un
+     * telefono nuovo, o dopo aver svuotato i dati del browser, lascia una riga con lo stesso nome).
+     * Un dispositivo con nome che non si fa vedere da questo tempo si toglie da solo: quando torna
+     * gli si chiede di nuovo il nome, e lo storico non cambia (le stampe hanno il nome scritto in
+     * chiaro, {@code dispositivo_nome}).
+     */
+    private static final Duration SCADENZA_CON_NOME = Duration.ofDays(60);
+    /** Tetto assoluto (PC escluso): oltre, si tolgono i meno recenti, con nome o no. */
+    private static final int MAX_DISPOSITIVI = 30;
     /** Ogni quanto ripassare a fare pulizia (la pulizia parte dalle richieste, non da uno scheduler). */
     private static final Duration INTERVALLO_PULIZIA = Duration.ofHours(1);
 
@@ -82,13 +92,53 @@ public class DispositiviService {
     @EventListener(ApplicationReadyEvent.class)
     public void puliziaIniziale() {
         try {
-            int tolti = rimuoviSenzaNomeScaduti();
+            int tolti = pulisci();
             if (tolti > 0) {
-                log.info("Dispositivi senza nome tolti all'avvio: {}", tolti);
+                log.info("Dispositivi tolti all'avvio: {}", tolti);
             }
         } catch (RuntimeException e) {
-            log.warn("pulizia dei dispositivi senza nome non riuscita: {}", e.getMessage());
+            log.warn("pulizia dei dispositivi non riuscita: {}", e.getMessage());
         }
+    }
+
+    /**
+     * La pulizia completa: senza nome scaduti, con nome dimenticati e, se ancora troppi, i meno
+     * recenti oltre {@link #MAX_DISPOSITIVI}. Il PC non si tocca mai. Restituisce quanti ne ha tolti.
+     */
+    @Transactional
+    public int pulisci() {
+        int tolti = rimuoviSenzaNomeScaduti();
+        tolti += rimuoviConNomeDimenticati();
+        tolti += rimuoviInEccesso();
+        return tolti;
+    }
+
+    /** Toglie i dispositivi con nome fermi da piu' di {@link #SCADENZA_CON_NOME}. Il PC non si tocca. */
+    @Transactional
+    public int rimuoviConNomeDimenticati() {
+        LocalDateTime limite = LocalDateTime.now().minus(SCADENZA_CON_NOME);
+        List<Dispositivo> daTogliere = dispositivi.findAll().stream()
+                .filter(d -> !eNuovo(d))
+                .filter(d -> !ID_PC.equals(d.getId()))
+                .filter(d -> riferimento(d).isBefore(limite))
+                .toList();
+        dispositivi.deleteAll(daTogliere);
+        return daTogliere.size();
+    }
+
+    /** Oltre {@link #MAX_DISPOSITIVI} (PC escluso) si tolgono i meno recenti. */
+    @Transactional
+    public int rimuoviInEccesso() {
+        List<Dispositivo> tutti = dispositivi.findAll().stream()
+                .filter(d -> !ID_PC.equals(d.getId()))
+                .sorted(java.util.Comparator.comparing(DispositiviService::riferimento).reversed())
+                .toList();
+        if (tutti.size() <= MAX_DISPOSITIVI) {
+            return 0;
+        }
+        List<Dispositivo> daTogliere = List.copyOf(tutti.subList(MAX_DISPOSITIVI, tutti.size()));
+        dispositivi.deleteAll(daTogliere);
+        return daTogliere.size();
     }
 
     /**
@@ -136,12 +186,12 @@ public class DispositiviService {
         }
         ultimaPulizia = adesso;
         try {
-            int tolti = rimuoviSenzaNomeScaduti();
+            int tolti = pulisci();
             if (tolti > 0) {
-                log.info("Dispositivi senza nome tolti: {}", tolti);
+                log.info("Dispositivi tolti: {}", tolti);
             }
         } catch (RuntimeException e) {
-            log.warn("pulizia dei dispositivi senza nome non riuscita: {}", e.getMessage());
+            log.warn("pulizia dei dispositivi non riuscita: {}", e.getMessage());
         }
     }
 

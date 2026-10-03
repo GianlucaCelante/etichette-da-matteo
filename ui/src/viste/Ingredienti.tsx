@@ -1,26 +1,29 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useAggiornaIngrediente,
-  useAggiornaScadenzaLotto,
+  useAggiornaLotto,
   useChiudiLottoIngrediente,
   useCreaIngrediente,
   useEliminaIngrediente,
+  useEliminaLottoIngrediente,
   useFornitori,
   useIngrediente,
   useIngredienti,
   useRiapriLottoIngrediente,
 } from "../api/hooks";
 import { ErroreRichiesta } from "../api/client";
-import type { EtichettaCollegata, FiltroIngredienti, Fornitore, Ingrediente, IngredienteConLotti, IngredienteSimile, LottoIngrediente } from "../api/tipi";
+import type { AggiornaLottoRichiesta, FiltroIngredienti, Fornitore, Ingrediente, IngredienteConLotti, IngredienteSimile, LottoIngrediente } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni } from "../hooks/useTestata";
-import { IconaCamion, IconaCerca, IconaCestino, IconaDestra, IconaFornitore, IconaPiu, IconaSinistra } from "../componenti/Icone";
+import { IconaCamion, IconaCerca, IconaCestino, IconaDestra, IconaFornitore, IconaPiu, IconaSalva, IconaSinistra } from "../componenti/Icone";
 import CampoNomeConSimili from "../componenti/ingredienti/CampoNomeConSimili";
 import FinestraFornitori from "../componenti/ingredienti/FinestraFornitori";
 import RigaLotto from "../componenti/ingredienti/RigaLotto";
 import SelettoreFornitore from "../componenti/ingredienti/SelettoreFornitore";
+import { SottoTitolo, StatoVuoto, TitoloSezione } from "../componenti/ingredienti/SezioniScheda";
 import { statoScadenzaLotto } from "../componenti/ingredienti/statoLotto";
+import UsatoNelleEtichette from "../componenti/ingredienti/UsatoNelleEtichette";
 import { formattaDataItaliana } from "../componenti/stampa/formattazione";
 
 const FILTRI: { chiave: FiltroIngredienti; testo: string }[] = [
@@ -54,13 +57,36 @@ function messaggioDoppioConTendina(messaggio: string): string {
 // veri quando c'e' un problema di scadenza sul lotto aperto per primo,
 // altrimenti solo "manca"/"piu' aperti" (i due stati senza una data da
 // contare).
-function BadgeStato({ ingrediente }: { ingrediente: Ingrediente }) {
-  if (ingrediente.stato === "aperto") return null;
+// Con "sempre" (la scheda) anche lo stato buono si dice: "Lotto aperto".
+function BadgeStato({ ingrediente, sempre }: { ingrediente: Ingrediente; sempre?: boolean }) {
+  if (ingrediente.stato === "aperto") return sempre ? <span className="stato aperto">Lotto aperto</span> : null;
   if (ingrediente.stato === "manca") return <span className="stato manca">Nessun lotto aperto</span>;
   if (ingrediente.stato === "piu") return <span className="stato piu">{ingrediente.lottiAperti.length} lotti aperti</span>;
+  // Un lotto aperto senza scadenza non e' «tutto a posto»: va segnalato, e
+  // compare anche in «Da controllare» (2 ottobre 2026).
+  if (ingrediente.stato === "senzaScadenza") return <span className="stato scade">Senza scadenza</span>;
   const sc = statoScadenzaLotto(ingrediente.lottiAperti[0]?.scadenza ?? null);
   if (!sc) return null;
   return <span className={"stato " + sc.classe}>{sc.testo}</span>;
+}
+
+// La prima scadenza fra i lotti aperti di un ingrediente (AAAA-MM-GG), null
+// se nessun lotto aperto ne ha una: chi ha una scadenza piu' vicina viene
+// prima, chi non ne ha va in fondo. L'ordine per nome resta quello di partenza
+// (Array.sort e' stabile).
+function primaScadenza(ingrediente: Ingrediente): string | null {
+  const date = ingrediente.lottiAperti.map((l) => l.scadenza).filter((s): s is string => !!s);
+  return date.length ? date.reduce((a, b) => (a < b ? a : b)) : null;
+}
+function ordinaPerScadenza(lista: Ingrediente[]): Ingrediente[] {
+  return [...lista].sort((a, b) => {
+    const sa = primaScadenza(a);
+    const sb = primaScadenza(b);
+    if (sa === sb) return 0;
+    if (sa === null) return 1;
+    if (sb === null) return -1;
+    return sa < sb ? -1 : 1;
+  });
 }
 
 function CartaIngrediente({ ingrediente, selezionato, onScegli }: { ingrediente: Ingrediente; selezionato: boolean; onScegli: (id: number) => void }) {
@@ -98,53 +124,6 @@ function CartaBozza({ nome }: { nome: string }) {
   );
 }
 
-// "A" · "A e B" · "A, B e C" (come inElenco di Etichette.tsx, non condivisa: qui basta ai nomi del "tramite").
-function nomiInElenco(nomi: string[]): string {
-  if (nomi.length === 0) return "";
-  if (nomi.length === 1) return nomi[0] ?? "";
-  return nomi.slice(0, -1).join(", ") + " e " + nomi[nomi.length - 1];
-}
-
-// Una pastiglia "Nelle etichette" (docs/api.md, "Ingredienti e fornitori"): apre l'etichetta che
-// contiene questo ingrediente. Diretta (tramite: []) è come prima, una riga; indiretta ha in più,
-// piccolo e tenue, "tramite X e Y" - l'ultimo semilavorato prima di lei sul percorso più corto.
-// onApri già legato all'id, come CartaIngrediente/GettoneFiltro qui sopra - eslint (react-perf)
-// vuole che non nasca una funzione nuova a ogni giro del .map.
-function PastigliaEtichetta({
-  id,
-  nome,
-  nomeIngrediente,
-  tramite,
-  onApri,
-}: {
-  id: number;
-  nome: string;
-  nomeIngrediente: string;
-  tramite: EtichettaCollegata["tramite"];
-  onApri: (id: number) => void;
-}) {
-  const clic = useCallback(() => onApri(id), [onApri, id]);
-  if (tramite.length === 0) {
-    return (
-      <button type="button" className="chip etichettaCollegata" onClick={clic} title={`Apri l'etichetta ${nome}`} aria-label={`Apri l'etichetta ${nome}`}>
-        <span className="nome">{nome}</span>
-        <IconaDestra larghezza={14} spessoreTratto={2} className="text-[var(--spento)]" />
-      </button>
-    );
-  }
-  const testoTramite = "tramite " + nomiInElenco(tramite.map((t) => t.nome));
-  const messaggio = `Apri l'etichetta ${nome}, che contiene ${nomeIngrediente} ${testoTramite}`;
-  return (
-    <button type="button" className="chip conTramite etichettaCollegata" onClick={clic} title={messaggio} aria-label={messaggio}>
-      <span className="testo">
-        <span className="nome">{nome}</span>
-        <span className="tramite">{testoTramite}</span>
-      </span>
-      <IconaDestra larghezza={14} spessoreTratto={2} className="text-[var(--spento)]" />
-    </button>
-  );
-}
-
 function contaEtichette(n: number): string {
   return n === 1 ? "1 etichetta" : `${n} etichette`;
 }
@@ -174,7 +153,7 @@ function domandaElimina(ingrediente: IngredienteConLotti, dirette: number): { ti
 function GettoneFiltro({ chiave, testo, attivo, onScegli }: { chiave: FiltroIngredienti; testo: string; attivo: boolean; onScegli: (chiave: FiltroIngredienti) => void }) {
   const clic = useCallback(() => onScegli(chiave), [onScegli, chiave]);
   return (
-    <button type="button" className={"gettone" + (attivo ? " on" : "")} onClick={clic}>
+    <button type="button" className={"gettone" + (attivo ? " on" : "")} onClick={clic} aria-pressed={attivo}>
       {testo}
     </button>
   );
@@ -191,7 +170,8 @@ function FilaLotto({
   onToggle,
   onChiudi,
   onRiapri,
-  onSalvaScadenza,
+  onCorreggi,
+  onElimina,
   occupato,
 }: {
   lotto: LottoIngrediente;
@@ -200,13 +180,15 @@ function FilaLotto({
   onToggle: (id: number) => void;
   onChiudi: (lotto: LottoIngrediente) => void;
   onRiapri: (id: number) => void;
-  onSalvaScadenza: (id: number, scadenza: string) => void;
+  onCorreggi: (id: number, dati: AggiornaLottoRichiesta, fatto: () => void) => void;
+  onElimina: (lotto: LottoIngrediente, fatto: () => void) => void;
   occupato: boolean;
 }) {
   const toggle = useCallback(() => onToggle(lotto.id), [onToggle, lotto.id]);
   const chiudi = useCallback(() => onChiudi(lotto), [onChiudi, lotto]);
   const riapri = useCallback(() => onRiapri(lotto.id), [onRiapri, lotto.id]);
-  const salvaScadenza = useCallback((scadenza: string) => onSalvaScadenza(lotto.id, scadenza), [onSalvaScadenza, lotto.id]);
+  const correggi = useCallback((dati: AggiornaLottoRichiesta, fatto: () => void) => onCorreggi(lotto.id, dati, fatto), [onCorreggi, lotto.id]);
+  const elimina = useCallback((fatto: () => void) => onElimina(lotto, fatto), [onElimina, lotto]);
   return (
     <RigaLotto
       lotto={lotto}
@@ -215,7 +197,8 @@ function FilaLotto({
       onToggle={toggle}
       onChiudi={chiudi}
       onRiapri={riapri}
-      onSalvaScadenza={salvaScadenza}
+      onCorreggi={correggi}
+      onElimina={elimina}
       occupato={occupato}
     />
   );
@@ -252,11 +235,32 @@ export default function Ingredienti() {
   // ancora in volo se nel frattempo si e' scelto un altro ingrediente.
   const [bozzaNuovo, setBozzaNuovo] = useState<BozzaIngrediente | null>(null);
   const tokenBozzaRef = useRef(0);
+  // Una POST alla volta: due tocchi veloci su "Salva" partono prima che la
+  // vista si accorga che la prima e' in corso (isPending arriva alla resa dopo).
+  const salvataggioInCorsoRef = useRef(false);
+  // La conferma "Scarta" della bozza gia' scritta, in linea come "Elimina".
+  // scartaVerso: dove si voleva andare quando e' comparsa (un altro ingrediente
+  // scelto in elenco, o "arrivo" = Merce arrivata); null = solo tornare indietro.
+  const [scartaChiesto, setScartaChiesto] = useState(false);
+  const [scartaVerso, setScartaVerso] = useState<number | "arrivo" | null>(null);
   // La finestra "Fornitori" (23 settembre 2026): rinomina/elimina, aperta
   // dalla testata.
   const [finestraFornitoriAperta, setFinestraFornitoriAperta] = useState(false);
 
+  // Intatta = nome di partenza e nessun fornitore: si scarta senza chiedere.
+  const bozzaIntatta =
+    !!bozzaNuovo &&
+    bozzaNuovo.nome === NOME_BOZZA_INIZIALE &&
+    bozzaNuovo.fornitoreId === null &&
+    !bozzaNuovo.fornitoreAltro &&
+    bozzaNuovo.fornitoreNomeAltro === "";
+
   const { data: lista } = useIngredienti({ q: cerca || undefined, filtro });
+  // «Scadono prima»: la scadenza piu' vicina fra i lotti aperti, in cima; senza
+  // scadenza in fondo; a parita' resta l'ordine per nome (2 ottobre 2026).
+  const [scadonoPrima, setScadonoPrima] = useState(false);
+  const elencoOrdinato = useMemo(() => (scadonoPrima && lista ? ordinaPerScadenza(lista) : lista), [scadonoPrima, lista]);
+  const alternaScadonoPrima = useCallback(() => setScadonoPrima((v) => !v), []);
   const { data: ingrediente } = useIngrediente(selezionatoId ?? undefined);
   const { data: fornitori } = useFornitori();
 
@@ -265,7 +269,8 @@ export default function Ingredienti() {
   const eliminaIngrediente = useEliminaIngrediente();
   const chiudiLotto = useChiudiLottoIngrediente();
   const riapriLotto = useRiapriLottoIngrediente();
-  const aggiornaScadenzaLotto = useAggiornaScadenzaLotto();
+  const aggiornaLotto = useAggiornaLotto();
+  const eliminaLotto = useEliminaLottoIngrediente();
 
   useEffect(() => {
     if (selezionatoId === null && !bozzaNuovo && lista?.[0]) setSelezionatoId(lista[0].id);
@@ -285,15 +290,33 @@ export default function Ingredienti() {
   const cambiaCerca = useCallback((evento: ChangeEvent<HTMLInputElement>) => setCerca(evento.target.value), []);
 
   // Scegliere un ingrediente in elenco abbandona (senza toccare il servizio)
-  // un'eventuale bozza ancora in corso: il token scarta anche una sua POST
-  // gia' partita, se arriva dopo.
-  const scegliIngrediente = useCallback((id: number) => {
-    tokenBozzaRef.current += 1;
-    setBozzaNuovo(null);
-    setSelezionatoId(id);
-    setDettaglio(true);
-  }, []);
+  // un'eventuale bozza ancora in corso: intatta subito, gia' scritta dopo
+  // l'avviso in linea "Scartare?" (scartaBozza porta poi li'). Il token scarta
+  // anche una POST gia' partita, se arriva dopo.
+  const scegliIngrediente = useCallback(
+    (id: number) => {
+      if (bozzaNuovo && !bozzaIntatta) {
+        setScartaVerso(id);
+        setScartaChiesto(true);
+        return;
+      }
+      tokenBozzaRef.current += 1;
+      setBozzaNuovo(null);
+      setSelezionatoId(id);
+      setDettaglio(true);
+    },
+    [bozzaNuovo, bozzaIntatta],
+  );
   const indietroAllElenco = useCallback(() => setDettaglio(false), []);
+  // La bozza mai salvata non sopravvive alla vista: se si esce (cambio
+  // scheda, indietro del browser) o si smonta, una POST ancora in volo trova
+  // il token cambiato e si toglie da sola (confermaBozza).
+  useEffect(
+    () => () => {
+      tokenBozzaRef.current += 1;
+    },
+    [],
+  );
 
   const salvaNome = useCallback(() => {
     if (!ingrediente) return;
@@ -428,20 +451,58 @@ export default function Ingredienti() {
       }),
     [riapriLotto, avvisa],
   );
-  const salvaScadenzaLotto = useCallback(
-    (id: number, scadenza: string) =>
-      aggiornaScadenzaLotto.mutate({ id, scadenza }, { onError: () => avvisa("Non sono riuscito a salvare la scadenza.") }),
-    [aggiornaScadenzaLotto, avvisa],
+  // La correzione a mano di un lotto (codice, quantita', scadenza, fornitore,
+  // data di arrivo): il servizio cambia solo i campi mandati e conserva il
+  // valore di prima. Se il lotto e' gia' nello storico lo si dice, perche' la
+  // correzione si vede anche nelle stampe fatte (2 ottobre 2026).
+  const correggiUnLotto = useCallback(
+    (id: number, dati: AggiornaLottoRichiesta, fatto: () => void) => {
+      const lotto = ingrediente?.lotti.find((l) => l.id === id);
+      aggiornaLotto.mutate(
+        { id, dati },
+        {
+          onSuccess: () => {
+            fatto();
+            avvisa(lotto && lotto.usi > 0 ? "Lotto corretto. La correzione si vede anche nelle stampe già fatte." : "Lotto corretto.");
+          },
+          onError: (errore) => avvisa(errore instanceof ErroreRichiesta && errore.corpo?.errore ? errore.corpo.errore : "Non sono riuscito a correggere il lotto."),
+        },
+      );
+    },
+    [ingrediente, aggiornaLotto, avvisa],
+  );
+  // Si elimina solo un lotto mai stampato (il servizio lo controlla: se nel
+  // frattempo e' entrato in una stampa risponde 409 col motivo).
+  const eliminaUnLotto = useCallback(
+    (lotto: LottoIngrediente, fatto: () => void) =>
+      eliminaLotto.mutate(lotto.id, {
+        onSuccess: () => {
+          fatto();
+          avvisa(`Lotto ${lotto.codice} eliminato.`);
+        },
+        onError: (errore) => {
+          fatto();
+          avvisa(errore instanceof ErroreRichiesta && errore.corpo?.errore ? errore.corpo.errore : "Non sono riuscito a eliminare il lotto.");
+        },
+      }),
+    [eliminaLotto, avvisa],
   );
 
   // "Nuovo ingrediente": apre subito la bozza in elenco, col nome di
   // partenza gia' selezionato (nuovoIngrediente del prototipo).
   const iniziaBozza = useCallback(() => {
+    // gia' aperta: non si azzera quello che c'e' scritto
+    if (bozzaNuovo) {
+      setDettaglio(true);
+      return;
+    }
     tokenBozzaRef.current += 1;
+    setScartaChiesto(false);
+    setScartaVerso(null);
     setBozzaNuovo({ nome: NOME_BOZZA_INIZIALE, fornitoreId: null, fornitoreAltro: false, fornitoreNomeAltro: "" });
     setSelezionatoId(null);
     setDettaglio(true);
-  }, []);
+  }, [bozzaNuovo]);
   const cambiaNomeBozza = useCallback((valore: string) => setBozzaNuovo((b) => (b ? { ...b, nome: valore } : b)), []);
   const scegliFornitoreBozza = useCallback((id: number | null) => setBozzaNuovo((b) => (b ? { ...b, fornitoreId: id, fornitoreAltro: false } : b)), []);
   const entraFornitoreAltroBozza = useCallback(() => setBozzaNuovo((b) => (b ? { ...b, fornitoreAltro: true, fornitoreNomeAltro: "" } : b)), []);
@@ -460,44 +521,113 @@ export default function Ingredienti() {
     [avvisa],
   );
 
-  // Si esce dal campo Nome (o si preme Invio): nome vuoto = la bozza sparisce
-  // senza chiamare il servizio; altrimenti parte la POST, qui e solo qui.
+  // Una POST partita per una bozza poi abbandonata (scartata, o sostituita da
+  // un altro ingrediente): se il servizio ha creato lo stesso l'ingrediente,
+  // lo si toglie con la DELETE - mai stampato, quindi sparisce davvero - per
+  // non lasciare fantasmi in elenco.
+  const eliminaCreatoOrfano = useCallback(
+    (id: number) => {
+      eliminaIngrediente.mutateAsync(id).catch(() => avvisa("Non sono riuscito a togliere l'ingrediente appena creato: eliminalo dall'elenco."));
+    },
+    [eliminaIngrediente, avvisa],
+  );
+
+  const scartaBozza = useCallback(() => {
+    tokenBozzaRef.current += 1;
+    setScartaChiesto(false);
+    setScartaVerso(null);
+    setBozzaNuovo(null);
+    if (scartaVerso === "arrivo") {
+      navigate("/ingredienti/arrivo");
+      return;
+    }
+    if (scartaVerso !== null) {
+      setSelezionatoId(scartaVerso);
+      setDettaglio(true);
+      return;
+    }
+    setSelezionatoId(null);
+    setDettaglio(false);
+    // come al primo accesso: l'effetto sul numero di ingredienti sceglie il
+    // primo, qui lo si fa subito perche' la lista puo' non cambiare
+    if (lista?.[0]) setSelezionatoId(lista[0].id);
+  }, [lista, scartaVerso, navigate]);
+  // "Elimina" e la freccia indietro della bozza = scartarla: niente chiamate
+  // al servizio (una POST gia' partita si ripulisce da sola, vedi
+  // confermaBozza). Intatta si scarta subito, altrimenti si chiede.
+  const chiediScarta = useCallback(() => {
+    if (bozzaIntatta) scartaBozza();
+    else setScartaChiesto(true);
+  }, [bozzaIntatta, scartaBozza]);
+  const annullaScarta = useCallback(() => {
+    setScartaChiesto(false);
+    setScartaVerso(null);
+  }, []);
+  // Tenere il fuoco sul campo Nome: senza, il tocco su "Elimina", sulla
+  // freccia, su "Salva" o su "Sì, scarta" lo fa uscire dal campo e la
+  // tastiera del telefono si chiude a ogni tocco.
+  const teniFuoco = useCallback((evento: MouseEvent<HTMLElement>) => evento.preventDefault(), []);
+
+  // Salvare la bozza (bottone "Salva ingrediente" o Invio nel campo Nome): la
+  // POST parte qui e solo qui. Uscire dal campo NON salva (prima si': toccare
+  // "indietro" faceva perdere il fuoco e creava l'ingrediente). Nome vuoto o
+  // ancora quello di partenza: si resta a scrivere.
   const confermaBozza = useCallback(() => {
-    if (!bozzaNuovo) return;
+    // con la domanda "Scartare?" aperta non si crea niente: prima si risponde;
+    // e una POST alla volta
+    if (!bozzaNuovo || scartaChiesto || salvataggioInCorsoRef.current) return;
     const nome = bozzaNuovo.nome.trim();
-    if (!nome) {
-      setBozzaNuovo(null);
-      avvisa("Serve il nome.");
+    if (!nome || nome === NOME_BOZZA_INIZIALE) {
+      avvisa("Scrivi il nome dell'ingrediente, poi salva.");
       return;
     }
     const mioToken = tokenBozzaRef.current;
-    creaIngrediente.mutate(
-      {
+    salvataggioInCorsoRef.current = true;
+    // mutateAsync e non mutate con callback: questi non scattano se nel
+    // frattempo parte un'altra mutazione o la vista si smonta, e l'orfano
+    // resterebbe.
+    creaIngrediente
+      .mutateAsync({
         nome,
         fornitoreId: !bozzaNuovo.fornitoreAltro && bozzaNuovo.fornitoreId !== null ? bozzaNuovo.fornitoreId : undefined,
         fornitoreNome: bozzaNuovo.fornitoreAltro && bozzaNuovo.fornitoreNomeAltro.trim() ? bozzaNuovo.fornitoreNomeAltro.trim() : undefined,
-      },
-      {
-        onSuccess: (creato) => {
-          if (tokenBozzaRef.current !== mioToken) return; // nel frattempo si e' scelto altro
-          setBozzaNuovo(null);
-          setSelezionatoId(creato.id);
-        },
-        onError: (errore) => {
-          if (tokenBozzaRef.current !== mioToken) return;
-          avvisa(
-            errore instanceof ErroreRichiesta && errore.stato === 409
-              ? messaggioDoppioConTendina(errore.message)
-              : errore instanceof ErroreRichiesta
-                ? errore.message
-                : "Non sono riuscito a creare l'ingrediente.",
-          );
-        },
-      },
-    );
-  }, [bozzaNuovo, creaIngrediente, avvisa]);
+      })
+      .then((creato) => {
+        // nel frattempo si e' scelto altro o si e' scartata la bozza: il
+        // servizio l'ha creato lo stesso, si toglie
+        if (tokenBozzaRef.current !== mioToken) {
+          eliminaCreatoOrfano(creato.id);
+          return;
+        }
+        setBozzaNuovo(null);
+        setSelezionatoId(creato.id);
+        avvisa(`${creato.nome} salvato.`);
+      })
+      .catch((errore: unknown) => {
+        if (tokenBozzaRef.current !== mioToken) return;
+        avvisa(
+          errore instanceof ErroreRichiesta && errore.stato === 409
+            ? messaggioDoppioConTendina(errore.message)
+            : errore instanceof ErroreRichiesta
+              ? errore.message
+              : "Non sono riuscito a creare l'ingrediente.",
+        );
+      })
+      .finally(() => {
+        salvataggioInCorsoRef.current = false;
+      });
+  }, [bozzaNuovo, scartaChiesto, creaIngrediente, eliminaCreatoOrfano, avvisa]);
 
-  const vaiAMerceArrivata = useCallback(() => navigate("/ingredienti/arrivo"), [navigate]);
+  // Con una bozza gia' scritta si chiede prima (avviso in linea): dopo "Sì,
+  // scarta" scartaBozza porta a Merce arrivata.
+  const vaiAMerceArrivata = useCallback(() => {
+    if (bozzaNuovo && !bozzaIntatta) {
+      setScartaVerso("arrivo");
+      setScartaChiesto(true);
+      return;
+    }
+    navigate("/ingredienti/arrivo");
+  }, [bozzaNuovo, bozzaIntatta, navigate]);
   // "Nelle etichette" (docs/api.md): apre l'etichetta scelta, la vista
   // Etichette legge gia' il parametro "prodotto" per selezionarla subito.
   const apriEtichetta = useCallback((id: number) => navigate(`/etichette?prodotto=${id}`), [navigate]);
@@ -506,53 +636,87 @@ export default function Ingredienti() {
 
   // "Nuovo ingrediente", "Fornitori" e "Merce arrivata" stanno nella testata
   // condivisa, come nel prototipo (accanto al titolo "Ingredienti"). Sul
-  // telefono "Nuovo ingrediente" e "Fornitori" sono solo l'icona, tonda,
-  // senza testo (prototipo riga 1964); "Merce arrivata" resta com'era, con
-  // testo su entrambi.
+  // telefono sono bottoni da 36px (".piccoloTel") con la parola scritta.
+  // Nel dettaglio (dettaglio) sul telefono i tre tasti spariscono, e con loro
+  // la testata (".soloElencoTel", index.css): compaiono solo nell'elenco. Su
+  // PC elenco e dettaglio stanno affiancati e restano.
+  const soloElenco = dettaglio ? " soloElencoTel" : "";
+  // «+» e edificio non sono piu' solo icone sul telefono (e col PC zoomato, che
+  // cade nello stesso layout): la parola si vede anche li', corta ("Nuovo",
+  // "Fornitori") perche' coi tre bottoni insieme non c'e' posto per «Nuovo
+  // ingrediente» - il nome accessibile resta quello intero e comincia con la
+  // parola visibile. Sotto i 360 px via anche l'icona (2 ottobre 2026).
   const portaleAzioni = usePortaleAzioni(
     <>
-      <button type="button" className="btn soloPC" onClick={iniziaBozza}>
+      <button type="button" className={"btn soloPC" + soloElenco} onClick={iniziaBozza}>
         <IconaPiu larghezza={18} spessoreTratto={2.2} />
         <span>Nuovo ingrediente</span>
       </button>
-      <button type="button" className="btn soloTel w-12 h-12 p-0 justify-center rounded-full" onClick={iniziaBozza} title="Nuovo ingrediente" aria-label="Nuovo ingrediente">
+      <button
+        type="button"
+        className={"btn piccoloTel soloTel max-[359px]:px-2 max-[359px]:[&>svg]:hidden" + soloElenco}
+        onClick={iniziaBozza}
+        title="Nuovo ingrediente"
+        aria-label="Nuovo ingrediente"
+      >
         <IconaPiu larghezza={20} spessoreTratto={2.2} />
+        <span>Nuovo</span>
       </button>
-      <button type="button" className="btn soloPC" onClick={apriFinestraFornitori}>
+      <button type="button" className={"btn soloPC" + soloElenco} onClick={apriFinestraFornitori}>
         <IconaFornitore larghezza={18} spessoreTratto={2} />
         <span>Fornitori</span>
       </button>
       <button
         type="button"
-        className="btn soloTel w-12 h-12 p-0 justify-center rounded-full"
+        className={"btn piccoloTel soloTel max-[359px]:px-2 max-[359px]:[&>svg]:hidden" + soloElenco}
         onClick={apriFinestraFornitori}
-        title="Fornitori"
+        title="Fornitori: rinomina, elimina, nuovo fornitore"
         aria-label="Fornitori"
       >
         <IconaFornitore larghezza={20} spessoreTratto={2} />
+        <span>Fornitori</span>
       </button>
       {/* azioneMerceArrivata (R5, seconda review 25/09/2026): sul telefono
-          occupa tutto lo spazio che resta dopo i due tondi, non solo la sua
+          occupa tutto lo spazio che resta dopo le due icone, non solo la sua
           larghezza naturale spinta a destra (index.css). */}
-      <button type="button" className="btn primario azioneMerceArrivata" onClick={vaiAMerceArrivata}>
+      <button type="button" className={"btn primario piccoloTel azioneMerceArrivata max-[359px]:px-2 max-[359px]:[&>svg]:hidden" + soloElenco} onClick={vaiAMerceArrivata}>
         <IconaCamion larghezza={18} spessoreTratto={2} />
         <span>Merce arrivata</span>
       </button>
     </>,
   );
 
-  // "Nelle etichette" (docs/api.md): dirette e indirette sono gia' in quest'ordine nella risposta,
-  // qui si separano solo per mettere in mezzo la riga "Attraverso le tue produzioni".
+  // Le etichette contate nella domanda dell'eliminazione sono solo le dirette.
   const etichetteDirette = ingrediente?.etichette.filter((e) => e.tramite.length === 0) ?? [];
-  const etichetteIndirette = ingrediente?.etichette.filter((e) => e.tramite.length > 0) ?? [];
   const domanda = ingrediente ? domandaElimina(ingrediente, etichetteDirette.length) : null;
+  // "In uso" e "Chiusi": si separano solo se ci sono entrambi (i lotti sono
+  // gia' aperti prima, chiusi dopo nella risposta).
+  const lottiInUso = ingrediente?.lotti.filter((l) => l.stato !== "chiuso") ?? [];
+  const lottiChiusi = ingrediente?.lotti.filter((l) => l.stato === "chiuso") ?? [];
+  const dividiLotti = lottiInUso.length > 0 && lottiChiusi.length > 0;
+
+  const righeLotti = (elenco: LottoIngrediente[], nomeIngrediente: string) =>
+    elenco.map((l) => (
+      <FilaLotto
+        key={l.id}
+        lotto={l}
+        nomeIngrediente={nomeIngrediente}
+        aperto={lottoApertoId === l.id}
+        onToggle={toggleLotto}
+        onChiudi={chiudiUnLotto}
+        onRiapri={riapriUnLotto}
+        onCorreggi={correggiUnLotto}
+        onElimina={eliminaUnLotto}
+        occupato={chiudiLotto.isPending || riapriLotto.isPending || aggiornaLotto.isPending || eliminaLotto.isPending}
+      />
+    ));
 
   const listaVuota = (lista ?? []).length === 0;
   const testoVuoto =
     !cerca && filtro === "tutti" && listaVuota
       ? "Non c'è ancora nessun ingrediente. Alla prima consegna usa «Merce arrivata»: gli ingredienti si creano lì, con il loro primo lotto. Oppure «Nuovo ingrediente»."
       : filtro === "attenzione" && listaVuota && !cerca
-        ? "Tutto a posto: ogni ingrediente ha un lotto aperto non scaduto."
+        ? "Tutto a posto: ogni ingrediente ha un lotto aperto, non scaduto e con la scadenza scritta."
         : "Nessun ingrediente con questo nome.";
 
   return (
@@ -563,10 +727,15 @@ export default function Ingredienti() {
           <IconaCerca larghezza={20} spessoreTratto={2} />
           <input value={cerca} onChange={cambiaCerca} placeholder="Cerca ingrediente…" aria-label="Cerca ingrediente" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {FILTRI.map((f) => (
             <GettoneFiltro key={f.chiave} chiave={f.chiave} testo={f.testo} attivo={filtro === f.chiave} onScegli={setFiltro} />
           ))}
+          {/* Un altro modo di ordinare l'elenco (non un filtro): chi scade
+              prima va in cima. Spento, l'ordine e' quello per nome. */}
+          <button type="button" className={"gettone" + (scadonoPrima ? " on" : "")} onClick={alternaScadonoPrima} aria-pressed={scadonoPrima}>
+            Scadono prima
+          </button>
         </div>
         {/* Lo scorrimento e il vincolo di altezza (flex-1 min-h-0) stanno sul
             contenitore FUORI dalla grid, non su ".griglia" stessa: con
@@ -579,7 +748,7 @@ export default function Ingredienti() {
             piu' alta. */}
         <div className="scorre flex-1 min-h-0">
           <div className="griglia">
-            {(lista ?? []).map((i) => (
+            {(elencoOrdinato ?? []).map((i) => (
               <CartaIngrediente key={i.id} ingrediente={i} selezionato={i.id === selezionatoId} onScegli={scegliIngrediente} />
             ))}
             {bozzaNuovo && <CartaBozza nome={bozzaNuovo.nome} />}
@@ -593,12 +762,41 @@ export default function Ingredienti() {
           <>
             <div className="flex items-center gap-2 min-w-0">
               {dettaglio && (
-                <button type="button" className="indietro soloTel" onClick={indietroAllElenco} aria-label="Torna agli ingredienti">
+                <button type="button" className="indietro soloTel" onMouseDown={teniFuoco} onClick={chiediScarta} aria-label="Torna agli ingredienti: scarta il nuovo ingrediente">
                   <IconaSinistra larghezza={22} spessoreTratto={2} />
                 </button>
               )}
-              <div className="h text-[19px] font-semibold min-w-0 truncate">{bozzaNuovo.nome}</div>
+              <div className="h text-[19px] font-semibold min-w-0 truncate flex-1">{bozzaNuovo.nome}</div>
+              <button
+                type="button"
+                className="btn conTesto elimina iconaTel"
+                onMouseDown={teniFuoco}
+                onClick={chiediScarta}
+                disabled={scartaChiesto}
+                title="Elimina ingrediente"
+                aria-label="Elimina ingrediente"
+              >
+                <IconaCestino larghezza={17} spessoreTratto={2} />
+                <span>Elimina</span>
+              </button>
             </div>
+
+            {scartaChiesto && (
+              <div className="confermaElimina flex flex-col gap-3 rounded-xl border border-[var(--rosso)] p-3" role="alertdialog" aria-label="Scartare il nuovo ingrediente?">
+                <div className="text-[14px] leading-relaxed">
+                  <b>Scartare il nuovo ingrediente?</b> Non è ancora stato salvato.
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn piccoloTel" onMouseDown={teniFuoco} onClick={annullaScarta}>
+                    Continua
+                  </button>
+                  <button type="button" className="btn elimina forte piccoloTel" onMouseDown={teniFuoco} onClick={scartaBozza}>
+                    <IconaCestino larghezza={18} spessoreTratto={2} />
+                    <span>Sì, scarta</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Nome e Fornitore uno sotto l'altro, non in ".dueCampi" a due
                 colonne: la scheda e' larga solo 440px, un nome lungo (es.
@@ -616,6 +814,7 @@ export default function Ingredienti() {
                 onCambia={cambiaNomeBozza}
                 onScegliSimile={scegliSimileBozza}
                 onConferma={confermaBozza}
+                soloInvio
                 mettiFuoco
                 selezionaTutto
               />
@@ -632,10 +831,18 @@ export default function Ingredienti() {
               />
             </div>
 
-            <div className="etichettina mt-1">Lotti</div>
-            <div className="text-[14px] text-[var(--tenue)] leading-relaxed">
-              Nessun lotto registrato. Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto.
-            </div>
+            {/* Il salvataggio e' questo bottone (o Invio nel campo Nome):
+                uscire dal campo o tornare indietro non crea niente. Il fuoco
+                resta nel campo, cosi' la tastiera non si chiude al tocco. */}
+            <button type="button" className="btn primario w-full" onMouseDown={teniFuoco} onClick={confermaBozza} disabled={scartaChiesto || creaIngrediente.isPending}>
+              <IconaSalva larghezza={18} spessoreTratto={2} />
+              <span>{creaIngrediente.isPending ? "Salvo…" : "Salva ingrediente"}</span>
+            </button>
+
+            <section className="flex flex-col gap-2" aria-label="Lotti">
+              <TitoloSezione testo="Lotti" />
+              <StatoVuoto titolo="Nessun lotto registrato" testo="Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto." />
+            </section>
           </>
         ) : ingrediente ? (
           <>
@@ -645,7 +852,10 @@ export default function Ingredienti() {
                   <IconaSinistra larghezza={22} spessoreTratto={2} />
                 </button>
               )}
-              <div className="h text-[19px] font-semibold min-w-0 truncate flex-1">{ingrediente.nome}</div>
+              <div className="min-w-0 flex-1 flex flex-col items-start gap-1">
+                <div className="h text-[19px] font-semibold min-w-0 max-w-full truncate">{ingrediente.nome}</div>
+                <BadgeStato ingrediente={ingrediente} sempre />
+              </div>
               <button
                 type="button"
                 className="btn conTesto elimina iconaTel"
@@ -666,10 +876,10 @@ export default function Ingredienti() {
                   {domanda.dettaglio && ` ${domanda.dettaglio}`}
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button type="button" className="btn" onClick={annullaElimina}>
+                  <button type="button" className="btn piccoloTel" onClick={annullaElimina}>
                     Annulla
                   </button>
-                  <button type="button" className="btn elimina forte" onClick={confermaElimina} disabled={eliminaIngrediente.isPending}>
+                  <button type="button" className="btn elimina forte piccoloTel" onClick={confermaElimina} disabled={eliminaIngrediente.isPending}>
                     <IconaCestino larghezza={18} spessoreTratto={2} />
                     <span>Sì, elimina</span>
                   </button>
@@ -697,55 +907,27 @@ export default function Ingredienti() {
               />
             </div>
 
-            <div className="etichettina mt-1">Nelle etichette</div>
-            {ingrediente.etichette.length === 0 ? (
-              <div className="text-[14px] text-[var(--tenue)] leading-relaxed">
-                Non è ancora in nessuna etichetta. Si collega dalla scheda dell&apos;etichetta, in «Ingredienti collegati, per i lotti».
-              </div>
-            ) : (
-              <>
-                {etichetteDirette.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {etichetteDirette.map((e) => (
-                      <PastigliaEtichetta key={e.id} id={e.id} nome={e.nome} nomeIngrediente={ingrediente.nome} tramite={e.tramite} onApri={apriEtichetta} />
-                    ))}
-                  </div>
-                )}
-                {etichetteIndirette.length > 0 && (
-                  <>
-                    <div className="text-[12px] text-[var(--tenue)]">Attraverso le tue produzioni</div>
-                    <div className="flex flex-wrap gap-2">
-                      {etichetteIndirette.map((e) => (
-                        <PastigliaEtichetta key={e.id} id={e.id} nome={e.nome} nomeIngrediente={ingrediente.nome} tramite={e.tramite} onApri={apriEtichetta} />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
+            {/* Prima i lotti (30/09/2026), poi le etichette che lo usano. */}
+            <section className="flex flex-col gap-2" aria-label="Lotti">
+              <TitoloSezione testo="Lotti" conta={ingrediente.lotti.length} />
+              {ingrediente.lotti.length === 0 ? (
+                <StatoVuoto titolo="Nessun lotto registrato" testo="Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto.">
+                  <button type="button" className="btn piccoloTel" onClick={vaiAMerceArrivata}>
+                    <IconaCamion larghezza={18} spessoreTratto={2} />
+                    <span>Registra la merce arrivata</span>
+                  </button>
+                </StatoVuoto>
+              ) : (
+                <>
+                  {dividiLotti && <SottoTitolo testo="In uso" conta={lottiInUso.length} />}
+                  {lottiInUso.length > 0 && <div className="flex flex-col gap-2">{righeLotti(lottiInUso, ingrediente.nome)}</div>}
+                  {dividiLotti && <SottoTitolo testo="Chiusi" conta={lottiChiusi.length} />}
+                  {lottiChiusi.length > 0 && <div className="flex flex-col gap-2">{righeLotti(lottiChiusi, ingrediente.nome)}</div>}
+                </>
+              )}
+            </section>
 
-            <div className="etichettina mt-1">Lotti</div>
-            {ingrediente.lotti.length === 0 ? (
-              <div className="text-[14px] text-[var(--tenue)] leading-relaxed">
-                Nessun lotto registrato. Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto.
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {ingrediente.lotti.map((l) => (
-                  <FilaLotto
-                    key={l.id}
-                    lotto={l}
-                    nomeIngrediente={ingrediente.nome}
-                    aperto={lottoApertoId === l.id}
-                    onToggle={toggleLotto}
-                    onChiudi={chiudiUnLotto}
-                    onRiapri={riapriUnLotto}
-                    onSalvaScadenza={salvaScadenzaLotto}
-                    occupato={chiudiLotto.isPending || riapriLotto.isPending}
-                  />
-                ))}
-              </div>
-            )}
+            <UsatoNelleEtichette etichette={ingrediente.etichette} nomeIngrediente={ingrediente.nome} onApri={apriEtichetta} />
           </>
         ) : (
           <div className="text-[var(--tenue)] p-2">Scegli un ingrediente dall&apos;elenco.</div>

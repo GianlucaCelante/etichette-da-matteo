@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -137,6 +138,88 @@ class ImpostazioniApiTest {
         MockMultipartFile file = new MockMultipartFile("file", "logo.txt", "text/plain", "non e' un'immagine".getBytes());
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo").file(file))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Margine: da 3 a 20 mm, con messaggio in italiano (2 ottobre 2026)
+    // ---------------------------------------------------------------------------------------
+
+    /** Prima 0, 2 e testo tornavano a 3 in silenzio sull'interfaccia, e 50 o 500 mm erano accettati. */
+    @Test
+    void unMargineFuoriDa3e20OnonNumericoRispondeErroreConMessaggio() throws Exception {
+        for (String valore : new String[] {"0", "2", "2,9", "20,1", "21", "50", "500", "-5", "abc", "", "  ", "NaN", "Infinity"}) {
+            mockMvc.perform(put("/api/impostazioni").contentType("application/json").content("{\"margine_mm\":\"" + valore + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errore").value("Il margine deve essere un numero fra 3 e 20 mm."));
+        }
+    }
+
+    @Test
+    void unMargineFra3e20SiSalvaAncheConLaVirgolaDecimale() throws Exception {
+        for (String valore : new String[] {"3", "20", "12", "3.5"}) {
+            mockMvc.perform(put("/api/impostazioni").contentType("application/json").content("{\"margine_mm\":\"" + valore + "\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.margine_mm").value(valore));
+        }
+        // «3,5» (virgola italiana) vale 3,5 mm, NON 35: si salva col punto, cosi' chi lo legge lo parsa sempre
+        mockMvc.perform(put("/api/impostazioni").contentType("application/json").content("{\"margine_mm\":\"3,5\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.margine_mm").value("3.5"));
+        assertThat(impostazioni.findById("margine_mm").orElseThrow().getValore()).isEqualTo("3.5");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Logo: stato senza 404 e messaggi distinti per ogni rifiuto (2 ottobre 2026)
+    // ---------------------------------------------------------------------------------------
+
+    /** L'interfaccia chiede se c'e' un logo con una GET che risponde sempre 200: niente 404 in console a ogni apertura. */
+    @Test
+    void loStatoDelLogoRispondeSempre200() throws Exception {
+        mockMvc.perform(get("/api/impostazioni/logo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presente").value(false));
+
+        MockMultipartFile file = new MockMultipartFile("file", "logo.png", "image/png", pngDiProva(20, 10));
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo").file(file)).andExpect(status().isOk());
+        mockMvc.perform(get("/api/impostazioni/logo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presente").value(true));
+
+        mockMvc.perform(delete("/api/impostazioni/logo")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/impostazioni/logo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presente").value(false));
+        // il vecchio comportamento di logo.png resta: 404 senza logo
+        mockMvc.perform(get("/api/impostazioni/logo.png")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ognunoDeiRifiutiDelLogoHaIlSuoMessaggio() throws Exception {
+        // non e' un'immagine (tipo dichiarato sbagliato)
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo")
+                        .file(new MockMultipartFile("file", "logo.txt", "text/plain", "ciao".getBytes())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value("Formato non supportato: il logo deve essere un'immagine PNG o JPEG."));
+        // immagine ma di un formato che non si legge (GIF)
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo")
+                        .file(new MockMultipartFile("file", "logo.gif", "image/gif", new byte[] {71, 73, 70, 56, 57, 97})))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value("Formato non supportato: il logo deve essere un'immagine PNG o JPEG."));
+        // un testo rinominato .png: il tipo dichiarato e' PNG ma i byte non sono un'immagine
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo")
+                        .file(new MockMultipartFile("file", "logo.png", "image/png", "non e' un'immagine".getBytes())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value("Il file non è un'immagine leggibile: scegli un PNG o un JPEG."));
+        // troppo grande
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo")
+                        .file(new MockMultipartFile("file", "logo.png", "image/png", new byte[2 * 1024 * 1024 + 1])))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value("Il file è troppo grande: il logo può pesare al massimo 2 MB."));
+        // vuoto
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/impostazioni/logo")
+                        .file(new MockMultipartFile("file", "logo.png", "image/png", new byte[0])))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value("Scegli un file da caricare."));
     }
 
     private static byte[] pngDiProva(int larghezza, int altezza) throws IOException {

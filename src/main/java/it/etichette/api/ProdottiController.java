@@ -50,6 +50,27 @@ public class ProdottiController {
         return dto.stream().map(p -> p.conTracciati(tracciatiPerProdotto.getOrDefault(p.id(), List.of()))).toList();
     }
 
+    /**
+     * {@code GET /api/prodotti/nuovo} (2 ottobre 2026): il prodotto di partenza di «Nuova etichetta»,
+     * con gli stessi valori di {@code POST /api/prodotti} senza corpo ma NON salvato (nessun record,
+     * {@code id} null): l'editor lo tiene come bozza nel browser e crea il prodotto solo al primo
+     * «Salva etichetta», cosi' una bozza abbandonata (F5 compreso) non lascia niente in elenco.
+     */
+    @GetMapping("/nuovo")
+    public ProdottoDto nuovo() {
+        return conversioni.conValoriDiPartenza(conversioni.converti(Map.of()));
+    }
+
+    /**
+     * {@code GET /api/prodotti/{id}/copia} (2 ottobre 2026): quello che farebbe {@code POST
+     * /{id}/duplica} ma NON salvato - la bozza di «Duplica» (nome + " (copia)", usi 0, stessi
+     * tracciati). 404 se il prodotto non esiste. Il prodotto nasce al primo «Salva etichetta».
+     */
+    @GetMapping("/{id}/copia")
+    public ProdottoDto copia(@PathVariable Long id) {
+        return bozzaDiCopia(conversioni.aDto(trova(id))).conTracciati(tracciatiService.leggi(id));
+    }
+
     @GetMapping("/{id}")
     public ProdottoDto uno(@PathVariable Long id) {
         return conversioni.aDto(trova(id)).conTracciati(tracciatiService.leggi(id));
@@ -100,15 +121,8 @@ public class ProdottiController {
     @Transactional
     public ResponseEntity<ProdottoDto> duplica(@PathVariable Long id) {
         ProdottoDto origine = conversioni.aDto(trova(id));
-        String nomeCopia = origine.nome() + " (copia)";
-        // se nomeStampa era uguale al nome in maiuscolo, la copia lo segue (nuovo nome in
-        // maiuscolo); altrimenti resta com'era (docs/api.md).
-        String nomeStampaCopia = origine.nomeStampa() != null && origine.nomeStampa().equals(origine.nome().toUpperCase(Locale.ITALY))
-                ? nomeCopia.toUpperCase(Locale.ITALY) : origine.nomeStampa();
-        ProdottoDto dtoCopia = new ProdottoDto(null, nomeCopia, nomeStampaCopia, origine.etichetta(), origine.ingredienti(),
-                origine.allergeni(), origine.modoUso(), origine.giorniScadenza(), origine.conservazione(), origine.quantita(),
-                origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null);
-        Prodotto copia = new Prodotto(nomeCopia);
+        ProdottoDto dtoCopia = bozzaDiCopia(origine);
+        Prodotto copia = new Prodotto(dtoCopia.nome());
         conversioni.applicaCampi(copia, dtoCopia);
         Prodotto salvata = prodotti.save(copia);
         tracciatiService.duplica(id, salvata.getId());
@@ -131,6 +145,20 @@ public class ProdottiController {
     }
 
     // ---------------------------------------------------------------------------------------
+
+    /**
+     * La copia di un prodotto, senza id e senza storia: nome + " (copia)", usi 0, ultimoUso null. Se
+     * nomeStampa era uguale al nome in maiuscolo la copia lo segue (nuovo nome in maiuscolo), altrimenti
+     * resta com'era (docs/api.md). Una sola regola per {@code POST /{id}/duplica} e {@code GET /{id}/copia}.
+     */
+    private static ProdottoDto bozzaDiCopia(ProdottoDto origine) {
+        String nomeCopia = origine.nome() + " (copia)";
+        String nomeStampaCopia = origine.nomeStampa() != null && origine.nomeStampa().equals(origine.nome().toUpperCase(Locale.ITALY))
+                ? nomeCopia.toUpperCase(Locale.ITALY) : origine.nomeStampa();
+        return new ProdottoDto(null, nomeCopia, nomeStampaCopia, origine.etichetta(), origine.ingredienti(),
+                origine.allergeni(), origine.modoUso(), origine.giorniScadenza(), origine.conservazione(), origine.quantita(),
+                origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null, List.of(), origine.porzioni());
+    }
 
     private Prodotto trova(Long id) {
         return prodotti.findById(id)

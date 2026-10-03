@@ -154,6 +154,21 @@ export function IconaAllarme({ larghezza, spessoreTratto, className }: Proprieta
   );
 }
 
+// Un cerchio col punto esclamativo: «attenzione, e' andata diversamente dal
+// previsto» senza essere ne' un errore (IconaAllarme, il triangolo rosso) ne'
+// un successo (IconaSpunta). Per esempio «Serie fermata»: l'icona verde con la
+// spunta di «Stampate» diceva la stessa cosa di una serie portata a termine
+// (prove con utenti, 2 ottobre 2026). Colorata in ambra da chi la usa.
+export function IconaAvviso({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5.5" />
+      <circle cx="12" cy="16.5" r=".6" fill="currentColor" />
+    </IconaBase>
+  );
+}
+
 export function IconaSpunta({ larghezza, spessoreTratto, className }: ProprietaIcona) {
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
@@ -211,21 +226,21 @@ export function IconaMonitor({ larghezza, spessoreTratto, className }: Proprieta
   );
 }
 
+// L'icona giusta per un dispositivo collegato, dal "tipo" che dice il servizio
+// ("pc", "telefono", "tablet"): prima il PC aveva l'icona di un telefono
+// (Impostazioni). Un tipo sconosciuto e' un telefono, come prima.
+export function IconaDispositivo({ tipo, larghezza, spessoreTratto, className }: ProprietaIcona & { tipo: string | undefined }) {
+  const t = (tipo ?? "").toLowerCase();
+  if (t === "pc") return <IconaMonitor larghezza={larghezza} spessoreTratto={spessoreTratto} className={className} />;
+  if (t === "tablet") return <IconaTablet larghezza={larghezza} spessoreTratto={spessoreTratto} className={className} />;
+  return <IconaTelefono larghezza={larghezza} spessoreTratto={spessoreTratto} className={className} />;
+}
+
 export function IconaCerca({ larghezza, spessoreTratto, className }: ProprietaIcona) {
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-4-4" />
-    </IconaBase>
-  );
-}
-
-export function IconaLente({ larghezza, spessoreTratto, className }: ProprietaIcona) {
-  return (
-    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="M21 21l-4.5-4.5" />
-      <path d="M8 11h6M11 8v6" />
     </IconaBase>
   );
 }
@@ -259,6 +274,26 @@ export function IconaPiu({ larghezza, spessoreTratto, className }: ProprietaIcon
   return (
     <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
       <path d="M12 5v14M5 12h14" />
+    </IconaBase>
+  );
+}
+
+// Righe di testo, l'ultima piu' corta: «Contenuto» nei segmenti dell'editor
+// Etichette sul telefono (SegmentiModalita.tsx).
+export function IconaContenuto({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </IconaBase>
+  );
+}
+
+// Due blocchi impilati: «Struttura» nei segmenti dell'editor Etichette.
+export function IconaBlocchi({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="4" y="4" width="16" height="7" rx="2" />
+      <rect x="4" y="13" width="16" height="7" rx="2" />
     </IconaBase>
   );
 }
@@ -316,6 +351,33 @@ export function IconaCestino({ larghezza, spessoreTratto, className }: Proprieta
       <path d="M10 11v6M14 11v6" />
       <path d="M6 7l1 13h10l1-13" />
       <path d="M9 7V4h6v3" />
+    </IconaBase>
+  );
+}
+
+export function IconaCartella({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </IconaBase>
+  );
+}
+
+export function IconaDisco({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M5 13l2.5-8h9L19 13" />
+      <path d="M7 16.5h.01M11 16.5h4" />
+    </IconaBase>
+  );
+}
+
+export function IconaSu({ larghezza, spessoreTratto, className }: ProprietaIcona) {
+  return (
+    <IconaBase larghezza={larghezza} spessoreTratto={spessoreTratto} className={className}>
+      <path d="M12 19V5" />
+      <path d="M5 12l7-7 7 7" />
     </IconaBase>
   );
 }

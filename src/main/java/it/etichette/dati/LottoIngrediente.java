@@ -87,6 +87,11 @@ public class LottoIngrediente {
         return codice;
     }
 
+    /** {@code PUT /api/lotti-ingrediente/{id}}: il codice corretto a mano (docs/api.md); {@code null} = senza codice proprio. */
+    public void setCodice(String codice) {
+        this.codice = codice;
+    }
+
     public String getScadenza() {
         return scadenza;
     }
@@ -99,6 +104,11 @@ public class LottoIngrediente {
         return quantita;
     }
 
+    /** {@code PUT /api/lotti-ingrediente/{id}}: la quantita' corretta a mano (docs/api.md). */
+    public void setQuantita(String quantita) {
+        this.quantita = quantita;
+    }
+
     public String getStato() {
         return stato;
     }
@@ -107,8 +117,18 @@ public class LottoIngrediente {
         return arrivoId;
     }
 
+    /** {@code PUT /api/lotti-ingrediente/{id}}: fornitore o data corretti su una consegna con altri lotti, il lotto passa a una consegna sua. */
+    public void setArrivoId(Long arrivoId) {
+        this.arrivoId = arrivoId;
+    }
+
     public String getApertoDal() {
         return apertoDal;
+    }
+
+    /** Segue la data di arrivo quando questa si corregge (nasce uguale ad essa). */
+    public void setApertoDal(String apertoDal) {
+        this.apertoDal = apertoDal;
     }
 
     public String getChiusoIl() {

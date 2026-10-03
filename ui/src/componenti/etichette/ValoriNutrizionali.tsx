@@ -1,19 +1,24 @@
 import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "react";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconaCestino, IconaManiglia, IconaPiu } from "../Icone";
 import { nuovaChiave, type ValoreBozza } from "./bozza";
+import { ACCESSIBILITA_VALORI } from "./sensoriRiordino";
 
 function RigaValore({
   valore,
   segnaposto,
+  senzaValore,
   onCambiaVoce,
   onCambiaValore,
   onRimuovi,
 }: {
   valore: ValoreBozza;
   segnaposto: string;
+  // La voce c'e' ma il valore no, mentre altre righe ce l'hanno: sull'etichetta
+  // questa riga non uscira' (RenditoreEtichetta la omette), e lo si dice sotto.
+  senzaValore: boolean;
   onCambiaVoce: (chiave: string, testo: string) => void;
   onCambiaValore: (chiave: string, testo: string) => void;
   onRimuovi: (chiave: string) => void;
@@ -45,10 +50,10 @@ function RigaValore({
       className={"flex flex-wrap items-center gap-2 min-h-[38px] px-1.5 py-1 border-b border-[var(--riga)] text-[13px]" + (isDragging ? " opacity-40" : "")}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1 max-[860px]:basis-full">
-        <span className="maniglia" {...attributes} {...listeners} aria-label={`Trascina per riordinare ${valore.voce || "la voce"}`}>
+        <span className="maniglia" {...attributes} {...listeners} aria-label={`Riordina ${valore.voce || "la voce"}: trascina, oppure Invio e frecce su e giù`}>
           <IconaManiglia larghezza={14} spessoreTratto={1.5} />
         </span>
-        <input value={valore.voce} onChange={cambiaVoce} placeholder="Voce (es. Grassi)" aria-label="Voce" className="flex-1 min-w-0" />
+        <input value={valore.voce} onChange={cambiaVoce} placeholder="Voce (es. Grassi)" aria-label={`Nome della voce ${valore.voce}`.trim()} className="flex-1 min-w-0" />
         <button type="button" className="cestino soloTel" onClick={rimuovi} title={`Togli ${valore.voce || "la voce"}`} aria-label={`Togli ${valore.voce || "la voce"}`}>
           <IconaCestino larghezza={14} spessoreTratto={2} />
         </button>
@@ -57,12 +62,13 @@ function RigaValore({
         value={valore.valore}
         onChange={cambiaValoreCampo}
         placeholder={segnaposto}
-        aria-label="Valore"
-        className="w-[110px] h-6 border border-[var(--bordo2)] rounded-md bg-white text-right px-1.5 text-[12.5px] font-bold max-[860px]:ml-[22px]"
+        aria-label={`Valore di ${valore.voce || "questa voce"}`}
+        className="w-[160px] h-6 border border-[var(--bordocampo)] rounded-md bg-white text-right px-1.5 text-[12.5px] font-bold max-[860px]:ml-[22px] max-[860px]:h-10 max-[860px]:text-[16px]"
       />
       <button type="button" className="cestino soloPC" onClick={rimuovi} title={`Togli ${valore.voce || "la voce"}`} aria-label={`Togli ${valore.voce || "la voce"}`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
+      {senzaValore && <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--spento)]">senza valore: non verrà stampata</div>}
     </div>
   );
 }
@@ -78,25 +84,34 @@ interface ProprietaValoriNutrizionali {
 // campo valore suggerisce l'unita'; una voce vuota il servizio la salva ma
 // non la stampa (RenditoreEtichetta), quindi non compare nell'anteprima
 // finche' non ha un valore.
-const VOCI_PRECARICATE: { voce: string; unita: string }[] = [
-  { voce: "Energia", unita: "kJ / kcal" },
-  { voce: "Grassi", unita: "g" },
-  { voce: "di cui acidi grassi saturi", unita: "g" },
-  { voce: "Carboidrati", unita: "g" },
-  { voce: "di cui zuccheri", unita: "g" },
-  { voce: "Proteine", unita: "g" },
-  { voce: "Sale", unita: "g" },
+const VOCI_PRECARICATE: { voce: string; esempio: string }[] = [
+  { voce: "Energia", esempio: "es. 1050 kJ / 250 kcal" },
+  { voce: "Grassi", esempio: "es. 4,1 g" },
+  { voce: "di cui acidi grassi saturi", esempio: "es. 1,5 g" },
+  { voce: "Carboidrati", esempio: "es. 35 g" },
+  { voce: "di cui zuccheri", esempio: "es. 2,2 g" },
+  { voce: "Proteine", esempio: "es. 7 g" },
+  { voce: "Sale", esempio: "es. 0,8 g" },
 ];
+// Il segnaposto e' sempre un ESEMPIO scritto come tale («es. …»): prima era il
+// solo «g» grigio, che faceva credere che l'unita' fosse gia' scritta (prove
+// con utenti simulati, 2 ottobre 2026). Sull'etichetta un numero puro prende
+// comunque l'unita' giusta (RenditoreEtichetta#valoreNutrizionaleDaStampare),
+// l'energia no: per quella si scrivono kJ e kcal.
 function segnapostoValore(voce: string): string {
   const v = voce.trim().toLowerCase();
-  return VOCI_PRECARICATE.find((p) => p.voce.toLowerCase() === v)?.unita ?? "0 g";
+  return VOCI_PRECARICATE.find((p) => p.voce.toLowerCase() === v)?.esempio ?? "es. 0,5 g";
 }
 
 // La tabella dei valori nutrizionali della scheda prodotto: si scrivono, si
 // riordinano trascinando e si possono aggiungere voci fuori dalle otto
 // obbligatorie (funzionalita-prima-versione.md).
 export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValoriNutrizionali) {
-  const sensori = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Anche la tastiera (Invio sulla maniglia, frecce, Invio): prima il riordino era solo col mouse.
+  const sensori = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Il precarico e' SOLO visivo finche' non si scrive niente: se "valori" e'
   // ancora vuoto si mostrano le sette voci principali (righeMostrate), ma
@@ -108,6 +123,9 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
   const righeMostrate: ValoreBozza[] = vuoto
     ? VOCI_PRECARICATE.map((v) => ({ chiave: `precarico-${v.voce}`, voce: v.voce, valore: "" }))
     : valori;
+  // Una riga con la voce e senza valore non esce sull'etichetta: lo si dice, ma solo quando
+  // qualche altra riga ha un valore (a tabella tutta vuota sarebbe un avviso su ogni riga).
+  const qualcunoHaIlValore = righeMostrate.some((v) => v.valore.trim() !== "");
 
   const cambiaVoce = useCallback(
     (chiave: string, voce: string) => onCambia(righeMostrate.map((v) => (v.chiave === chiave ? { ...v, voce } : v))),
@@ -145,14 +163,18 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
           Aggiungi voce
         </button>
       </div>
+      <div className="text-[12px] leading-snug text-[var(--tenue)]">
+        Scrivi il numero: sull&apos;etichetta aggiungo io il «g». Per l&apos;energia scrivi anche kJ e kcal. La virgola è quella italiana (4,1). Le righe senza valore non vengono stampate.
+      </div>
       <div className="scheda overflow-hidden">
-        <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento}>
+        <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_VALORI}>
           <SortableContext items={righeMostrate.map((v) => v.chiave)} strategy={verticalListSortingStrategy}>
             {righeMostrate.map((v) => (
               <RigaValore
                 key={v.chiave}
                 valore={v}
                 segnaposto={segnapostoValore(v.voce)}
+                senzaValore={qualcunoHaIlValore && v.voce.trim() !== "" && v.valore.trim() === ""}
                 onCambiaVoce={cambiaVoce}
                 onCambiaValore={cambiaValore}
                 onRimuovi={rimuovi}

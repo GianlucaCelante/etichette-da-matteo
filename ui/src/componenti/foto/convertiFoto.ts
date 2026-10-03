@@ -23,9 +23,22 @@
 const LATO_MASSIMO_PX = 2000;
 const QUALITA_JPEG = 0.85;
 
+// Safari prima del 17 non conosce il valore "from-image" e risponde con un
+// TypeError: si riprova senza opzioni (li' l'orientamento EXIF lo applica gia'
+// da solo il decodificatore), invece di mandare la foto originale, magari da
+// 10 MB, che il servizio rifiuterebbe.
+async function decodifica(file: File): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch (errore) {
+    if (errore instanceof TypeError) return createImageBitmap(file);
+    throw errore;
+  }
+}
+
 export async function convertiInJpeg(file: File): Promise<File> {
   try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const bitmap = await decodifica(file);
     try {
       const scala = Math.min(1, LATO_MASSIMO_PX / Math.max(bitmap.width, bitmap.height));
       const larghezza = Math.round(bitmap.width * scala);

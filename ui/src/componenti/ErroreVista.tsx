@@ -40,13 +40,13 @@ export default class ErroreVista extends Component<Proprieta, Stato> {
     if (!errore) return this.props.children;
     return (
       <div className="schermo">
-        <div className="avviso self-start">
+        <div className="avviso self-start" role="alert">
           <span className="flex-shrink-0">
             <IconaAllarme larghezza={22} spessoreTratto={2} />
           </span>
           <div>
             <div className="text-[16px] font-bold text-[var(--rossocupo)]">Qualcosa è andato storto in questa schermata.</div>
-            <div className="text-[12.5px] leading-snug mt-1 mono opacity-80">{errore.message || String(errore)}</div>
+            <div className="text-[12.5px] leading-snug mt-1 mono">{errore.message || String(errore)}</div>
             <button type="button" className="btn mt-3" onClick={this.ricarica}>
               <IconaCercaDiNuovo larghezza={17} spessoreTratto={2} />
               <span>Ricarica la pagina</span>

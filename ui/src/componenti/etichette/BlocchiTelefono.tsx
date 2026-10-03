@@ -1,24 +1,34 @@
-import { useCallback, useState, type ReactNode } from "react";
-import type { AllineamentoBlocco, ColonnaBlocco, TipoBlocco } from "../../api/tipi";
-import { IconaPiu } from "../Icone";
+import { useCallback, type ReactNode, type RefObject } from "react";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { NOMIBLOCCO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
+import { useAvviso } from "../../hooks/useAvviso";
 import type { BloccoBozza } from "./bozza";
-import { nuovaChiave } from "./bozza";
-import { corpoIniziale } from "./corpoBlocco";
-import { PannelloTavolozza } from "./BlocchiEditor";
+import { numeroDelTesto } from "./corpoBlocco";
+import { spostaBlocco } from "./riordino";
+import { ACCESSIBILITA_RIORDINO_BLOCCHI, AUTOSCROLL_RIORDINO, useSensoriRiordino } from "./sensoriRiordino";
 import RigaBloccoTelefono from "./RigaBloccoTelefono";
 
 interface ProprietaBlocchiTelefono {
   blocchi: BloccoBozza[];
   onCambiaBlocchi: (nuovi: BloccoBozza[]) => void;
+  // Il blocco appena aggiunto dal foglio «Aggiungi un blocco» (useBloccoNuovo,
+  // in Etichette.tsx): il vassoio gli mette il ref e ne fa lampeggiare la riga.
+  rifVassoio: RefObject<HTMLDivElement | null>;
+  chiaveNuova: string | null;
 }
 
-// Il vassoio dei blocchi sul telefono (revisione di questo giro): stesso
-// elenco e stessa tavolozza per aggiungerne di nuovi del vassoio PC
-// (BlocchiEditor.tsx), ma righe semplificate (RigaBloccoTelefono) e senza
-// trascinamento: l'ordine resta un affare da PC, ma la colonna sx/dx si puo'
-// cambiare anche qui (10 settembre, i tre bottoni della posizione).
-export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaBlocchiTelefono) {
-  const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
+// Il vassoio dei blocchi sul telefono, la modalita' «Struttura» dell'editor
+// Etichette (Etichette.tsx, SegmentiModalita.tsx): stesso elenco del vassoio
+// PC (BlocchiEditor.tsx), ma righe semplificate (RigaBloccoTelefono). In cima
+// una nota tenue; per aggiungere un blocco c'e' «+ Blocco» accanto ai segmenti
+// (SegmentiModalita.tsx, foglio dal basso: deciso il 30/09/2026, il tasto in
+// cima alla lista non piaceva). L'ordine si cambia tenendo premuto su una riga e trascinando (pressione lunga, vedi
+// sensoriRiordino.ts); la colonna sx/dx anche qui (10 settembre, i tre
+// bottoni della posizione).
+export default function BlocchiTelefono({ blocchi, onCambiaBlocchi, rifVassoio, chiaveNuova }: ProprietaBlocchiTelefono) {
+  const sensori = useSensoriRiordino();
+  const avvisa = useAvviso();
 
   const onToggleAcceso = useCallback(
     (chiave: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, acceso: !b.acceso } : b))),
@@ -40,17 +50,28 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
     [blocchi, onCambiaBlocchi],
   );
 
-  const aggiungiBlocco = useCallback(
-    (tipo: TipoBlocco) => {
-      const nuovo: BloccoBozza = { chiave: nuovaChiave(), tipo, acceso: true, corpo: corpoIniziale(tipo), colonna: "piena" };
-      if (tipo === "testo" || tipo === "testoGrande") nuovo.testo = "";
-      onCambiaBlocchi([...blocchi, nuovo]);
-      setTavolozzaAperta(false);
-    },
+  const onCambiaGrassetto = useCallback(
+    (chiave: string, grassetto: boolean) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, grassetto } : b))),
     [blocchi, onCambiaBlocchi],
   );
 
-  const apriChiudiTavolozza = useCallback(() => setTavolozzaAperta((a) => !a), []);
+  const fineTrascinamento = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      if (!over || active.id === over.id) return;
+      const da = blocchi.findIndex((b) => b.chiave === active.id);
+      const a = blocchi.findIndex((b) => b.chiave === over.id);
+      if (da < 0 || a < 0) return;
+      // Un blocco a tutta larghezza non spezza mai un gruppo «due colonne» (riordino.ts).
+      const esito = spostaBlocco(blocchi, da, a);
+      if (esito.nuovi === blocchi) return;
+      onCambiaBlocchi(esito.nuovi);
+      const spostato = blocchi[da];
+      if (esito.fuoriDalGruppo && spostato) {
+        avvisa(`${NOMIBLOCCO[spostato.tipo]} è finito ${esito.fuoriDalGruppo} le due colonne, che restano unite.`);
+      }
+    },
+    [blocchi, onCambiaBlocchi, avvisa],
+  );
 
   // Stesso riquadro verde del PC per la zona sx/dx (BlocchiEditor.tsx), ma
   // senza intestazione: qui l'ordine e la colonna sono gia' decisi al PC, il
@@ -76,6 +97,9 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
         onCambiaColonna={onCambiaColonna}
         onRimuovi={onRimuovi}
         onCambiaAllineamento={onCambiaAllineamento}
+        onCambiaGrassetto={onCambiaGrassetto}
+        nuovo={b.chiave === chiaveNuova}
+        numero={numeroDelTesto(blocchi, b.chiave)}
       />
     );
     if (b.colonna === "piena") {
@@ -89,13 +113,12 @@ export default function BlocchiTelefono({ blocchi, onCambiaBlocchi }: ProprietaB
   chiudiGruppo();
 
   return (
-    <div className="vassoio">
-      {nodi}
-      <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
-        <IconaPiu larghezza={20} spessoreTratto={2.2} />
-        <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi un blocco"}</span>
-      </button>
-      {tavolozzaAperta && <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />}
+    <div className="vassoio" ref={rifVassoio}>
+      <DndContext sensors={sensori} autoScroll={AUTOSCROLL_RIORDINO} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_RIORDINO_BLOCCHI}>
+        <SortableContext items={blocchi.map((b) => b.chiave)} strategy={verticalListSortingStrategy}>
+          {nodi}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }

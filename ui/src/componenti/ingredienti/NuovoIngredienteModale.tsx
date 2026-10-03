@@ -108,10 +108,10 @@ export default function NuovoIngredienteModale({
 
   const piede = (
     <>
-      <button type="button" className="btn" onClick={onChiudi}>
+      <button type="button" className="btn piccoloTel" onClick={onChiudi}>
         Annulla
       </button>
-      <button type="button" className="btn primario" onClick={crea} disabled={creaIngrediente.isPending}>
+      <button type="button" className="btn primario piccoloTel" onClick={crea} disabled={creaIngrediente.isPending}>
         Crea
       </button>
     </>

@@ -294,4 +294,32 @@ class ResaApiTest {
                 .andExpect(jsonPath("$.etichetta.blocchi[2].tipo").value("valori"))
                 .andExpect(jsonPath("$.etichetta.blocchi[2].colonna").value("dx"));
     }
+
+    /**
+     * Etichetta oltre i 500 mm (2 ottobre 2026, prove con utenti simulati: il fondo veniva tagliato in
+     * silenzio): le misure lo dichiarano con {@code troncata: true} e con l'avviso in italiano
+     * semplice, cosi' l'anteprima puo' dirlo davanti all'etichetta. Una normale non e' troncata.
+     */
+    @Test
+    void lemisureDichiaranoLaTroncaturaOltreI500mm() throws Exception {
+        String lungo = "acqua farina sale ".repeat(2500);
+        String corpo = "{\"rotolo\":62,\"prodotto\":{\"nome\":\"Troppo lunga\",\"nomeStampa\":\"TROPPO LUNGA\",\"ingredienti\":\"" + lungo
+                + "\",\"etichetta\":{\"blocchi\":[{\"tipo\":\"ingredienti\",\"acceso\":true,\"corpo\":8,\"colonna\":\"piena\"}]}}}";
+
+        mockMvc.perform(post("/api/resa/anteprima/misure").contentType("application/json").content(corpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.altezzaMm").value(500.0))
+                .andExpect(jsonPath("$.troncata").value(true))
+                .andExpect(jsonPath("$.avvisi[0]").value("Questa etichetta è più lunga di 500 mm: il fondo verrà tagliato"));
+    }
+
+    @Test
+    void unaEtichettaNormaleNonEDichiarataTroncata() throws Exception {
+        mockMvc.perform(get("/api/resa/prodotti/1/misure").param("rotolo", "62"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.troncata").value(false));
+        mockMvc.perform(post("/api/resa/anteprima/misure").contentType("application/json").content("{\"prodottoId\": 1, \"rotolo\": 62}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.troncata").value(false));
+    }
 }

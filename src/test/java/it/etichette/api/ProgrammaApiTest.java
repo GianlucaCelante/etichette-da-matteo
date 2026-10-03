@@ -60,6 +60,24 @@ class ProgrammaApiTest {
     }
 
     @Test
+    void esploratoreDiCartelleRispondeUnitaESottocartelle() throws Exception {
+        Files.createDirectories(cartellaDati.resolve("esplora").resolve("dentro"));
+
+        mockMvc.perform(get("/api/programma/cartelle"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.percorso").doesNotExist())
+                .andExpect(jsonPath("$.radici").isNotEmpty());
+
+        mockMvc.perform(get("/api/programma/cartelle").param("percorso", cartellaDati.resolve("esplora").toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cartelle[0].nome").value("dentro"))
+                .andExpect(jsonPath("$.genitore").value(cartellaDati.toString()));
+
+        mockMvc.perform(get("/api/programma/cartelle").param("percorso", "relativo"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void unaCartellaInesistenteRispondeErrore() throws Exception {
         Path inesistente = cartellaDati.resolve("non-esiste-" + System.nanoTime());
 

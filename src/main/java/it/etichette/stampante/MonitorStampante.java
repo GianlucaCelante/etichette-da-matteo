@@ -72,6 +72,10 @@ public class MonitorStampante {
     private static final int SOGLIA_NON_RISPONDE = 3;
     private static final int SOGLIA_VERIFICA_DISPOSITIVO = 5;
     private static final String MESSAGGIO_NON_RISPONDE = "La stampante non risponde: controlla coperchio e rotolo";
+    /** Evento "in pausa" (senza domanda) appena il coperchio e' richiuso: la copia interrotta ripartira' da sola. */
+    static final String MESSAGGIO_RIPRESA_COPERCHIO = "Coperchio chiuso: la stampa riprende da sola fra pochi secondi";
+    /** Evento "in pausa" (senza domanda) quando si e' deciso di rifare la copia interrotta dopo un problema di nastro. */
+    static final String MESSAGGIO_RIPRESA_NASTRO = "Ristampo la copia interrotta fra pochi secondi";
 
     private final RicercaPorta ricerca;
     private final Porta porta;
@@ -734,6 +738,11 @@ public class MonitorStampante {
         if (esitoAttesa != null) {
             return esitoAttesa;
         }
+        // Fra la chiusura del coperchio e la copia rimandata passano ~10 s (ascolto di 5 s,
+        // espulsione del pezzo rovinato): prima il pannello restava fermo su «Coperchio aperto»
+        // per tutto quel tempo, con la stampante gia' a posto (V12, prove con utenti del
+        // 2/10/2026). Ora lo si dice subito.
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, MESSAGGIO_RIPRESA_COPERCHIO);
         EsitoCopia esitoAscolto = ascoltaRistampaAutomatica(lavoro);
         if (esitoAscolto != null) {
             return esitoAscolto;
@@ -810,7 +819,7 @@ public class MonitorStampante {
                 if (esitoAttesaPulita != null) {
                     return esitoAttesaPulita; // annullato, o davvero scollegata
                 }
-                EsitoCopia esitoDecisione = attendiDecisioneOTornaInErrore(lavoro);
+                EsitoCopia esitoDecisione = attendiDecisioneOTornaInErrore(lavoro, messaggio);
                 if (esitoDecisione != null) {
                     return esitoDecisione;
                 }
@@ -830,8 +839,13 @@ public class MonitorStampante {
      * errore. Null = tornata in errore (la chiamante ricomincia dall'attesa dello stato pulito);
      * altrimenti l'esito finale (applicata la decisione, annullato, o errore IO).
      */
-    private EsitoCopia attendiDecisioneOTornaInErrore(LavoroStampa lavoro) {
+    private EsitoCopia attendiDecisioneOTornaInErrore(LavoroStampa lavoro, String messaggioDomanda) {
         long inizio = System.nanoTime();
+        // La stampante e' appena tornata pulita: da qui partono i secondi della ristampa
+        // automatica. Lo si dice a chi guarda (conto alla rovescia sul pannello, prove con utenti
+        // del 2/10/2026: la ristampa partiva «da sola» dopo un minuto senza alcun preavviso).
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, messaggioDomanda, EventoStampa.DOMANDA_NASTRO,
+                (int) Math.ceil(attesaDecisioneNastroMs / 1000.0));
         while (true) {
             if (lavoro.annullato.get()) {
                 log.info("Lavoro {}: annullato mentre aspettava una decisione sul nastro.", lavoro.id);
@@ -885,6 +899,9 @@ public class MonitorStampante {
         }
         log.info("Lavoro {}: ristampa la copia {} di {} dopo il problema di nastro.",
                 lavoro.id, lavoro.copiaCorrente + 1, lavoro.copieTotali);
+        // La domanda e' chiusa (risposta o minuto scaduto): fino alla copia rimandata passano
+        // alcuni secondi (ascolto, espulsione), il pannello non deve restare sulla domanda.
+        pubblicaProgresso(lavoro, EventoStampa.IN_PAUSA, MESSAGGIO_RIPRESA_NASTRO);
         EsitoCopia esitoAscolto = ascoltaRistampaAutomatica(lavoro);
         if (esitoAscolto != null) {
             return esitoAscolto;
@@ -1127,8 +1144,23 @@ public class MonitorStampante {
 
     /** Come sopra, con {@code domanda} (docs/api.md, "Errore di nastro a meta' copia") - null in tutti i casi tranne l'attesa di una decisione sul nastro. */
     private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio, String domanda) {
-        int copiaMostrata = lavoro.copiaCorrente + (EventoStampa.IN_CORSO.equals(stato) ? 1 : 0);
-        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio, lavoro.prova, domanda));
+        pubblicaProgresso(lavoro, stato, messaggio, domanda, null);
+    }
+
+    /**
+     * Come sopra, con i secondi che mancano alla ristampa automatica (solo per l'evento "in pausa"
+     * con domanda "nastro" pubblicato quando la stampante torna pulita, vedi {@link
+     * #attendiDecisioneOTornaInErrore}). {@code copiaCorrente} di un evento "in corso" o "in pausa"
+     * e' la copia IN LAVORAZIONE, contata da 1 (gli esiti finali portano invece le copie uscite):
+     * prima "in pausa" pubblicava le copie gia' uscite, e la domanda sul nastro citava la copia
+     * sbagliata, sfasata di uno («copia 2 di 6» per un errore sulla terza, «copia 0 di 3» per la
+     * prima - prove con utenti del 2/10/2026).
+     */
+    private void pubblicaProgresso(LavoroStampa lavoro, String stato, String messaggio, String domanda, Integer secondiAllaRistampa) {
+        boolean inLavorazione = EventoStampa.IN_CORSO.equals(stato) || EventoStampa.IN_PAUSA.equals(stato);
+        int copiaMostrata = lavoro.copiaCorrente + (inLavorazione ? 1 : 0);
+        eventi.publishEvent(new EventoStampa(lavoro.id, copiaMostrata, lavoro.copieTotali, stato, messaggio, lavoro.prova, domanda,
+                secondiAllaRistampa));
     }
 
     private static long msTrascorsi(long t0Nanos) {

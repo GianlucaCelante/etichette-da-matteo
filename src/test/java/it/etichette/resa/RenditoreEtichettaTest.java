@@ -311,7 +311,7 @@ class RenditoreEtichettaTest {
 
         RisultatoResa r = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
 
-        assertThat(r.avvisi()).contains("Il contenuto non sta in 500 mm di nastro: riduci i corpi o spegni dei blocchi");
+        assertThat(r.avvisi()).contains("Questa etichetta è più lunga di 500 mm: il fondo verrà tagliato");
         assertThat(r.lungoIlNastro()).isFalse();
         assertThat(r.immagine().getWidth()).isEqualTo(ProtocolloQl.ROTOLI_CONTINUI.get(62)[1]);
         assertThat(r.immagine().getHeight()).isEqualTo(ProtocolloQl.mmInDot(500));
@@ -875,28 +875,29 @@ class RenditoreEtichettaTest {
     // ---------------------------------------------------------------------------------------
 
     /**
-     * Dal 25/09/2026 "quantita" disegna ESATTAMENTE come un "testoGrande" con lo stesso testo:
-     * un solo paragrafo in grassetto al corpo del blocco, senza nessuna riga sopra. Verificato per
+     * Dal 25/09/2026 "quantita" disegna ESATTAMENTE come un "testo" in grassetto con lo stesso testo
+     * (all'epoca era il "testoGrande", sparito il 29/09/2026 in favore di "testo" + grassetto): un
+     * solo paragrafo in grassetto al corpo del blocco, senza nessuna riga sopra. Verificato per
      * uguaglianza byte-per-byte dei due PNG, non solo "ci sono pixel neri": prima di questo cambio
      * "quantita" occupava sempre un po' piu' spazio verticale (la riga "Quantità" a corpo 8).
      */
     @Test
-    void ilBloccoQuantitaStampaSoloIlValoreComeUnTestoGrande() throws Exception {
+    void ilBloccoQuantitaStampaSoloIlValoreComeUnTestoInGrassetto() throws Exception {
         List<BloccoDto> bloccoQuantita = List.of(new BloccoDto("quantita", true, 28, "piena", null));
         EtichettaProdottoDto etichettaQuantita = new EtichettaProdottoDto(null, null, null, null, bloccoQuantita);
         ProdottoDto prodottoQuantita = new ProdottoDto(1L, "Prodotto", null, etichettaQuantita, null, List.of(), null,
                 null, null, "2148 g", List.of(), null, 0, null, null, null);
 
-        List<BloccoDto> bloccoTestoGrande = List.of(new BloccoDto("testoGrande", true, 28, "piena", "2148 g"));
-        EtichettaProdottoDto etichettaTestoGrande = new EtichettaProdottoDto(null, null, null, null, bloccoTestoGrande);
-        ProdottoDto prodottoTestoGrande = new ProdottoDto(1L, "Prodotto", null, etichettaTestoGrande, null, List.of(),
+        List<BloccoDto> bloccoTestoInGrassetto = List.of(new BloccoDto("testo", true, 28, "piena", "2148 g", null, true));
+        EtichettaProdottoDto etichettaTestoInGrassetto = new EtichettaProdottoDto(null, null, null, null, bloccoTestoInGrassetto);
+        ProdottoDto prodottoTestoInGrassetto = new ProdottoDto(1L, "Prodotto", null, etichettaTestoInGrassetto, null, List.of(),
                 null, null, null, null, List.of(), null, 0, null, null, null);
 
         RisultatoResa rQuantita = renderer.rendi(prodottoQuantita, ParametriStampa.VUOTI, 102, 1.0);
-        RisultatoResa rTestoGrande = renderer.rendi(prodottoTestoGrande, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa rTestoInGrassetto = renderer.rendi(prodottoTestoInGrassetto, ParametriStampa.VUOTI, 102, 1.0);
 
         assertThat(contienePixelNeri(rQuantita.immagine())).isTrue();
-        assertThat(pngBytes(rQuantita.immagine())).isEqualTo(pngBytes(rTestoGrande.immagine()));
+        assertThat(pngBytes(rQuantita.immagine())).isEqualTo(pngBytes(rTestoInGrassetto.immagine()));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1029,14 +1030,14 @@ class RenditoreEtichettaTest {
 
     /**
      * Testo centrato: i margini sinistro e destro dell'inchiostro sono uguali entro pochi punti.
-     * Usa "testoGrande" invece di "titolo" apposta: il titolo disegna anche un filetto sottostante
+     * Usa "testo" invece di "titolo" apposta: il titolo disegna anche un filetto sottostante
      * a TUTTA larghezza (indipendente dall'allineamento del testo), che confonderebbe la misura
-     * dei margini dell'inchiostro - "testoGrande" passa dallo stesso {@code disegnaParagrafo}/
+     * dei margini dell'inchiostro - "testo" passa dallo stesso {@code disegnaParagrafo}/
      * {@code xAllineata} del titolo, senza quella complicazione.
      */
     @Test
     void unTestoCentratoHaMarginiSinistroEDestroUgualiEntroPochiPunti() {
-        List<BloccoDto> blocchi = List.of(new BloccoDto("testoGrande", true, 24, "piena", "CENTRATO", "centro"));
+        List<BloccoDto> blocchi = List.of(new BloccoDto("testo", true, 24, "piena", "CENTRATO", "centro"));
         EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
         ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
                 List.of(), null, 0, null, null, null);
@@ -1053,7 +1054,7 @@ class RenditoreEtichettaTest {
     /** Testo a destra: il margine destro dell'inchiostro coincide col margine del blocco (1,5 mm). */
     @Test
     void unTestoADestraHaIlMargineDestroPariAlMargineDelBlocco() {
-        List<BloccoDto> blocchi = List.of(new BloccoDto("testoGrande", true, 24, "piena", "DESTRA", "destra"));
+        List<BloccoDto> blocchi = List.of(new BloccoDto("testo", true, 24, "piena", "DESTRA", "destra"));
         EtichettaProdottoDto etichetta = new EtichettaProdottoDto(null, null, null, null, blocchi);
         ProdottoDto prodotto = new ProdottoDto(1L, "Prodotto", null, etichetta, null, List.of(), null, null, null, null,
                 List.of(), null, 0, null, null, null);

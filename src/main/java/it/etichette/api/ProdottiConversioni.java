@@ -41,7 +41,8 @@ public class ProdottiConversioni {
         String ingredienti = p.getIngredienti() != null ? p.getIngredienti() : "";
         return new ProdottoDto(p.getId(), p.getNome(), p.getNomeStampa(), etichetta, ingredienti,
                 allergeni, p.getModoUso(), p.getGiorniScadenza(), p.getConservazione(), p.getQuantita(), valori,
-                p.getSiglaOperatore(), p.getUsi(), p.getUltimoUso(), p.getCreatoIl(), p.getModificatoIl());
+                p.getSiglaOperatore(), p.getUsi(), p.getUltimoUso(), p.getCreatoIl(), p.getModificatoIl(), List.of(),
+                p.getPorzioni());
     }
 
     /** Comportamento di sempre: un {@code etichetta.schemaLotto} mancante prende il default "data" (creazione, duplicazione). */
@@ -63,6 +64,7 @@ public class ProdottiConversioni {
         entita.setGiorniScadenza(dto.giorniScadenza());
         entita.setConservazione(dto.conservazione());
         entita.setQuantita(dto.quantita());
+        entita.setPorzioni(dto.porzioni());
         entita.setValoriNutrizionali(json.scrivi(dto.valoriNutrizionali() != null ? dto.valoriNutrizionali() : List.of()));
         entita.setSiglaOperatore(dto.siglaOperatore());
         entita.setEtichetta(json.scrivi(normalizzaEtichetta(dto.etichetta(), schemaLottoSeAssente, dto.conservazione())));
@@ -101,7 +103,7 @@ public class ProdottiConversioni {
         EtichettaProdottoDto etichetta = dto.etichetta() != null ? dto.etichetta() : etichettaMinima();
         return new ProdottoDto(dto.id(), nome, nomeStampa, etichetta, ingredienti, allergeni, dto.modoUso(),
                 giorniScadenza, conservazione, quantita, valori, dto.siglaOperatore(), dto.usi(), dto.ultimoUso(),
-                dto.creatoIl(), dto.modificatoIl());
+                dto.creatoIl(), dto.modificatoIl(), List.of(), dto.porzioni());
     }
 
     /** Titolo 14, scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2, schema del lotto "data". */
@@ -139,6 +141,14 @@ public class ProdottiConversioni {
      * che li avesse ancora: l'editor non li mostra piu' e, al prossimo salvataggio, spariscono
      * anche dal database (senza bisogno di un intervento manuale sui dati).
      *
+     * <p>Trasforma un blocco "testoGrande" in un blocco "testo" con {@code grassetto: true} (vedi
+     * {@link #testoGrandeInTestoGrassetto}, dal 29/09/2026: il tipo non esiste piu', deciso dal
+     * cliente): stesso corpo/testo/colonna/allineamento/acceso, quindi stesso aspetto di prima. In
+     * SCRITTURA il tipo e' rifiutato prima, con 400 ({@link #validaEtichetta}), come "qr" e "sigla";
+     * qui serve alla LETTURA di un'etichetta salvata prima del cambio - che la migrazione v14 ha
+     * gia' riscritto nel database, questa e' la cintura in piu' (un dato importato, un backup
+     * vecchio rimesso a posto) e non puo' mai andare in errore.
+     *
      * <p>Aggiunge, quando manca, il blocco "conservazione" (vedi {@link
      * #conConservazioneSeManca}, dal 24/09/2026): stesso ragionamento del "qr" sopra, ma al
      * contrario - qui la migrazione serve ANCHE in scrittura (non solo in lettura), perche' senza
@@ -167,11 +177,20 @@ public class ProdottiConversioni {
         // E in scrittura, cosi' un prodotto vecchio non si rompe (niente 400 a una PUT che lo
         // risalvasse senza toccarlo).
         List<BloccoDto> blocchi = e.blocchi() != null
-                ? e.blocchi().stream().filter(b -> !"qr".equals(b.tipo()) && !"sigla".equals(b.tipo())).toList() : List.of();
+                ? e.blocchi().stream().filter(b -> !"qr".equals(b.tipo()) && !"sigla".equals(b.tipo()))
+                        .map(ProdottiConversioni::testoGrandeInTestoGrassetto).toList() : List.of();
         blocchi = conConservazioneSeManca(blocchi, conservazione);
         String schemaLotto = nonVuoto(e.schemaLotto()) ? e.schemaLotto() : schemaLottoSeAssente;
         return new EtichettaProdottoDto(e.dicituraScadenza(), e.formatoData(), schemaLotto, e.produttore(),
                 new ZonaDto(larghezzaDestra), blocchi);
+    }
+
+    /** Un blocco "testoGrande" diventa "testo" in grassetto, tutto il resto identico; ogni altro blocco resta com'e'. */
+    private static BloccoDto testoGrandeInTestoGrassetto(BloccoDto b) {
+        if (!Contratto.TIPO_TESTO_GRANDE_ELIMINATO.equals(b.tipo())) {
+            return b;
+        }
+        return new BloccoDto("testo", b.acceso(), b.corpo(), b.colonna(), b.testo(), b.allineamento(), true);
     }
 
     /**
@@ -200,7 +219,7 @@ public class ProdottiConversioni {
             return blocchi;
         }
         BloccoDto scadenza = blocchi.get(indiceScadenza);
-        BloccoDto nuovo = new BloccoDto("conservazione", scadenza.acceso(), scadenza.corpo(), scadenza.colonna(), null, scadenza.allineamento());
+        BloccoDto nuovo = new BloccoDto("conservazione", scadenza.acceso(), scadenza.corpo(), scadenza.colonna(), null, scadenza.allineamento(), null);
         List<BloccoDto> risultato = new ArrayList<>(blocchi);
         risultato.add(indiceScadenza + 1, nuovo);
         return risultato;
@@ -239,6 +258,10 @@ public class ProdottiConversioni {
             return;
         }
         for (BloccoDto b : etichetta.blocchi()) {
+            if (Contratto.TIPO_TESTO_GRANDE_ELIMINATO.equals(b.tipo())) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST,
+                        "etichetta.blocchi: il tipo «testoGrande» non esiste più: usa «testo» con grassetto: true");
+            }
             if (b.tipo() == null || !Contratto.TIPI_BLOCCO.contains(b.tipo())) {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "etichetta.blocchi: tipo non ammesso: " + b.tipo());
             }

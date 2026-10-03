@@ -19,10 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -31,6 +34,8 @@ import java.util.Set;
  */
 @Component
 public class ArriviService {
+
+    private static final DateTimeFormatter DATA_ITALIANA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final ArrivoRepository arrivi;
     private final LottoIngredienteRepository lottiIngrediente;
@@ -56,9 +61,24 @@ public class ArriviService {
     public record RigaArrivoInput(Long ingredienteId, String lotto, String scadenza, String quantita) {
     }
 
+    /** Come {@link #registra(Long, String, String, String, List, boolean)}, senza «registra comunque»: un doppione si rifiuta con 409. */
     @Transactional
     public ArrivoRisultatoDto registra(Long fornitoreId, String fornitoreNome, String data, String documento,
                                         List<RigaArrivoInput> righe) {
+        return registra(fornitoreId, fornitoreNome, data, documento, righe, false);
+    }
+
+    /**
+     * {@code POST /api/arrivi}. Una consegna identica a una gia' registrata (stesso ingrediente,
+     * stesso fornitore, stessa data di arrivo e stesso codice del lotto - o, senza codice, stesso
+     * documento) e' quasi sempre un doppio inserimento: si risponde {@code 409} con il messaggio e
+     * l'elenco dei doppioni ({@code duplicati}, {@code richiedeConferma}), e non si scrive niente.
+     * Con {@code registraComunque} la si registra lo stesso (due sacchi veri con lo stesso codice).
+     * Una riga senza codice e senza documento non ha nulla che la identifichi: non e' mai un doppione.
+     */
+    @Transactional
+    public ArrivoRisultatoDto registra(Long fornitoreId, String fornitoreNome, String data, String documento,
+                                        List<RigaArrivoInput> righe, boolean registraComunque) {
         if (righe == null || righe.isEmpty()) {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "righe: almeno una e' obbligatoria");
         }
@@ -70,6 +90,11 @@ public class ArriviService {
 
         Fornitore fornitore = fornitori.trovaORisolvi(fornitoreId, fornitoreNome);
         String dataArrivo = (data != null && !data.isBlank() ? leggiData(data, "data") : LocalDate.now()).toString();
+        // Prima di scrivere qualunque cosa (il fornitore appena creato da trovaORisolvi si annulla
+        // con l'eccezione: la transazione e' una sola).
+        if (!registraComunque) {
+            avvisaDoppioni(fornitore, dataArrivo, documento, righe);
+        }
         Arrivo arrivo = arrivi.save(new Arrivo(fornitore != null ? fornitore.getId() : null,
                 fornitore != null ? fornitore.getNome() : null, dataArrivo, documento));
 
@@ -109,6 +134,59 @@ public class ArriviService {
     public FotoDto caricaFoto(Long id, MultipartFile file) {
         trova(id);
         return foto.salva(Foto.ARRIVO, id, file);
+    }
+
+    /**
+     * 409 se una riga corrisponde a una consegna gia' registrata (o a un'altra riga della stessa
+     * richiesta): stesso ingrediente, stessa data di arrivo, stesso fornitore (a meno di maiuscole e
+     * punteggiatura) e stesso codice effettivo del lotto, cioe' il codice del fornitore o, se manca,
+     * documento + data. Una riga senza codice e senza documento non si confronta.
+     */
+    private void avvisaDoppioni(Fornitore fornitore, String dataArrivo, String documento, List<RigaArrivoInput> righe) {
+        String dataItaliana = LocalDate.parse(dataArrivo).format(DATA_ITALIANA);
+        String fornitoreChiave = NomiSimili.chiave(fornitore != null ? fornitore.getNome() : null);
+        String fornitoreVisibile = fornitore != null ? fornitore.getNome() : "fornitore non indicato";
+        List<Map<String, Object>> doppioni = new ArrayList<>();
+        List<String> brevi = new ArrayList<>();
+        Map<String, Boolean> viste = new LinkedHashMap<>();
+        for (RigaArrivoInput riga : righe) {
+            String codice = riga.lotto() != null && !riga.lotto().isBlank() ? riga.lotto().strip()
+                    : documento != null && !documento.isBlank() ? documento.strip() + " · " + dataItaliana : null;
+            if (codice == null) {
+                continue;
+            }
+            String codiceChiave = NomiSimili.chiave(codice);
+            Long lottoGiaRegistrato = null;
+            for (LottoIngrediente esistente : lottiIngrediente.findByIngredienteId(riga.ingredienteId())) {
+                Arrivo suoArrivo = esistente.getArrivoId() != null ? arrivi.findById(esistente.getArrivoId()).orElse(null) : null;
+                if (suoArrivo != null && dataArrivo.equals(suoArrivo.getData())
+                        && fornitoreChiave.equals(NomiSimili.chiave(suoArrivo.getFornitoreNome()))
+                        && codiceChiave.equals(NomiSimili.chiave(IngredientiConversioni.codiceEffettivo(esistente, suoArrivo)))) {
+                    lottoGiaRegistrato = esistente.getId();
+                    break;
+                }
+            }
+            // Lo stesso ingrediente con lo stesso codice due volte nella stessa richiesta e' un doppione anche senza lotto gia' scritto.
+            boolean ripetutaQui = viste.put(riga.ingredienteId() + "|" + codiceChiave, true) != null;
+            if (lottoGiaRegistrato == null && !ripetutaQui) {
+                continue;
+            }
+            String nome = ingredienti.findById(riga.ingredienteId()).map(Ingrediente::getNome).orElse("ingrediente " + riga.ingredienteId());
+            Map<String, Object> voce = new LinkedHashMap<>();
+            voce.put("ingredienteId", riga.ingredienteId());
+            voce.put("ingrediente", nome);
+            voce.put("codice", codice);
+            voce.put("lottoId", lottoGiaRegistrato);
+            doppioni.add(voce);
+            brevi.add(nome + ", lotto " + codice);
+        }
+        if (doppioni.isEmpty()) {
+            return;
+        }
+        String messaggio = doppioni.size() == 1
+                ? "Sembra già registrato: " + brevi.get(0) + " di " + fornitoreVisibile + ", arrivato il " + dataItaliana + "."
+                : "Sembrano già registrati (" + fornitoreVisibile + ", arrivati il " + dataItaliana + "): " + String.join("; ", brevi) + ".";
+        throw new ErroreApi(HttpStatus.CONFLICT, messaggio, Map.of("duplicati", doppioni, "richiedeConferma", true));
     }
 
     private Arrivo trova(Long id) {

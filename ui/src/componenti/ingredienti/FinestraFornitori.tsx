@@ -14,7 +14,8 @@ type ModoRiga = "rinomina" | "elimina";
 // contano comunque per farsi un'idea di quanto e' vissuto il fornitore.
 function testoUso(f: FornitoreConUso): string {
   const base = f.ingredienti > 0 ? `Abituale per ${plurale(f.ingredienti, "ingrediente", "ingredienti")}` : "Non è abituale per nessun ingrediente";
-  return f.arrivi > 0 ? `${base} · ${plurale(f.arrivi, "consegna", "consegne")}` : base;
+  const consegne = f.arrivi > 0 ? ` · ${plurale(f.arrivi, "consegna", "consegne")}` : "";
+  return f.lotti > 0 ? `${base}${consegne} · ${plurale(f.lotti, "lotto", "lotti")}` : `${base}${consegne}`;
 }
 
 interface ProprietaRigaFornitore {
@@ -105,18 +106,27 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
     });
   }, [eliminaMut, fornitore.id, onChiudiRiga, avvisa]);
 
-  // Cosa succede se si conferma (docs/api.md): gli ingredienti restano senza
-  // fornitore abituale. Le consegne tengono il nome, ma dirlo non entra in
-  // una riga a 320 px: la frase sui bottoni finiva sulla riga sotto.
-  const conseguenze =
-    fornitore.ingredienti > 0
-      ? `${plurale(fornitore.ingredienti, "ingrediente", "ingredienti")} ${fornitore.ingredienti === 1 ? "resta" : "restano"} senza fornitore abituale.`
-      : null;
+  // Cosa succede se si conferma (docs/api.md), detto con i numeri (2 ottobre
+  // 2026: «1 ingrediente resta senza fornitore» non diceva che esistono
+  // consegne e lotti): gli ingredienti restano senza fornitore abituale; le
+  // consegne e i lotti restano nello storico col suo nome; riscrivendo lo
+  // stesso nome le consegne tornano a lui.
+  const frasi: string[] = [];
+  if (fornitore.ingredienti > 0) {
+    frasi.push(`${plurale(fornitore.ingredienti, "ingrediente", "ingredienti")} ${fornitore.ingredienti === 1 ? "resta" : "restano"} senza fornitore abituale.`);
+  }
+  if (fornitore.arrivi > 0 || fornitore.lotti > 0) {
+    const consegne = plurale(fornitore.arrivi, "consegna", "consegne");
+    const cosa = fornitore.lotti > 0 ? `${plurale(fornitore.lotti, "lotto", "lotti")} in ${consegne}` : consegne;
+    const uno = fornitore.lotti <= 1 && fornitore.arrivi <= 1;
+    frasi.push(`${cosa} ${uno ? "resta" : "restano"} nello storico con il suo nome. Se lo riscrivi con lo stesso nome, tornano a lui.`);
+  }
+  const conseguenze = frasi.length > 0 ? frasi.join(" ") : null;
 
   if (modo === "rinomina") {
     return (
       <div className="riga fornitore flex-wrap">
-        <div className="casella h-11 min-w-[160px] flex-1">
+        <div className="casella h-11 max-[860px]:h-[calc(var(--d-tap)+8px)] min-w-[160px] flex-1">
           <input
             ref={campoRif}
             value={bozza}
@@ -127,10 +137,10 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button type="button" className="btn compatto" onClick={onChiudiRiga}>
+          <button type="button" className="btn compatto piccoloTel" onClick={onChiudiRiga}>
             Annulla
           </button>
-          <button type="button" className="btn compatto primario" onClick={salvaRinomina} disabled={rinominaMut.isPending}>
+          <button type="button" className="btn compatto primario piccoloTel" onClick={salvaRinomina} disabled={rinominaMut.isPending}>
             Salva
           </button>
         </div>
@@ -158,10 +168,10 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
           {conseguenze && <div className="text-[13px] text-[var(--tenue)] mt-0.5">{conseguenze}</div>}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end max-[860px]:ml-auto">
-          <button type="button" className="btn compatto" onClick={onChiudiRiga}>
+          <button type="button" className="btn compatto piccoloTel" onClick={onChiudiRiga}>
             No
           </button>
-          <button type="button" className="btn compatto elimina forte" onClick={confermaElimina} disabled={eliminaMut.isPending}>
+          <button type="button" className="btn compatto elimina forte piccoloTel" onClick={confermaElimina} disabled={eliminaMut.isPending}>
             <IconaCestino larghezza={16} spessoreTratto={2} />
             <span>Sì, elimina</span>
           </button>
@@ -205,6 +215,7 @@ function RigaFornitore({ fornitore, modo, onApriRinomina, onApriElimina, onChiud
 // vuoto, non da un nome esistente.
 function RigaNuovoFornitore({ onChiudi }: { onChiudi: () => void }) {
   const creaFornitore = useCreaFornitore();
+  const avvisa = useAvviso();
   const [nome, setNome] = useState("");
   const [errore, setErrore] = useState<string | null>(null);
   const campoRif = useRef<HTMLInputElement | null>(null);
@@ -222,13 +233,20 @@ function RigaNuovoFornitore({ onChiudi }: { onChiudi: () => void }) {
       return;
     }
     creaFornitore.mutate(pulito, {
-      onSuccess: onChiudi,
+      onSuccess: (creato) => {
+        onChiudi();
+        // Un nome gia' usato da un fornitore eliminato riprende le sue
+        // consegne: lo si dice, cosi' non e' una sorpresa (2 ottobre 2026).
+        if (creato.arrivi > 0) {
+          avvisa(`${creato.nome} creato: ha ripreso ${plurale(creato.arrivi, "consegna", "consegne")} (${plurale(creato.lotti, "lotto", "lotti")}) fatte con questo nome.`);
+        }
+      },
       // 409 (nome gia' usato) o 400: il messaggio del servizio e' gia' in
       // italiano e dice qual e' il problema, come gli altri 409 dell'app
       // (RigaFornitore.salvaRinomina qui sopra).
       onError: (errore) => setErrore(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a crearlo."),
     });
-  }, [nome, creaFornitore, onChiudi]);
+  }, [nome, creaFornitore, onChiudi, avvisa]);
 
   const alTasto = useCallback(
     (evento: KeyboardEvent<HTMLInputElement>) => {
@@ -245,7 +263,7 @@ function RigaNuovoFornitore({ onChiudi }: { onChiudi: () => void }) {
 
   return (
     <div className="riga fornitore flex-wrap">
-      <div className="casella h-11 min-w-[160px] flex-1">
+      <div className="casella h-11 max-[860px]:h-[calc(var(--d-tap)+8px)] min-w-[160px] flex-1">
         <input
           ref={campoRif}
           value={nome}
@@ -257,10 +275,10 @@ function RigaNuovoFornitore({ onChiudi }: { onChiudi: () => void }) {
         />
       </div>
       <div className="flex items-center gap-2 flex-wrap justify-end">
-        <button type="button" className="btn compatto" onClick={onChiudi}>
+        <button type="button" className="btn compatto piccoloTel" onClick={onChiudi}>
           Annulla
         </button>
-        <button type="button" className="btn compatto primario" onClick={crea} disabled={creaFornitore.isPending}>
+        <button type="button" className="btn compatto primario piccoloTel" onClick={crea} disabled={creaFornitore.isPending}>
           Crea
         </button>
       </div>
@@ -308,7 +326,7 @@ export default function FinestraFornitori({ onChiudi }: { onChiudi: () => void }
       media
       onChiudi={onChiudi}
       piede={
-        <button type="button" className="btn" onClick={onChiudi}>
+        <button type="button" className="btn piccoloTel" onClick={onChiudi}>
           Chiudi
         </button>
       }
@@ -335,7 +353,7 @@ export default function FinestraFornitori({ onChiudi }: { onChiudi: () => void }
         ) : (
           <button
             type="button"
-            className="btn w-full justify-center mt-2 bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]"
+            className="btn piccoloTel shrink-0 w-full justify-center mt-2 bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]"
             onClick={apriCreazione}
           >
             <IconaPiu larghezza={18} spessoreTratto={2.2} />

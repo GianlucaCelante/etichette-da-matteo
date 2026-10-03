@@ -17,3 +17,12 @@ ui/node/
 .playwright-mcp/
 .vite/
 installer/.winsw-cache/
+
+# Prove con utenti simulati (tools/prove-utenti): output e dipendenze locali
+tools/prove-utenti/node_modules/
+tools/prove-utenti/dati/
+tools/prove-utenti/app/
+tools/prove-utenti/pid/
+tools/prove-utenti/profili/
+tools/prove-utenti/schermate/
+tools/prove-utenti/run/

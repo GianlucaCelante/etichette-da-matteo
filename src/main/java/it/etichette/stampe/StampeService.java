@@ -25,6 +25,7 @@ import it.etichette.tracciati.LottoDaRegistrare;
 import it.etichette.tracciati.RisolutoreLottiTracciati;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -35,10 +36,18 @@ import java.awt.image.BufferedImage;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -66,6 +75,49 @@ public class StampeService {
     /** lavoroId -> contesto, per aggiornare e chiudere la riga di storico del lavoro. */
     private final Map<String, ContestoLavoro> lavoriInCorso = new ConcurrentHashMap<>();
 
+    /**
+     * lavoroId -> l'ultimo evento "in corso"/"in pausa" ricevuto, con l'istante in cui e' arrivato:
+     * serve a {@link #lavoriAttivi} ({@code GET /api/stampe/attive}) per dire a una pagina appena
+     * aperta (F5, cambio vista, un secondo dispositivo, la riconnessione dopo un riavvio) a che
+     * punto e' ogni lavoro, senza aspettare il prossimo evento SSE (prove con utenti del 2/10/2026:
+     * dopo F5 il pannello «Stampa in corso» spariva e «Stampa» tornava attivo a serie in corso).
+     */
+    private final Map<String, EventoRicevuto> ultimoEvento = new ConcurrentHashMap<>();
+
+    /** L'ordine di arrivo dei lavori, per elencarli come li esegue la coda (FIFO). */
+    private final AtomicLong sequenzaLavori = new AtomicLong();
+
+    /**
+     * Gli ultimi lavori conclusi (al piu' {@link #CONCLUSI_RICORDATI}): {@code annulla} su uno di
+     * questi non e' un errore (docs/api.md, 2/10/2026 - il pannello di un altro dispositivo puo'
+     * premere «Ferma la serie» un attimo dopo la fine), mentre un id mai visto resta un 404.
+     */
+    private static final int CONCLUSI_RICORDATI = 200;
+    private final Set<String> conclusi = Collections.synchronizedSet(Collections.newSetFromMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> piuVecchia) {
+            return size() > CONCLUSI_RICORDATI;
+        }
+    }));
+
+    /**
+     * Doppio tocco su «Stampa» (V7, prove con utenti del 2/10/2026, decisione di prodotto): una
+     * seconda richiesta IDENTICA dallo stesso dispositivo entro questa finestra non apre un secondo
+     * lavoro ne' consuma un secondo lotto - torna la stessa risposta della prima. Sovrascrivibile
+     * SOLO nei test ({@link #impostaFinestraDoppioToccoPerTest}).
+     */
+    private volatile long finestraDoppioToccoMs = 2000;
+    /** chiave del dispositivo -> ultima richiesta accettata da quel dispositivo. */
+    private final Map<String, RichiestaRecente> richiesteRecenti = new ConcurrentHashMap<>();
+    /** Un lucchetto per dispositivo: due tocchi che arrivano INSIEME non devono passare tutti e due il controllo. */
+    private final Map<String, Object> lucchettiDispositivi = new ConcurrentHashMap<>();
+
+    private record RichiestaRecente(String impronta, RispostaStampa risposta, long accettataNanos) {
+    }
+
+    private record EventoRicevuto(EventoStampa evento, long ricevutoNanos) {
+    }
+
     public StampeService(MonitorStampante monitor, CodaDiStampa coda, ProdottoRepository prodotti,
                           StoricoStampaRepository storico, ImpostazioneRepository impostazioni,
                           RenditoreEtichetta renderer, Lotti lotti, ProdottiConversioni prodottiConversioni,
@@ -87,13 +139,101 @@ public class StampeService {
      * prodotto, lotto, scadenza e lotti registrati, vedi {@link StoricoLavori#apri}), quindi qui
      * resta solo quale riga aggiornare e cosa scrivere nel log.
      */
-    private record ContestoLavoro(Long storicoId, Long prodottoId, String prodottoNome, String lotto, long avviatoNanos) {
+    private record ContestoLavoro(Long storicoId, Long prodottoId, String prodottoNome, String lotto, long avviatoNanos,
+                                  long sequenza, int copieTotali, String scadenza, String quantita, String porzioni,
+                                  String dispositivoNome, boolean prova) {
+    }
+
+    /**
+     * Un lavoro accettato e non ancora concluso, per {@code GET /api/stampe/attive} (docs/api.md,
+     * 2/10/2026). {@code stato}: "in_coda" finche' la stampante non l'ha ancora preso (nessun evento),
+     * poi quello dell'ultimo evento ("in_corso" o "in_pausa"); {@code copiaCorrente} come
+     * nell'evento (la copia in lavorazione, 0 se in coda); {@code secondiAllaRistampa} ricalcolato
+     * adesso, non quello dell'evento.
+     */
+    public record LavoroAttivo(String lavoroId, Long prodottoId, String prodottoNome, int copieTotali, int copiaCorrente,
+                               String stato, String messaggio, String domanda, Integer secondiAllaRistampa, String lotto,
+                               String scadenza, String quantita, String porzioni, String dispositivoNome, boolean prova,
+                               Long storicoId) {
     }
 
     /** {@code POST /api/stampe}: nuova stampa, dai dati proposti dal prodotto salvato (etichetta compresa) o da quelli passati nella richiesta. */
-    public RispostaStampa stampa(Long prodottoId, Integer copieRichieste, String quantitaRichiesta,
+    public RispostaStampa stampa(Long prodottoId, Integer copieRichieste, String quantitaRichiesta, String porzioniRichieste,
                                   String scadenzaRichiesta, String lottoRichiesto, Map<Long, List<Long>> lottiRichiesti,
                                   String dispositivoNome) {
+        return stampa(prodottoId, copieRichieste, quantitaRichiesta, porzioniRichieste, scadenzaRichiesta, lottoRichiesto,
+                lottiRichiesti, dispositivoNome, dispositivoNome);
+    }
+
+    /**
+     * Come sopra, con la chiave del dispositivo che chiede (il suo id, {@code StampeController}):
+     * una seconda richiesta identica dallo stesso dispositivo entro {@link #finestraDoppioToccoMs}
+     * e' lo stesso tocco ripetuto, non una stampa nuova - torna lo stesso {@code lavoroId}, nessun
+     * secondo lavoro, nessun secondo lotto (V7, decisione del 2/10/2026). Una richiesta diversa
+     * (altre copie, altra scadenza, altro prodotto...) o oltre la finestra resta una stampa nuova.
+     */
+    public RispostaStampa stampa(Long prodottoId, Integer copieRichieste, String quantitaRichiesta, String porzioniRichieste,
+                                  String scadenzaRichiesta, String lottoRichiesto, Map<Long, List<Long>> lottiRichiesti,
+                                  String dispositivoNome, String chiaveDispositivo) {
+        String chiave = chiaveDispositivo != null ? chiaveDispositivo : "";
+        String impronta = impronta(prodottoId, copieRichieste, quantitaRichiesta, porzioniRichieste, scadenzaRichiesta,
+                lottoRichiesto, lottiRichiesti);
+        synchronized (lucchettiDispositivi.computeIfAbsent(chiave, k -> new Object())) {
+            RichiestaRecente recente = richiesteRecenti.get(chiave);
+            if (recente != null && recente.impronta().equals(impronta)
+                    && (System.nanoTime() - recente.accettataNanos()) / 1_000_000 < finestraDoppioToccoMs) {
+                log.info("Doppio tocco su Stampa dallo stesso dispositivo ({}): stessa richiesta entro {} ms, torna il lavoro {} senza aprirne un altro.",
+                        dispositivoNome, finestraDoppioToccoMs, recente.risposta().lavoroId());
+                return recente.risposta();
+            }
+            RispostaStampa risposta = stampaNuova(prodottoId, copieRichieste, quantitaRichiesta, porzioniRichieste,
+                    scadenzaRichiesta, lottoRichiesto, lottiRichiesti, dispositivoNome);
+            richiesteRecenti.put(chiave, new RichiestaRecente(impronta, risposta, System.nanoTime()));
+            return risposta;
+        }
+    }
+
+    /** SOLO per i test: i 2 s veri della finestra del doppio tocco si accorciano (o allungano). */
+    void impostaFinestraDoppioToccoPerTest(long ms) {
+        this.finestraDoppioToccoMs = ms;
+    }
+
+    /**
+     * {@code etichette.stampe.finestra-doppio-tocco-ms} (default 2000, non in application.yml: nel
+     * servizio vero vale sempre il default). Esiste per i test che mandano APPOSTA due stampe
+     * identiche di fila dallo stesso "PC" e devono avere due lavori: li' si mette a 0.
+     */
+    @Value("${etichette.stampe.finestra-doppio-tocco-ms:2000}")
+    void impostaFinestraDoppioTocco(long ms) {
+        this.finestraDoppioToccoMs = ms;
+    }
+
+    /** Cosa rende "identiche" due richieste di stampa: tutti i campi, copie normalizzate come in {@link #stampaNuova}, lotti in ordine. */
+    private static String impronta(Long prodottoId, Integer copie, String quantita, String porzioni, String scadenza,
+                                   String lotto, Map<Long, List<Long>> lotti) {
+        int copieNormali = copie != null && copie > 0 ? copie : 1;
+        Map<Long, List<Long>> lottiOrdinati = new TreeMap<>();
+        if (lotti != null) {
+            lotti.forEach((k, v) -> {
+                List<Long> lista = v != null ? new ArrayList<>(v) : new ArrayList<>();
+                Collections.sort(lista);
+                lottiOrdinati.put(k, lista);
+            });
+        }
+        return String.join("|", String.valueOf(prodottoId), String.valueOf(copieNormali), testo(quantita), testo(porzioni),
+                testo(scadenza), testo(lotto), lotti != null ? lottiOrdinati.toString() : "-");
+    }
+
+    private static String testo(String s) {
+        return s != null ? s.trim() : "";
+    }
+
+    private RispostaStampa stampaNuova(Long prodottoId, Integer copieRichieste, String quantitaRichiesta, String porzioniRichieste,
+                                       String scadenzaRichiesta, String lottoRichiesto, Map<Long, List<Long>> lottiRichiesti,
+                                       String dispositivoNome) {
+        // Prima di tutto (anche della stampante): una scadenza non valida e' un 400 in italiano,
+        // mai un 500 piu' avanti, e non tocca niente (V2c, prove con utenti del 2/10/2026).
+        LocalDate scadenzaValida = Scadenze.leggi(scadenzaRichiesta);
         Prodotto entita = trovaProdotto(prodottoId);
         ProdottoDto p = prodottiConversioni.aDto(entita);
         int copie = copieRichieste != null && copieRichieste > 0 ? copieRichieste : 1;
@@ -112,14 +252,16 @@ public class StampeService {
         // premere "Stampa" a vuoto, stampante spenta o senza rotolo caricato, bruciava comunque un
         // numero a ogni tentativo, che e' il caso PIU' comune di tutti).
         int rotolo = verificaStampantePronta();
-        LocalDate scadenza = nonVuoto(scadenzaRichiesta) ? LocalDate.parse(scadenzaRichiesta) : scadenzaProposta();
+        LocalDate scadenza = scadenzaValida != null ? scadenzaValida : scadenzaProposta();
         String quantita = nonVuoto(quantitaRichiesta) ? quantitaRichiesta : p.quantita();
+        // Le porzioni (29/09/2026) come la quantita': quelle della richiesta, altrimenti quelle del prodotto.
+        String porzioni = nonVuoto(porzioniRichieste) ? porzioniRichieste : p.porzioni();
         // Se il lotto ricevuto e' vuoto o coincide con la proposta corrente di quello schema
         // (l'interfaccia rimanda semplicemente la proposta letta da GET /api/lotto?prodottoId=...),
         // si consuma il progressivo; se e' diverso, e' un lotto scritto a mano e non si consuma nulla.
         // Deciso DENTRO la transazione che apre la riga di storico (StoricoLavori#apri): numero
         // consumato e riga esistono insieme, o nessuno dei due.
-        return avvia(p, copie, quantita, scadenza, () -> risolviLotto(lottoRichiesto, schema), dispositivoNome, false,
+        return avvia(p, copie, quantita, porzioni, scadenza, () -> risolviLotto(lottoRichiesto, schema), dispositivoNome, false,
                 righeLotti, rotolo);
     }
 
@@ -152,7 +294,7 @@ public class StampeService {
         String schema = schemaLottoDi(prodottoRicevuto);
         // Solo la proposta (prossimoConSchema): una prova non consuma il progressivo. Una prova non
         // registra lotti (come gia' non aggiorna usi, docs/api.md): nessuna risoluzione da fare.
-        return avvia(prodottoRicevuto, 1, prodottoRicevuto.quantita(), scadenza, () -> lotti.prossimoConSchema(schema),
+        return avvia(prodottoRicevuto, 1, prodottoRicevuto.quantita(), prodottoRicevuto.porzioni(), scadenza, () -> lotti.prossimoConSchema(schema),
                 dispositivoNome, true, List.of(), rotolo);
     }
 
@@ -178,21 +320,41 @@ public class StampeService {
     }
 
     private RispostaStampa ristampaRiga(StoricoStampa riga, Integer copieRichieste, String dispositivoNome) {
-        if (riga.getProdottoId() == null) {
-            throw new ErroreApi(HttpStatus.CONFLICT, "il prodotto di questa stampa non esiste piu'");
-        }
-        Prodotto entita = trovaProdotto(riga.getProdottoId());
+        Prodotto entita = prodottoDaRistampare(riga);
         ProdottoDto p = prodottiConversioni.aDto(entita);
         int copie = copieRichieste != null && copieRichieste > 0 ? copieRichieste : 1;
         int rotolo = verificaStampantePronta();
         LocalDate scadenza = nonVuoto(riga.getScadenza()) ? LocalDate.parse(riga.getScadenza()) : null;
         // Nessuna nuova immagine salvata nello storico: si rende di nuovo col prodotto CORRENTE
-        // (etichetta compresa: potrebbe essere cambiata) ma stesso lotto, quantita' e scadenza
-        // della riga originale (docs/api.md). Stesso discorso per i lotti registrati: e' la stessa
+        // (etichetta compresa: potrebbe essere cambiata) ma stesso lotto, quantita', porzioni e
+        // scadenza della riga originale (docs/api.md). Stesso discorso per i lotti registrati: e' la stessa
         // preparazione, si copiano quelli della riga originale invece di ricalcolarli.
         List<LottoDaRegistrare> righeLotti = risolutoreLotti.copiaDaStorico(riga.getId());
         String lotto = riga.getLotto();
-        return avvia(p, copie, riga.getQuantita(), scadenza, () -> lotto, dispositivoNome, false, righeLotti, rotolo);
+        return avvia(p, copie, riga.getQuantita(), riga.getPorzioni(), scadenza, () -> lotto, dispositivoNome, false, righeLotti, rotolo);
+    }
+
+    /**
+     * L'etichetta con cui rendere una ristampa: quella della riga, se esiste ancora. Se e' stata
+     * eliminata (prove con utenti del 2/10/2026: la ristampa dallo Storico falliva con un 404 muto,
+     * anche dopo averla ricreata) si usa l'etichetta che ORA ha lo stesso nome - la piu' recente se
+     * ce n'e' piu' d'una: chi la ricrea col nome di prima vuole proprio quella. Il servizio non
+     * conserva una copia dell'etichetta nello storico (solo nome, lotto, quantita', porzioni e
+     * scadenza), quindi senza un'etichetta con quel nome non c'e' niente da rendere: 409 con un
+     * messaggio chiaro, mai un 404 che sembra un guasto.
+     */
+    private Prodotto prodottoDaRistampare(StoricoStampa riga) {
+        if (riga.getProdottoId() != null) {
+            Optional<Prodotto> stesso = prodotti.findById(riga.getProdottoId());
+            if (stesso.isPresent()) {
+                return stesso.get();
+            }
+        }
+        String nome = riga.getProdottoNome() != null ? riga.getProdottoNome().trim() : "";
+        return prodotti.findAll().stream()
+                .filter(p -> p.getNome() != null && !nome.isEmpty() && p.getNome().trim().equalsIgnoreCase(nome))
+                .max(Comparator.comparing(Prodotto::getId))
+                .orElseThrow(() -> new ErroreApi(HttpStatus.CONFLICT, "Questa etichetta è stata eliminata e non si può ristampare"));
     }
 
     /**
@@ -221,22 +383,25 @@ public class StampeService {
      * falliscono la riga diventa {@code errore} con 0 copie (nessuna etichetta e' uscita) e
      * l'eccezione risale come prima.
      */
-    private RispostaStampa avvia(ProdottoDto prodotto, int copie, String quantita, LocalDate scadenza,
+    private RispostaStampa avvia(ProdottoDto prodotto, int copie, String quantita, String porzioni, LocalDate scadenza,
                                  Supplier<String> lottoDaUsare, String dispositivoNome, boolean prova,
                                  List<LottoDaRegistrare> righeLotti, int rotolo) {
         String lavoroId = UUID.randomUUID().toString();
         String scadenzaStr = scadenza != null ? scadenza.format(DateTimeFormatter.ISO_LOCAL_DATE) : null;
-        RigaAperta riga = storicoLavori.apri(new NuovaRiga(lavoroId, prodotto.id(), prodotto.nome(), quantita, scadenzaStr,
-                dispositivoNome, prova, righeLotti), lottoDaUsare);
+        RigaAperta riga = storicoLavori.apri(new NuovaRiga(lavoroId, prodotto.id(), prodotto.nome(), quantita, porzioni,
+                scadenzaStr, dispositivoNome, prova, righeLotti), lottoDaUsare);
         String lotto = riga.lotto();
         // Il contesto PRIMA di accodare: il monitor puo' pubblicare il primo evento del lavoro
         // appena e' in coda, e quell'evento deve gia' trovare la sua riga.
-        lavoriInCorso.put(lavoroId, new ContestoLavoro(riga.storicoId(), prodotto.id(), prodotto.nome(), lotto, System.nanoTime()));
+        lavoriInCorso.put(lavoroId, new ContestoLavoro(riga.storicoId(), prodotto.id(), prodotto.nome(), lotto, System.nanoTime(),
+                sequenzaLavori.incrementAndGet(), copie, scadenzaStr, quantita, porzioni, dispositivoNome, prova));
         RisultatoResa risultato;
         try {
             // scadenzaSegnaposto sempre false: la stampa vera (e la "Stampa di prova" dall'editor,
             // che passa da qui) scrive sempre la data vera, mai il segnaposto dell'editor (docs/api.md).
-            ParametriStampa parametri = new ParametriStampa(quantita, scadenza, lotto, false);
+            // prova: la "Stampa di prova" porta in cima la banda «PROVA» (ParametriStampa#prova); lotto e
+            // scadenza restano quelli che uscirebbero. Le stampe vere e le ristampe: sempre false.
+            ParametriStampa parametri = new ParametriStampa(quantita, scadenza, lotto, false, porzioni, prova);
             risultato = renderer.rendi(prodotto, parametri, rotolo, 1.0);
             // renderer.rendi() restituisce sempre l'immagine NON ruotata: VERTICALE, e' gia' larga
             // quanto il rotolo (nessuna rotazione); solo ORIZZONTALE (lungoIlNastro) va ruotata di 90°
@@ -304,15 +469,20 @@ public class StampeService {
             // Una prova non ha riga (ctx.storicoId() == null, vedi StoricoLavori#apri): niente da
             // aggiornare, ma l'evento SSE prosegue uguale per l'interfaccia.
             ContestoLavoro ctx = lavoriInCorso.get(evento.lavoroId());
+            if (ctx != null) {
+                ultimoEvento.put(evento.lavoroId(), new EventoRicevuto(evento, System.nanoTime()));
+            }
             if (ctx != null && ctx.storicoId() != null && EventoStampa.IN_CORSO.equals(evento.stato()) && evento.copiaCorrente() > 0) {
                 storicoLavori.avanza(ctx.storicoId(), evento.copiaCorrente());
             }
             return;
         }
         ContestoLavoro ctx = lavoriInCorso.remove(evento.lavoroId());
+        ultimoEvento.remove(evento.lavoroId());
         if (ctx == null) {
             return; // non un lavoro avviato da questo servizio
         }
+        conclusi.add(evento.lavoroId());
         // Una prova (POST /api/stampe/prova-prodotto) non ha riga di storico da chiudere (decisione
         // del cliente del 24/09/2026: le prove non devono comparire nello storico) - ctx.storicoId()
         // e' null e "esito" qui sotto serve solo al log. copie = effettivamente uscite
@@ -329,6 +499,41 @@ public class StampeService {
         log.info("Stampa terminata: lavoroId={}, prodotto={}, esito={}, copie={}, durata={} ms{}",
                 evento.lavoroId(), ctx.prodottoNome(), esito, evento.copiaCorrente(), durataMs,
                 scritta ? "" : " (storico non ancora aggiornato: si ritenta)");
+    }
+
+    /**
+     * {@code GET /api/stampe/attive} (docs/api.md, 2/10/2026): i lavori accettati e non ancora
+     * conclusi, nell'ordine in cui la coda li esegue (il primo e' quello alla stampante, o il
+     * prossimo a partire). Prove comprese ({@code prova: true}): chi guarda decide se seguirle.
+     */
+    public List<LavoroAttivo> lavoriAttivi() {
+        List<Map.Entry<String, ContestoLavoro>> voci = new ArrayList<>(lavoriInCorso.entrySet());
+        voci.sort(Comparator.comparingLong(v -> v.getValue().sequenza()));
+        List<LavoroAttivo> attivi = new ArrayList<>();
+        for (Map.Entry<String, ContestoLavoro> voce : voci) {
+            ContestoLavoro ctx = voce.getValue();
+            EventoRicevuto ricevuto = ultimoEvento.get(voce.getKey());
+            EventoStampa ev = ricevuto != null ? ricevuto.evento() : null;
+            Integer secondi = null;
+            if (ev != null && ev.secondiAllaRistampa() != null) {
+                long passati = (System.nanoTime() - ricevuto.ricevutoNanos()) / 1_000_000_000L;
+                secondi = (int) Math.max(0, ev.secondiAllaRistampa() - passati);
+            }
+            attivi.add(new LavoroAttivo(voce.getKey(), ctx.prodottoId(), ctx.prodottoNome(), ctx.copieTotali(),
+                    ev != null ? ev.copiaCorrente() : 0, ev != null ? ev.stato() : "in_coda", ev != null ? ev.messaggio() : null,
+                    ev != null ? ev.domanda() : null, secondi, ctx.lotto(), ctx.scadenza(), ctx.quantita(), ctx.porzioni(),
+                    ctx.dispositivoNome(), ctx.prova(), ctx.storicoId()));
+        }
+        return attivi;
+    }
+
+    /**
+     * Il lavoro e' finito da poco ({@link #CONCLUSI_RICORDATI} lavori al massimo): {@code annulla}
+     * su di lui risponde 204 senza fare niente, invece del 404 di un lavoro mai visto (docs/api.md,
+     * 2/10/2026: fermare un lavoro gia' concluso non e' un errore).
+     */
+    public boolean eConcluso(String lavoroId) {
+        return lavoroId != null && conclusi.contains(lavoroId);
     }
 
     private static String esitoDi(String statoEvento) {

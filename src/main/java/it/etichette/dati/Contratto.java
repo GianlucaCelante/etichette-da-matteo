@@ -28,11 +28,13 @@ public final class Contratto {
      * Famiglia "dati": il contenuto viene dal prodotto. "conservazione" e' arrivato il
      * 24/09/2026 (deciso dal cliente: "Conservazione" diventa un blocco a se', non piu' una riga
      * dentro "scadenza" - vedi ProdottiConversioni#conConservazioneSeManca e
-     * RenditoreEtichetta#disegnaBlocco).
+     * RenditoreEtichetta#disegnaBlocco). "porzioni" e' arrivato il 29/09/2026 (deciso dal cliente):
+     * come "quantita" (il Peso) il valore si sceglie alla stampa, parte da {@code porzioni} del
+     * prodotto.
      */
     public static final Set<String> TIPI_BLOCCO_DATI = Set.of(
             "titolo", "ingredienti", "puoContenere", "modoUso", "scadenza", "conservazione", "lotto", "quantita",
-            "valori", "produttore", "dataProduzione");
+            "porzioni", "valori", "produttore", "dataProduzione");
 
     /**
      * Famiglia "liberi": il contenuto non viene dal prodotto. "qr" non c'e' piu' dal 24/09/2026
@@ -49,9 +51,19 @@ public final class Contratto {
      * gia' salvata (lettura E scrittura) e {@code RenditoreEtichetta} non lo disegna piu'. La
      * colonna {@code sigla_operatore} e il campo {@code siglaOperatore} del prodotto restano
      * (docs/api.md, deprecati): nessun effetto sulla stampa.
+     *
+     * <p>"testoGrande" e' andato via il 29/09/2026 (deciso dal cliente: il corpo si sceglie dal
+     * blocco come per gli altri, il grassetto e' un'opzione di ogni blocco di testo - vedi {@code
+     * BloccoDto#grassetto}): stesso meccanismo di "qr" e "sigla" in scrittura (400, non e' piu'
+     * in {@link #TIPI_BLOCCO}), ma in lettura un'etichetta vecchia NON lo perde, diventa un blocco
+     * "testo" con {@code grassetto: true} ({@code ProdottiConversioni#normalizzaEtichetta}, e la
+     * migrazione v14 riscrive i dati salvati): stesso aspetto di prima.
      */
     public static final Set<String> TIPI_BLOCCO_LIBERI = Set.of(
-            "testo", "testoGrande", "riga", "spazio", "logo");
+            "testo", "riga", "spazio", "logo");
+
+    /** Il tipo di blocco tolto il 29/09/2026 (vedi {@link #TIPI_BLOCCO_LIBERI}): esiste solo nei dati salvati prima. */
+    public static final String TIPO_TESTO_GRANDE_ELIMINATO = "testoGrande";
 
     public static final Set<String> TIPI_BLOCCO = concat(TIPI_BLOCCO_DATI, TIPI_BLOCCO_LIBERI);
 
@@ -111,11 +123,11 @@ public final class Contratto {
             // compatibilita' dei dati, cambia solo il nome mostrato e quello che stampa - vedi
             // RenditoreEtichetta#disegnaBlocco).
             case "quantita" -> "Peso";
+            case "porzioni" -> "Porzioni";
             case "valori" -> "Valori nutrizionali";
             case "produttore" -> "Produttore";
             case "dataProduzione" -> "Data di produzione";
             case "testo" -> "Testo libero";
-            case "testoGrande" -> "Testo grande";
             case "riga" -> "Riga separatrice";
             case "spazio" -> "Spazio vuoto";
             case "logo" -> "Logo";

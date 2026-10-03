@@ -3,6 +3,7 @@ package it.etichette.ingredienti;
 import it.etichette.api.ArrivoDto;
 import it.etichette.api.ArrivoRiepilogoDto;
 import it.etichette.api.AvvisoSaccoDto;
+import it.etichette.api.CorrezioneLottoDto;
 import it.etichette.api.EtichettaCollegataDto;
 import it.etichette.api.FornitoreDto;
 import it.etichette.api.FotoDto;
@@ -12,6 +13,7 @@ import it.etichette.api.IngredienteSimileDto;
 import it.etichette.api.LottoIngredienteDto;
 import it.etichette.dati.Arrivo;
 import it.etichette.dati.ArrivoRepository;
+import it.etichette.dati.CorrezioneLottoRepository;
 import it.etichette.dati.Foto;
 import it.etichette.dati.Fornitore;
 import it.etichette.dati.FornitoreRepository;
@@ -47,10 +49,12 @@ public class IngredientiConversioni {
     private final FotoService foto;
     private final ProdottoRepository prodotti;
     private final EtichetteCollegateService etichetteCollegate;
+    private final CorrezioneLottoRepository correzioniLotti;
 
     public IngredientiConversioni(FornitoreRepository fornitori, ArrivoRepository arrivi, LottoIngredienteRepository lottiIngrediente,
                                    StoricoLottoRepository storicoLotti, FotoService foto, ProdottoRepository prodotti,
-                                   EtichetteCollegateService etichetteCollegate) {
+                                   EtichetteCollegateService etichetteCollegate, CorrezioneLottoRepository correzioniLotti) {
+        this.correzioniLotti = correzioniLotti;
         this.fornitori = fornitori;
         this.arrivi = arrivi;
         this.lottiIngrediente = lottiIngrediente;
@@ -81,8 +85,11 @@ public class IngredientiConversioni {
         int usi = (int) storicoLotti.contaStoricheCheRegistranoLotto(l.getId());
         List<FotoDto> fotoLotto = foto.elenco(Foto.LOTTO, l.getId());
         AvvisoSaccoDto avviso = AvvisoSacco.diLotto(l, tuttiDelIngrediente, LocalDate.now());
+        List<CorrezioneLottoDto> correzioni = correzioniLotti.findByLottoIdOrderByCorrettoIlDescIdAsc(l.getId()).stream()
+                .map(c -> new CorrezioneLottoDto(c.getCorrettoIl(), c.getCampo(), c.getPrima(), c.getDopo()))
+                .toList();
         return new LottoIngredienteDto(l.getId(), l.getIngredienteId(), codice, l.getScadenza(), l.getQuantita(),
-                l.getStato(), l.getApertoDal(), l.getChiusoIl(), l.getChiusoDa(), arrivoDto, usi, fotoLotto, avviso);
+                l.getStato(), l.getApertoDal(), l.getChiusoIl(), l.getChiusoDa(), arrivoDto, usi, fotoLotto, avviso, correzioni);
     }
 
     public ArrivoDto aDto(Arrivo a) {
@@ -152,9 +159,10 @@ public class IngredientiConversioni {
     }
 
     /**
-     * manca (nessun lotto aperto), scaduto, scade (entro tre giorni), piu (piu' di un lotto
-     * aperto), aperto (tutto a posto) - in quest'ordine di precedenza quando piu' condizioni
-     * varrebbero insieme (docs/api.md elenca gli stati ma non un ordine: scelta presa qui).
+     * manca (nessun lotto aperto), scaduto, scade (entro tre giorni), senzaScadenza (un lotto
+     * aperto senza scadenza: «Da controllare» non deve dire «tutto a posto», 2 ottobre 2026), piu
+     * (piu' di un lotto aperto), aperto (tutto a posto) - in quest'ordine di precedenza quando piu'
+     * condizioni varrebbero insieme (docs/api.md elenca gli stati ma non un ordine: scelta presa qui).
      */
     private static String statoDi(List<LottoIngrediente> aperti) {
         if (aperti.isEmpty()) {
@@ -166,6 +174,9 @@ public class IngredientiConversioni {
         }
         if (aperti.stream().anyMatch(l -> ScadenzeLotti.inScadenza(l, oggi))) {
             return "scade";
+        }
+        if (aperti.stream().anyMatch(l -> l.getScadenza() == null)) {
+            return "senzaScadenza";
         }
         if (aperti.size() > 1) {
             return "piu";

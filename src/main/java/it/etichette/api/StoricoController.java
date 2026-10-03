@@ -11,6 +11,7 @@ import it.etichette.dispositivi.DispositiviService;
 import it.etichette.ingredienti.IngredientiConversioni;
 import it.etichette.stampe.RispostaStampa;
 import it.etichette.stampe.StampeService;
+import it.etichette.storico.CatenaPerEsportazione;
 import it.etichette.storico.EsportazioneStoricoService;
 import it.etichette.storico.FormatoEsportazione;
 import it.etichette.storico.RigaEsportazione;
@@ -66,11 +67,13 @@ public class StoricoController {
     private final Json json;
     private final DispositiviService dispositivi;
     private final EsportazioneStoricoService esportazione;
+    private final CatenaPerEsportazione catenaPerEsportazione;
 
     public StoricoController(StoricoStampaRepository storico, RicercaStorico ricerca, RisolutoreLottiTracciati risolutore,
                               LottoIngredienteRepository lottiIngrediente, ArrivoRepository arrivi,
                               StampeService stampe, CatenaService catena, Json json, DispositiviService dispositivi,
-                              EsportazioneStoricoService esportazione) {
+                              EsportazioneStoricoService esportazione, CatenaPerEsportazione catenaPerEsportazione) {
+        this.catenaPerEsportazione = catenaPerEsportazione;
         this.storico = storico;
         this.ricerca = ricerca;
         this.risolutore = risolutore;
@@ -89,6 +92,8 @@ public class StoricoController {
      * esistessero (i telefoni possono avere ancora in cache l'interfaccia vecchia, che non li
      * conosce): tutte le righe che corrispondono a {@code periodo} e {@code q}. Filtri, ordine e
      * limite stanno nella query ({@link RicercaStorico}), non piu' in Java sull'intera tabella.
+     * {@code da} e {@code a} (AAAA-MM-GG, entrambi facoltativi, estremi inclusi) sono un intervallo
+     * di date libero: se c'e' almeno uno dei due, prendono il posto di {@code periodo}.
      */
     @GetMapping
     public List<Map<String, Object>> elenco(@RequestParam(required = false, defaultValue = "tutto") String periodo,
@@ -97,61 +102,156 @@ public class StoricoController {
                                               @RequestParam(required = false) String esito,
                                               @RequestParam(required = false) String lavoroId,
                                               @RequestParam(required = false) Integer limite,
-                                              @RequestParam(required = false) Long primaDi) {
+                                              @RequestParam(required = false) Long primaDi,
+                                              @RequestParam(required = false) String da,
+                                              @RequestParam(required = false) String a) {
         if (limite != null && (limite < 1 || limite > LIMITE_MASSIMO)) {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "limite: deve essere fra 1 e " + LIMITE_MASSIMO);
         }
         if (primaDi != null && !storico.existsById(primaDi)) {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "primaDi: riga di storico non trovata: " + primaDi);
         }
+        Intervallo intervallo = intervallo(da, a);
         String frammento = q != null && !q.isBlank() ? q.toLowerCase() : null;
         // I lotti d'ingrediente il cui codice EFFETTIVO (docs/api.md, "Storico", difetto del
         // 23/09/2026: la ricerca non trovava il codice del lotto del fornitore, solo
         // prodotto/lotto stampato) contiene il testo cercato: la query poi tiene le stampe che
         // hanno registrato uno di questi.
         Set<Long> lottoIdsTrovati = frammento != null ? lottoIdsConCodice(frammento) : Set.of();
-        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(soglia(periodo), frammento, lottoIdsTrovati,
+        LocalDateTime dal = intervallo != null ? intervallo.dal() : soglia(periodo);
+        LocalDateTime prima = intervallo != null ? intervallo.prima() : null;
+        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(dal, prima, frammento, lottoIdsTrovati,
                 prodottoId, nonVuoto(esito), nonVuoto(lavoroId), primaDi, limite));
         return aDtos(righe);
     }
 
     /**
-     * {@code GET /api/storico/esporta?formato=xlsx|csv|pdf&periodo=oggi|7|30|tutto&q=testo}
+     * L'intervallo libero {@code da}/{@code a}: {@code dal} e' la mezzanotte di {@code da}, {@code
+     * prima} la mezzanotte DOPO {@code a} (estremo escluso: «a» e' un giorno intero compreso).
+     * Ciascuno dei due puo' mancare da solo.
+     */
+    private record Intervallo(LocalDate da, LocalDate a) {
+        LocalDateTime dal() {
+            return da != null ? da.atStartOfDay() : null;
+        }
+
+        LocalDateTime prima() {
+            return a != null ? a.plusDays(1).atStartOfDay() : null;
+        }
+    }
+
+    /** {@code null} se non c'e' nessuno dei due; {@code 400} con un messaggio in italiano per una data non valida o un {@code da} dopo {@code a}. */
+    private static Intervallo intervallo(String da, String a) {
+        LocalDate dal = leggiData(da, "da");
+        LocalDate al = leggiData(a, "a");
+        if (dal == null && al == null) {
+            return null;
+        }
+        if (dal != null && al != null && dal.isAfter(al)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "da: la data iniziale non può essere dopo quella finale");
+        }
+        return new Intervallo(dal, al);
+    }
+
+    private static LocalDate leggiData(String testo, String campo) {
+        if (testo == null || testo.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(testo.strip());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, campo + ": data non valida: " + testo + " (serve AAAA-MM-GG)");
+        }
+    }
+
+    /**
+     * {@code GET /api/storico/esporta?formato=xlsx|csv|pdf&periodo=oggi|7|30|tutto&q=testo&da=&a=}
      * (docs/api.md, "Storico"): stesse righe, stesso filtro e stesso ordine di {@link #elenco} con
-     * gli stessi {@code periodo} e {@code q}, ma SENZA limite - lo storico si scarica intero, non
-     * una pagina. La ricerca resta la stessa di {@link #elenco} (stesso {@link RicercaStorico},
-     * stesso {@link #lottoIdsConCodice}): qui si valida solo {@code formato}, e si tollera solo un
-     * {@code periodo} noto - un valore sconosciuto in {@link #elenco} torna silenziosamente
-     * "tutto" (i telefoni con l'interfaccia vecchia), ma un download non deve mai scaricare un file
-     * diverso da quello richiesto senza dirlo.
+     * gli stessi {@code periodo}, {@code q}, {@code da} e {@code a}, ma SENZA limite - lo storico si
+     * scarica intero, non una pagina. La ricerca resta la stessa di {@link #elenco} (stesso {@link
+     * RicercaStorico}, stesso {@link #lottoIdsConCodice}): qui si valida solo {@code formato}, e si
+     * tollera solo un {@code periodo} noto - un valore sconosciuto in {@link #elenco} torna
+     * silenziosamente "tutto" (i telefoni con l'interfaccia vecchia), ma un download non deve mai
+     * scaricare un file diverso da quello richiesto senza dirlo. Ogni riga porta in coda i lotti degli
+     * ingredienti con fornitore e scadenza ({@link CatenaPerEsportazione}), e il file dichiara in testa
+     * il filtro con cui e' stato fatto.
      */
     @GetMapping("/esporta")
     public ResponseEntity<StreamingResponseBody> esporta(@RequestParam(required = false) String formato,
                                                             @RequestParam(required = false, defaultValue = "tutto") String periodo,
-                                                            @RequestParam(required = false) String q) {
+                                                            @RequestParam(required = false) String q,
+                                                            @RequestParam(required = false) String da,
+                                                            @RequestParam(required = false) String a) {
         FormatoEsportazione f = FormatoEsportazione.diParametro(formato);
-        LocalDateTime da = sogliaValidata(periodo);
+        Intervallo intervallo = intervallo(da, a);
+        LocalDateTime dal = intervallo != null ? intervallo.dal() : sogliaValidata(periodo);
+        LocalDateTime prima = intervallo != null ? intervallo.prima() : null;
         String frammento = q != null && !q.isBlank() ? q.toLowerCase() : null;
         Set<Long> lottoIdsTrovati = frammento != null ? lottoIdsConCodice(frammento) : Set.of();
-        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(da, frammento, lottoIdsTrovati, null, null, null, null, null));
-        List<RigaEsportazione> righeEsportate = righe.stream().map(RigaEsportazione::da).toList();
+        List<StoricoStampa> righe = ricerca.cerca(new RicercaStorico.Filtro(dal, prima, frammento, lottoIdsTrovati, null, null, null, null, null));
+        Map<Long, CatenaPerEsportazione.TestoCatena> catene = catenaPerEsportazione.perRighe(righe);
+        List<RigaEsportazione> righeEsportate = righe.stream()
+                .map(r -> RigaEsportazione.da(r).conCatena(catene.getOrDefault(r.getId(), CatenaPerEsportazione.TestoCatena.VUOTO)))
+                .toList();
         int totaleCopie = righe.stream().mapToInt(StoricoStampa::getCopie).sum();
         LocalDateTime generatoIl = LocalDateTime.now();
-        String descrizionePeriodo = descrizionePeriodo(periodo);
+        String descrizione = intervallo != null ? descrizioneIntervallo(intervallo) : descrizionePeriodo(periodo);
         String ricercaVisualizzata = frammento != null ? q.trim() : null;
+        EsportazioneStoricoService.DatiEsportazione dati =
+                new EsportazioneStoricoService.DatiEsportazione(descrizione, ricercaVisualizzata, totaleCopie, generatoIl);
 
         StreamingResponseBody corpo = out -> {
             switch (f) {
-                case CSV -> esportazione.scriviCsv(righeEsportate, out);
-                case XLSX -> esportazione.scriviXlsx(righeEsportate, out);
-                case PDF -> esportazione.scriviPdf(righeEsportate, descrizionePeriodo, ricercaVisualizzata, totaleCopie, generatoIl, out);
+                case CSV -> esportazione.scriviCsv(righeEsportate, dati, out);
+                case XLSX -> esportazione.scriviXlsx(righeEsportate, dati, out);
+                case PDF -> esportazione.scriviPdf(righeEsportate, dati, out);
             }
         };
-        String nomeFile = "storico-stampe-" + tokenPeriodo(periodo) + "-" + LocalDate.now().format(DATA_FILE) + "." + f.estensione();
+        String nomeFile = "storico-stampe-" + (intervallo != null ? tokenIntervallo(intervallo) : tokenPeriodo(periodo)) + "-"
+                + LocalDate.now().format(DATA_FILE) + "." + f.estensione();
         return ResponseEntity.ok()
                 .contentType(f.tipoContenuto())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomeFile + "\"")
                 .body(corpo);
+    }
+
+    /**
+     * {@code GET /api/storico/totali?periodo=&q=&da=&a=} (docs/api.md, "Storico"): quante stampe e
+     * quante etichette (somma delle copie) hanno lo stesso filtro di {@link #elenco} - il totale in
+     * fondo alla schermata Storico, che segue la ricerca e il periodo scelto invece di contare sempre
+     * «oggi». Una sola query di conteggio: non carica le righe, anche con migliaia di stampe.
+     */
+    @GetMapping("/totali")
+    public Map<String, Object> totali(@RequestParam(required = false, defaultValue = "tutto") String periodo,
+                                        @RequestParam(required = false) String q,
+                                        @RequestParam(required = false) String da,
+                                        @RequestParam(required = false) String a) {
+        Intervallo intervallo = intervallo(da, a);
+        String frammento = q != null && !q.isBlank() ? q.toLowerCase() : null;
+        Set<Long> lottoIdsTrovati = frammento != null ? lottoIdsConCodice(frammento) : Set.of();
+        LocalDateTime dal = intervallo != null ? intervallo.dal() : soglia(periodo);
+        LocalDateTime prima = intervallo != null ? intervallo.prima() : null;
+        RicercaStorico.Totali t = ricerca.totali(new RicercaStorico.Filtro(dal, prima, frammento, lottoIdsTrovati, null, null, null, null, null));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("stampe", t.stampe());
+        out.put("etichette", t.etichette());
+        return out;
+    }
+
+    /** «Dal 01/09/2026 al 30/09/2026», «Dal 01/09/2026» o «Fino al 30/09/2026». */
+    private static String descrizioneIntervallo(Intervallo i) {
+        if (i.da() != null && i.a() != null) {
+            return "Dal " + i.da().format(DATA_ITALIANA) + " al " + i.a().format(DATA_ITALIANA);
+        }
+        return i.da() != null ? "Dal " + i.da().format(DATA_ITALIANA) : "Fino al " + i.a().format(DATA_ITALIANA);
+    }
+
+    /** Il pezzo dell'intervallo nel nome del file: {@code dal-2026-09-01-al-2026-09-30}, {@code dal-2026-09-01} o {@code fino-al-2026-09-30}. */
+    private static String tokenIntervallo(Intervallo i) {
+        if (i.da() != null && i.a() != null) {
+            return "dal-" + i.da().format(DATA_FILE) + "-al-" + i.a().format(DATA_FILE);
+        }
+        return i.da() != null ? "dal-" + i.da().format(DATA_FILE) : "fino-al-" + i.a().format(DATA_FILE);
     }
 
     /** Come {@link #soglia}, ma {@code 400} (docs/api.md) su un {@code periodo} che non e' oggi, 7, 30 o tutto. */
@@ -289,6 +389,7 @@ public class StoricoController {
         out.put("etichettaNome", r.getEtichettaNome());
         out.put("lotto", r.getLotto());
         out.put("quantita", r.getQuantita());
+        out.put("porzioni", r.getPorzioni());
         out.put("scadenza", r.getScadenza());
         out.put("copie", r.getCopie());
         out.put("dispositivoNome", r.getDispositivoNome());

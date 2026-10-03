@@ -1,28 +1,26 @@
-import { useStampante } from "../api/hooks";
+import { useConnessione, useStampante } from "../api/hooks";
 import type { StatoStampante as StatoStampanteTipo } from "../api/tipi";
+import { problemaStampante } from "./stampa/istruzioniStampante";
 
-// "Collegata" invece di "Pronta" (deciso da Gianluca, 25/09/2026): la chiave
-// interna dello stato resta "pronta" (docs/api.md, contratto col servizio),
-// cambia solo il testo mostrato, qui e in Impostazioni.tsx.
+// "Pronta" (2/10/2026, prove con utenti: «c'e' scritto collegata ma mai
+// pronta», e il compito era proprio capire se si puo' stampare). Il 25/09 si
+// era scelto "Collegata": la chiave interna resta "pronta" (docs/api.md),
+// cambia solo il testo mostrato.
 const TESTO_STATO: Record<StatoStampanteTipo, string> = {
-  pronta: "Collegata",
+  pronta: "Pronta",
   in_stampa: "In stampa",
   errore: "Errore",
   scollegata: "Scollegata",
 };
 
-function classeDiStato(stato: StatoStampanteTipo | undefined) {
-  if (stato === "pronta") return "pronta";
-  if (stato === "in_stampa") return "incorso";
-  return "guasta";
-}
-
 // La pastiglia di stato, come in testata nel prototipo: verde se pronta,
-// ambra se sta stampando, rossa per errore o stampante scollegata.
+// ambra se sta stampando, rossa per errore, stampante scollegata o programma
+// sul PC che non risponde.
 export default function StatoStampante() {
   const { data, isLoading, isError } = useStampante();
+  const collegato = useConnessione();
 
-  if (isLoading) {
+  if (isLoading && collegato) {
     return (
       <span className="pastiglia incorso">
         <span className="punto" />
@@ -30,71 +28,67 @@ export default function StatoStampante() {
       </span>
     );
   }
-  if (isError || !data) {
+  // L'SSE caduto da qualche secondo (eventi.ts) o la lettura dello stato
+  // fallita: l'ultimo stato noto non vale piu' (prove con utenti del
+  // 2/10/2026: con il servizio spento il telefono diceva ancora «collegata»
+  // per 25 s).
+  if (!collegato || isError || !data) {
     return (
-      <span className="pastiglia guasta">
+      <span className="pastiglia guasta" role="status">
         <span className="punto" />
-        <b>Non raggiungo il servizio</b>
+        <b>Non raggiungo il programma sul PC</b>
       </span>
     );
   }
 
-  // Il messaggio del servizio gia' descrive lo stato (es. "Collegata", "Coperchio
-  // aperto"): affiancarlo sempre a TESTO_STATO duplicava il testo. Per pronta
-  // e in_stampa accanto va solo il rotolo; il messaggio si vede solo quando
-  // c'e' un problema (errore/scollegata), dove non c'entra il rotolo.
-  // Con "errore" il grassetto e' il messaggio stesso del servizio ("Coperchio aperto",
-  // "Supporto non alimentabile o rotolo finito", "Nessun rotolo caricato", "Stampante non
-  // risponde"): l'etichetta fissa "Coperchio aperto" valeva solo finche' era l'unico errore.
-  const inErrore = data.stato === "errore" || data.stato === "scollegata";
-  const accanto = data.stato === "scollegata" ? data.messaggio : inErrore ? "" : data.rotolo ? `rotolo ${data.rotolo} mm` : "nessun rotolo";
-  const grassetto = data.stato === "errore" && data.messaggio ? data.messaggio : TESTO_STATO[data.stato];
-  // "rotolo 62 mm" accanto a "In stampa" andava a capo da solo dentro la
-  // pastiglia sul telefono (misurato a 320px, 25 settembre 2026: "In stampa"
-  // + "rotolo 62 mm" non ci stanno affiancati) - accanto (qui sotto) resta
-  // solo su PC per questa riga (pronta senza modello/in_stampa), come gia'
-  // faceva per il messaggio lungo di scollegata.
-  // Il messaggio del servizio (l'errore specifico, o il motivo di
-  // "scollegata") puo' essere lungo ("Stampante disattivata dalla
-  // configurazione...", vari errori del registratore): su PC la pastiglia
-  // puo' andare a capo (.pastiglia, index.css) e ci sta; sul telefono, dove
-  // questa pastiglia sta accanto al nome dell'etichetta o sulla riga dei
-  // filtri (Stampa.tsx), lo spingeva via e allargava la pagina (difetto
-  // segnalato dal cliente da 390px, 25 settembre 2026, stato "scollegata").
-  // Sul telefono resta solo l'etichetta corta dello stato ("Errore"/
-  // "Scollegata"): il messaggio intero resta nel title/aria-label.
-  const messaggioLungo = inErrore ? data.messaggio || null : null;
-  // Da pronta, come nel prototipo: il grassetto e' il modello della
-  // stampante (solo su schermo largo, dove c'e' posto) e non ripete
-  // "Collegata", gia' detto dal colore verde del pallino.
-  if (data.stato === "pronta" && data.modello) {
+  const problema = problemaStampante(data);
+  const rotolo = data.rotolo ? `${data.rotolo} mm` : null;
+
+  // Pronta: il grassetto e' il modello (solo su schermo largo, dove c'e'
+  // posto), poi «Pronta · rotolo 62 mm». Sul telefono «Pronta · 62 mm»:
+  // «rotolo» non ci sta a 320px accanto al nome dell'etichetta (misurato il
+  // 25/09/2026), e il numero in millimetri basta a riconoscerlo.
+  if (data.stato === "pronta") {
     return (
       <span className="pastiglia pronta">
         <span className="punto" />
-        <b className="soloPC">{data.modello}</b>
+        {data.modello && <b className="soloPC">{data.modello}</b>}
         <span className="font-normal">
-          <span className="soloPC">rotolo </span>
-          {data.rotolo ? `${data.rotolo} mm · collegata` : "nessun rotolo"}
+          {rotolo ? (
+            <>
+              Pronta · <span className="soloPC">rotolo </span>
+              {rotolo}
+            </>
+          ) : (
+            "Pronta · nessun rotolo"
+          )}
         </span>
       </span>
     );
   }
+
+  if (data.stato === "in_stampa") {
+    return (
+      <span className="pastiglia incorso">
+        <span className="punto" />
+        <b>{TESTO_STATO.in_stampa}</b>
+        {rotolo && <span className="font-normal soloPC">rotolo {rotolo}</span>}
+      </span>
+    );
+  }
+
+  // Errore o scollegata: sul telefono il motivo breve («Coperchio aperto»,
+  // «Rotolo finito»: prima solo «Errore», che non diceva niente), su PC il
+  // messaggio intero del servizio. Il messaggio intero resta comunque nel
+  // title e nel nome accessibile.
+  const breve = problema?.breve ?? TESTO_STATO[data.stato];
+  const intero = data.messaggio || breve;
   return (
-    <span
-      className={"pastiglia " + classeDiStato(data.stato)}
-      title={messaggioLungo ?? undefined}
-      aria-label={messaggioLungo ? `${TESTO_STATO[data.stato]}: ${messaggioLungo}` : undefined}
-    >
+    <span className="pastiglia guasta" title={intero} aria-label={`Stampante: ${intero}`}>
       <span className="punto" />
-      {data.stato === "errore" && messaggioLungo ? (
-        <>
-          <b className="soloTel">{TESTO_STATO.errore}</b>
-          <b className="soloPC">{messaggioLungo}</b>
-        </>
-      ) : (
-        <b>{grassetto}</b>
-      )}
-      {accanto && <span className="font-normal soloPC">{accanto}</span>}
+      <b className="soloTel">{breve}</b>
+      <b className="soloPC">{data.stato === "scollegata" ? TESTO_STATO.scollegata : intero}</b>
+      {data.stato === "scollegata" && data.messaggio && <span className="font-normal soloPC">{data.messaggio}</span>}
     </span>
   );
 }

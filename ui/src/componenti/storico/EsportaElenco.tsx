@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, percorsoEsportaStorico } from "../../api/client";
 import type { EsitoStampa, PeriodoStorico, StoricoRiga } from "../../api/tipi";
+import { copiaNegliAppunti } from "../../hooks/copiaNegliAppunti";
 import { useAvviso } from "../../hooks/useAvviso";
 import { IconaCopia, IconaDocumento, IconaFoglio, IconaLista, IconaScarica, type ProprietaIcona } from "../Icone";
 import { formattaDataItaliana, formattaOra } from "../stampa/formattazione";
@@ -60,6 +61,7 @@ function rigaTabella(r: StoricoRiga): string {
     r.copie,
     r.lotto,
     r.quantita,
+    r.porzioni ?? "",
     r.scadenza ? formattaDataItaliana(r.scadenza) : "",
     r.dispositivoNome,
     TESTO_ESITO_ESPORTA[r.esito],
@@ -69,7 +71,13 @@ function rigaTabella(r: StoricoRiga): string {
 interface ProprietaEsportaElenco {
   periodo: PeriodoStorico;
   q: string;
+  // L'intervallo libero dal–al (AAAA-MM-GG, ciascuno puo' mancare): se c'e', il
+  // periodo fisso non conta e i file lo dichiarano in testa.
+  da?: string;
+  a?: string;
   disabilitato: boolean;
+  // Perche' e' spento (title del bottone): senza righe non c'e' niente da esportare.
+  motivo?: string;
 }
 
 // Il bottone "Esporta l'elenco" della testata (docs/api.md, "Storico"): apre
@@ -77,13 +85,19 @@ interface ProprietaEsportaElenco {
 // servizio) e "Copia come tabella" di prima (appunti, per incollare in un
 // foglio di calcolo). Tutte e quattro le scelte prendono SEMPRE tutte le
 // righe del filtro corrente, non solo le pagine gia' mostrate in Storico.tsx.
-export default function EsportaElenco({ periodo, q, disabilitato }: ProprietaEsportaElenco) {
+export default function EsportaElenco({ periodo, q, da, a, disabilitato, motivo }: ProprietaEsportaElenco) {
   const [aperto, setAperto] = useState(false);
   const [occupato, setOccupato] = useState(false);
   const contenitoreRef = useRef<HTMLDivElement>(null);
   const avvisa = useAvviso();
 
   const apri = useCallback(() => setAperto((a) => !a), []);
+
+  // Le righe finiscono mentre il menu e' aperto (ricerca cambiata, filtro):
+  // niente da esportare, il menu si richiude da solo.
+  useEffect(() => {
+    if (disabilitato) setAperto(false);
+  }, [disabilitato]);
 
   // Clic fuori o Esc chiudono il menu: a differenza della tendina dei nomi
   // simili (che si chiude da sola col blur del campo) qui non c'e' un campo
@@ -111,14 +125,14 @@ export default function EsportaElenco({ periodo, q, disabilitato }: ProprietaEsp
     (formato: FormatoEsporta) => {
       avvisa("Sto preparando il file…");
       const link = document.createElement("a");
-      link.href = percorsoEsportaStorico({ formato, periodo, q: q || undefined });
+      link.href = percorsoEsportaStorico({ formato, periodo, q: q || undefined, da, a });
       link.download = "";
       document.body.appendChild(link);
       link.click();
       link.remove();
       setAperto(false);
     },
-    [avvisa, periodo, q],
+    [avvisa, periodo, q, da, a],
   );
 
   // "Copia come tabella": il comportamento di prima (appunti, da incollare
@@ -127,16 +141,16 @@ export default function EsportaElenco({ periodo, q, disabilitato }: ProprietaEsp
   const copiaTabella = useCallback(() => {
     setOccupato(true);
     api
-      .storico({ periodo, q: q || undefined })
+      .storico({ periodo, q: q || undefined, da, a })
       .then(
         (tutte) => {
+          if (tutte.length === 0) return avvisa("Non c'è niente da copiare: l'elenco è vuoto.");
           // "Peso" invece di "Quantità" (deciso da Gianluca, 25/09/2026):
           // stessa colonna della tabella soloPC in Storico.tsx.
-          const intestazione = ["Data", "Ora", "Etichetta", "Copie", "Lotto", "Peso", "Scadenza", "Da", "Esito"].join("\t");
+          const intestazione = ["Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Peso", "Porzioni", "Scadenza", "Da", "Esito"].join("\t");
           const testo = [intestazione, ...tutte.map(rigaTabella)].join("\n");
-          return navigator.clipboard?.writeText(testo).then(
-            () => avvisa("Elenco copiato: incollalo in un foglio di calcolo."),
-            () => avvisa("Il browser non mi lascia copiare l'elenco."),
+          return copiaNegliAppunti(testo).then((copiato) =>
+            avvisa(copiato ? "Elenco copiato: incollalo in un foglio di calcolo." : "Il browser non mi lascia copiare l'elenco."),
           );
         },
         () => avvisa("Non sono riuscito a leggere l'elenco da esportare."),
@@ -145,11 +159,11 @@ export default function EsportaElenco({ periodo, q, disabilitato }: ProprietaEsp
         setOccupato(false);
         setAperto(false);
       });
-  }, [periodo, q, avvisa]);
+  }, [periodo, q, da, a, avvisa]);
 
   return (
     <div className="esportaMenu" ref={contenitoreRef}>
-      <button type="button" className="btn soloPC" onClick={apri} disabled={disabilitato || occupato} aria-haspopup="true" aria-expanded={aperto}>
+      <button type="button" className="btn soloPC" onClick={apri} disabled={disabilitato || occupato} aria-haspopup="true" aria-expanded={aperto} title={disabilitato ? motivo : undefined}>
         <IconaScarica larghezza={18} spessoreTratto={2} />
         <span>Esporta l&apos;elenco</span>
       </button>

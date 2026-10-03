@@ -1,55 +1,51 @@
-import { useCallback, useEffect, type MouseEvent } from "react";
-import { IconaVia } from "./Icone";
+import { createPortal } from "react-dom";
+import Finestra from "./Finestra";
 
 interface ProprietaLente {
   titolo: string;
   sottotitolo?: string;
+  // L'etichetta alla scala piena (300 dpi): RiquadroAnteprima la ricava o se la fa dare da chi la ospita.
   src: string;
   onChiudi: () => void;
 }
 
-// L'etichetta a tutto schermo (".finestra.lente" del prototipo): la stessa
-// immagine dell'anteprima, ingrandita, dentro un foglio che scorre se non ci
-// sta tutta. Un solo modo (tolto "Da leggere" ai pixel veri, deciso da
-// Gianluca, 25/09/2026: il tocco sull'anteprima resta l'UNICO gesto per
-// ingrandire, senza un secondo selettore dentro la lente stessa) - l'etichetta
-// si adatta sempre allo schermo.
+// L'etichetta ingrandita (la «lente»): la stessa etichetta dell'anteprima,
+// ma alla scala PIENA e larga quanto la finestra. Prima l'immagine era la
+// stessa, minuscola, dell'anteprima (65-140 px nell'editor) e la lente la
+// mostrava a ~280 px "a tutto schermo" senza ingrandire niente (prove con
+// utenti simulati, 2 ottobre 2026): ora il PNG arriva a 300 dpi e occupa la
+// larghezza della finestra, con lo scorrimento in verticale se l'etichetta e'
+// lunga (la regione scorrevole si raggiunge anche da tastiera).
+//
+// La finestra e' la `Finestra` comune (velo, Esc, titolo, bottone Chiudi): il
+// focus all'apertura, dentro la finestra e alla chiusura lo gestisce lei, non
+// piu' questo componente. Sta in un portale su document.body, non dentro
+// l'anteprima: quella, sul telefono, e' ancorata (position:sticky con z-index,
+// quindi un suo contesto di sovrapposizione) e la finestra ci sarebbe rimasta
+// chiusa dentro, sotto la testata e la barra in basso.
 export default function LenteEtichetta({ titolo, sottotitolo, src, onChiudi }: ProprietaLente) {
-  const suClicVelo = useCallback(
-    (evento: MouseEvent<HTMLDivElement>) => {
-      if (evento.target === evento.currentTarget) onChiudi();
-    },
-    [onChiudi],
-  );
-
-  useEffect(() => {
-    function suTasto(evento: KeyboardEvent) {
-      if (evento.key === "Escape") onChiudi();
-    }
-    document.addEventListener("keydown", suTasto);
-    return () => document.removeEventListener("keydown", suTasto);
-  }, [onChiudi]);
-
-  return (
-    <div className="velo" onClick={suClicVelo} role="presentation">
-      <div className="finestra lente" role="dialog" aria-modal="true" aria-label={titolo}>
-        <div className="capoLente">
-          <div className="flex-1 min-w-0">
-            <div className="h text-[19px] font-bold whitespace-nowrap overflow-hidden text-ellipsis">{titolo}</div>
-            {sottotitolo && (
-              <div className="text-[13px] text-[var(--tenue)] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{sottotitolo}</div>
-            )}
-          </div>
-          <button type="button" className="chiudi" onClick={onChiudi} aria-label="Chiudi l'anteprima">
-            <IconaVia larghezza={18} spessoreTratto={2} />
-          </button>
-        </div>
-        <div className="corpoLente">
-          <div className="foglio">
-            <img src={src} alt={titolo} />
-          </div>
-        </div>
+  return createPortal(
+    <Finestra
+      titolo={titolo}
+      sottotitolo={sottotitolo}
+      media
+      onChiudi={onChiudi}
+      piede={
+        <button type="button" className="btn" onClick={onChiudi}>
+          Chiudi
+        </button>
+      }
+    >
+      <div
+        className="max-h-[68vh] overflow-auto overscroll-contain rounded-xl border border-[var(--riga)] bg-[var(--sabbia)] p-3"
+        role="region"
+        aria-label="L'etichetta ingrandita: scorre se è lunga"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- regione scorrevole: senza il fuoco la tastiera non la scorre
+        tabIndex={0}
+      >
+        <img src={src} alt={titolo} className="block w-full h-auto bg-white shadow-[0_6px_20px_rgba(88,68,60,.14)]" />
       </div>
-    </div>
+    </Finestra>,
+    document.body,
   );
 }

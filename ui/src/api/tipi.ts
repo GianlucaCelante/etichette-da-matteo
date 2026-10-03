@@ -25,6 +25,36 @@ export interface EventoStampa {
   // intera prima di proseguire o ristampare. Assente/null negli altri casi,
   // compresa la pausa automatica del coperchio aperto.
   domanda?: "nastro" | null;
+  // Solo nell'evento "in_pausa" con domanda "nastro" pubblicato quando la
+  // stampante e' tornata pulita (docs/api.md, 2/10/2026): i secondi che
+  // mancavano, in quel momento, alla ristampa automatica. Assente/null negli
+  // altri eventi. copiaCorrente, con "in_corso" e "in_pausa", e' la copia IN
+  // LAVORAZIONE (da 1); con gli esiti finali le copie uscite.
+  secondiAllaRistampa?: number | null;
+}
+
+// GET /api/stampe/attive (docs/api.md, 2/10/2026): i lavori accettati e non
+// ancora conclusi, in ordine di coda (il primo e' alla stampante o sta per
+// partire). "in_coda" = la stampante non l'ha ancora preso.
+export type StatoLavoroAttivo = "in_coda" | "in_corso" | "in_pausa";
+
+export interface LavoroAttivo {
+  lavoroId: string;
+  prodottoId: number | null;
+  prodottoNome: string;
+  copieTotali: number;
+  copiaCorrente: number;
+  stato: StatoLavoroAttivo;
+  messaggio: string | null;
+  domanda: "nastro" | null;
+  secondiAllaRistampa: number | null;
+  lotto: string;
+  scadenza: string | null;
+  quantita: string | null;
+  porzioni: string | null;
+  dispositivoNome: string;
+  prova: boolean;
+  storicoId: number | null;
 }
 
 export interface ProvaStampaRisposta {
@@ -74,6 +104,7 @@ export type TipoBloccoDati =
   | "conservazione"
   | "lotto"
   | "quantita"
+  | "porzioni"
   | "valori"
   | "produttore"
   | "dataProduzione"
@@ -83,7 +114,7 @@ export type TipoBloccoDati =
 // dal 24/09/2026, docs/api.md): un'etichetta vecchia che lo avesse ancora
 // salvato lo perde alla lettura, lato servizio - l'interfaccia non lo vede
 // mai, ne' lo puo' piu' aggiungere.
-export type TipoBloccoLibero = "testo" | "testoGrande" | "riga" | "spazio" | "logo";
+export type TipoBloccoLibero = "testo" | "riga" | "spazio" | "logo";
 
 export type TipoBlocco = TipoBloccoDati | TipoBloccoLibero;
 
@@ -92,15 +123,34 @@ export interface Blocco {
   acceso: boolean;
   corpo: number;
   colonna: ColonnaBlocco;
-  // solo per "testo" e "testoGrande": il contenuto fisso del blocco.
+  // solo per "testo": il contenuto fisso del blocco.
   testo?: string;
   // assente = "sinistra": non serve mandarlo per forza quando e' quello.
   allineamento?: AllineamentoBlocco;
+  // Grassetto di tutto il blocco (docs/api.md, BloccoDto): null/assente = il
+  // default del tipo (BLOCCHI_GRASSETTO_DI_SERIE), true/false lo forzano.
+  // Vale per i blocchi di testo (non per BLOCCHI_SENZA_GRASSETTO). Il vecchio
+  // tipo "testoGrande" non esiste piu': il servizio lo legge come "testo"
+  // con grassetto true.
+  grassetto?: boolean | null;
 }
 
 // I tipi per cui l'allineamento non si mostra: "valori" ha gia' la sua
 // tabella voce/valore, "riga" e "spazio" non hanno testo da allineare.
 export const BLOCCHI_SENZA_ALLINEAMENTO: readonly TipoBlocco[] = ["valori", "riga", "spazio"];
+
+// I tipi senza testo da mettere in grassetto: "valori" ha la sua tabella
+// (voci in grassetto, "di cui" no), "riga" e "spazio" non stampano testo, il
+// "logo" e' un'immagine.
+export const BLOCCHI_SENZA_GRASSETTO: readonly TipoBlocco[] = ["valori", "riga", "spazio", "logo"];
+
+// I tipi che escono in grassetto quando "grassetto" e' null/assente (il
+// default di oggi della resa: titolo, peso e porzioni sono tutto in
+// grassetto). Per gli altri il default e' regolare: quelli con un pezzo in
+// grassetto dentro un testo normale (scadenza: la data; ingredienti e "puo'
+// contenere": gli allergeni) restano cosi', "grassetto: true" li porta tutti
+// in grassetto.
+export const BLOCCHI_GRASSETTO_DI_SERIE: readonly TipoBlocco[] = ["titolo", "quantita", "porzioni"];
 
 export interface Produttore {
   ragioneSociale: string;
@@ -154,6 +204,10 @@ export interface Prodotto {
   conservazione: string;
   // testo libero ("2148 g", "6 pezzi"): alla stampa si puo' cambiare senza toccare il prodotto.
   quantita: string;
+  // Il valore di partenza del blocco "Porzioni" (testo libero, "8", "12
+  // porzioni"), come la quantita': alla stampa si puo' cambiare. null/assente
+  // = nessun valore, il blocco non esce sull'etichetta.
+  porzioni?: string | null;
   valoriNutrizionali: ValoreNutrizionale[];
   siglaOperatore: string;
   usi: number;
@@ -205,12 +259,12 @@ export const NOMIBLOCCO: Record<TipoBlocco, string> = {
   conservazione: "Conservazione",
   lotto: "Lotto",
   quantita: "Peso",
+  porzioni: "Porzioni",
   valori: "Valori nutrizionali",
   produttore: "Produttore",
   dataProduzione: "Data di produzione",
   sigla: "Sigla di chi l'ha fatta",
   testo: "Testo libero",
-  testoGrande: "Testo grande",
   riga: "Riga separatrice",
   spazio: "Spazio vuoto",
   logo: "Logo",
@@ -230,11 +284,12 @@ export const BLOCCHI_DATI: TipoBloccoDati[] = [
   "conservazione",
   "lotto",
   "quantita",
+  "porzioni",
   "valori",
   "produttore",
   "dataProduzione",
 ];
-export const BLOCCHI_LIBERI: TipoBloccoLibero[] = ["testo", "testoGrande", "riga", "spazio", "logo"];
+export const BLOCCHI_LIBERI: TipoBloccoLibero[] = ["testo", "riga", "spazio", "logo"];
 
 export const LARGHEZZE_DESTRA: LarghezzaDestra[] = ["1/4", "1/3", "1/2", "2/3"];
 
@@ -271,12 +326,16 @@ export interface MisureRisposta {
   larghezzaMm: number;
   altezzaMm: number;
   avvisi: string[];
+  // Dal 2 ottobre 2026: vero quando l'etichetta e' piu' lunga di 500 mm e il
+  // fondo viene tagliato (anche in "avvisi"); assente su un servizio vecchio.
+  troncata?: boolean;
 }
 
 export interface ParametriResa {
   rotolo?: Rotolo;
   scala?: number;
   quantita?: string;
+  porzioni?: string;
   scadenza?: string;
   lotto?: string;
 }
@@ -287,6 +346,9 @@ export interface StampaRichiesta {
   prodottoId: number;
   copie: number;
   quantita?: string;
+  // Il valore del blocco "Porzioni" per questa stampa (assente = quello del
+  // prodotto): si manda quando il campo della vista Stampa e' visibile.
+  porzioni?: string;
   scadenza?: string;
   lotto?: string;
   // La scelta a mano dei lotti (docs/api.md, "Stampa: quali lotti si
@@ -361,6 +423,9 @@ export interface StoricoRiga {
   prodottoNome: string;
   lotto: string;
   quantita: string;
+  // Le porzioni scritte per questa stampa (null/assente = non c'erano); la
+  // ristampa dallo storico le riusa.
+  porzioni?: string | null;
   scadenza: string | null;
   copie: number;
   dispositivoNome: string;
@@ -398,6 +463,27 @@ export interface ParametriStorico {
   lavoroId?: string;
   limite?: number;
   primaDi?: number;
+  // Intervallo di date libero (AAAA-MM-GG, estremi inclusi, ciascuno puo'
+  // mancare): con almeno uno dei due prende il posto di "periodo". 400 se
+  // "da" e' dopo "a" o una data non e' valida (2 ottobre 2026).
+  da?: string;
+  a?: string;
+}
+
+// GET /api/storico/totali: le stampe e le etichette (somma delle copie) di tutto
+// cio' che corrisponde a un filtro, non solo delle pagine gia' caricate.
+export interface TotaliStorico {
+  stampe: number;
+  etichette: number;
+}
+
+// Il filtro della vista Storico (sfoglia a pagine): periodo fisso, oppure un
+// intervallo da-a (quando c'e' almeno uno dei due, "periodo" non conta).
+export interface FiltroStoricoAPagine {
+  periodo: PeriodoStorico;
+  q?: string;
+  da?: string;
+  a?: string;
 }
 
 // GET /api/storico/ultime-valide?prodotti=1,8,3 (al massimo 100 id): per
@@ -464,12 +550,16 @@ export interface FornitoreConUso {
   ingredienti: number;
   // Quante consegne sono state registrate a suo nome.
   arrivi: number;
+  // Quanti lotti sono arrivati con quelle consegne: restano nello storico
+  // anche se il fornitore si elimina (2 ottobre 2026).
+  lotti: number;
 }
 
 // Calcolato dal servizio per l'elenco: "manca" (nessun lotto aperto),
-// "scaduto", "scade" (entro tre giorni), "piu" (piu' di un lotto aperto),
-// "aperto" (tutto a posto, nessuna pastiglia da mostrare).
-export type StatoIngrediente = "aperto" | "scade" | "scaduto" | "manca" | "piu";
+// "scaduto", "scade" (entro tre giorni), "senzaScadenza" (un lotto aperto
+// senza scadenza: da controllare, 2 ottobre 2026), "piu" (piu' di un lotto
+// aperto), "aperto" (tutto a posto, nessuna pastiglia da mostrare).
+export type StatoIngrediente = "aperto" | "scade" | "scaduto" | "manca" | "piu" | "senzaScadenza";
 
 export type StatoLottoIngrediente = "aperto" | "chiuso";
 
@@ -503,6 +593,16 @@ export interface Foto {
   url: string;
 }
 
+// Un campo di un lotto corretto a mano (PUT /api/lotti-ingrediente/{id}): il
+// valore di prima e quello di adesso, in testo leggibile (le date gia'
+// gg/mm/aaaa), null = vuoto. Dal piu' recente.
+export interface CorrezioneLotto {
+  correttoIl: string;
+  campo: "codice" | "quantita" | "scadenza" | "fornitore" | "data";
+  prima: string | null;
+  dopo: string | null;
+}
+
 export interface LottoIngrediente {
   id: number;
   ingredienteId: number;
@@ -515,10 +615,13 @@ export interface LottoIngrediente {
   chiusoDa: ChiusoDaLottoIngrediente | null;
   // null per un lotto scritto a mano alla stampa, senza documento (docs/api.md).
   arrivo: ArrivoDiLotto | null;
-  // il numero di stampe che l'hanno registrato.
+  // il numero di stampe che l'hanno registrato: a zero il lotto si puo'
+  // eliminare, altrimenti solo chiudere.
   usi: number;
   avvisoSacco: AvvisoSacco | null;
   foto: Foto[];
+  // I campi corretti a mano con il valore di prima, vuoto se mai corretto.
+  correzioni: CorrezioneLotto[];
 }
 
 export interface Ingrediente {
@@ -611,6 +714,9 @@ export interface ArrivoRichiesta {
   data: string;
   documento?: string;
   righe: RigaArrivoRichiesta[];
+  // Conferma di una consegna che il servizio ha rifiutato come doppione (409
+  // con "richiedeConferma"): la registra lo stesso.
+  registraComunque?: boolean;
 }
 
 export interface ArrivoRisposta {
@@ -621,8 +727,18 @@ export interface ArrivoRisposta {
   conPiuLottiAperti: string[];
 }
 
-export interface AggiornaScadenzaLottoRichiesta {
-  scadenza: string;
+// PUT /api/lotti-ingrediente/{id}: aggiornamento PARZIALE, solo i campi presenti
+// si toccano (2 ottobre 2026). Un campo presente ma vuoto (null o "") lo
+// svuota: vale per codice, quantita e scadenza, non per la data di arrivo.
+// Fornitore: fornitoreId (uno in elenco), fornitoreNome (ne nasce uno nuovo) o
+// tutti e due vuoti per toglierlo.
+export interface AggiornaLottoRichiesta {
+  codice?: string | null;
+  quantita?: string | null;
+  scadenza?: string | null;
+  fornitoreId?: number | null;
+  fornitoreNome?: string | null;
+  data?: string;
 }
 
 /* ============================ tracciati e catena dei lotti ============================ */
@@ -654,6 +770,8 @@ export interface LottoInAnello {
   // dell'arrivo da cui viene (docs/api.md, "Foto dei lotti e dei documenti").
   foto: Foto[];
   fotoDocumento: Foto[];
+  // Quanto e' arrivato (testo libero), null se non scritto.
+  quantita: string | null;
 }
 
 // La stampa sorgente di un semilavorato dentro un anello "prodotto".
@@ -682,6 +800,10 @@ export interface AnelloCatena {
   // null per un anello "ingrediente", o quando un "prodotto" non aveva
   // nessuna produzione valida al momento della stampa.
   stampa: StampaInAnello | null;
+  // Vero se questo anello era davvero vuoto alla stampa («non registrato»);
+  // falso se i lotti c'erano e una correzione a mano li ha tolti: allora si
+  // dice «nessun lotto indicato», mai la frase del non registrato.
+  nonRegistratoAllaStampa: boolean;
 }
 
 export interface CatenaStorico {
@@ -693,6 +815,16 @@ export interface CatenaStorico {
   correttoIl: string | null;
   // Nell'ordine dei tracciati del prodotto (al momento della stampa).
   anelli: AnelloCatena[];
+  // Le correzioni a mano con la catena com'era PRIMA, dalla piu' recente:
+  // l'ultima e' la catena al momento della stampa. Vuoto se mai corretta.
+  correzioni: CorrezioneCatena[];
+}
+
+// Com'era la catena prima di una correzione a mano: un elemento per anello,
+// con i lotti (o la stampa, per una produzione propria) in testo leggibile.
+export interface CorrezioneCatena {
+  correttoIl: string;
+  prima: { tipo: TipoTracciato; id: number; nome: string; voci: string[] }[];
 }
 
 // PUT /api/storico/{id}/catena: "lotti" corregge gli anelli "ingrediente"
@@ -757,6 +889,27 @@ export interface Backup {
   prossima: string | null;
 }
 
+// GET /api/programma/cartelle (docs/api.md): l'elenco per l'esploratore di
+// cartelle. Solo nomi di cartelle; "percorso" e "genitore" sono null guardando
+// le unita' (o da una radice, per "genitore").
+export interface VoceCartella {
+  nome: string;
+  percorso: string;
+}
+
+export interface RadiceCartelle {
+  nome: string;
+  percorso: string;
+  rimovibile: boolean;
+}
+
+export interface Cartelle {
+  percorso: string | null;
+  genitore: string | null;
+  cartelle: VoceCartella[];
+  radici: RadiceCartelle[];
+}
+
 export interface Programma {
   versione: string;
   cartellaDati: string;
@@ -768,4 +921,18 @@ export interface Programma {
 // Corpo di errore del servizio: sempre {"errore":"…"}.
 export interface CorpoErrore {
   errore: string;
+  // Solo il 409 di POST /api/arrivi su una consegna identica a una gia'
+  // registrata (2 ottobre 2026): "richiedeConferma" dice che si puo'
+  // riprovare con "registraComunque", "duplicati" quali righe sono doppie.
+  richiedeConferma?: boolean;
+  duplicati?: DoppioneConsegna[];
+}
+
+// Una riga di consegna che sembra gia' registrata: "lottoId" e' il lotto che
+// c'e' gia', assente se il doppio sta solo dentro la richiesta stessa.
+export interface DoppioneConsegna {
+  ingredienteId: number;
+  ingrediente: string;
+  codice: string;
+  lottoId: number | null;
 }
