@@ -126,34 +126,41 @@ class PorzioniStampaStoricoTest {
         jdbc.update("UPDATE prodotti SET porzioni = ? WHERE id = 1", porzioni);
     }
 
-    /** Una stampa che arriva a "completata". La conferma della copia si accoda SOLO dopo che il job e' stato inviato (come in RigaDiStoricoDallAvvioTest): nessuna corsa col monitor. */
     private String stampa(String corpo) throws Exception {
-        long jobPrima = preparaStampante();
-        String lavoroId = leggiJson(post("/api/stampe").contentType("application/json").content(corpo)).get("lavoroId").asText();
-        confermaCopiaInviata(jobPrima);
-        return lavoroId;
+        return lavoroCompletato(post("/api/stampe").contentType("application/json").content(corpo));
     }
 
     private String ristampa(long rigaId) throws Exception {
-        long jobPrima = preparaStampante();
-        String lavoroId = leggiJson(post("/api/storico/" + rigaId + "/ristampa")).get("lavoroId").asText();
-        confermaCopiaInviata(jobPrima);
-        return lavoroId;
+        return lavoroCompletato(post("/api/storico/" + rigaId + "/ristampa"));
     }
 
-    /** Stampante finta pronta; ritorna quanti job sono gia' stati inviati (la porta finta e' la stessa per tutto il test). */
-    private long preparaStampante() throws Exception {
-        avviaEAspettaStampantePronta();
-        porta.accodaRisposta(statoPronta102()); // eventuale ultima lettura di controllaPrimaDiStampare
-        return contaJobInviati();
-    }
-
-    private void confermaCopiaInviata(long jobPrima) throws InterruptedException {
-        aspettaJobInviati(jobPrima + 1);
+    /**
+     * Una stampa che arriva a "completata". La stampante finta resta "viva" (un {@link
+     * #fornitorePronta} che accoda di continuo nessun-dato + pronta) dalla richiesta fino al job
+     * inviato: una sola risposta precaricata per controllaPrimaDiStampare non bastava, perche' il
+     * controllo periodico del monitor, se cadeva fra una stampa e l'altra, la scartava come
+     * residuo (svuotaCoda) e il lavoro restava in pausa ad aspettare una stampante muta (test
+     * instabile fino al 6/10/2026). Le risposte avanzate dopo l'invio non danno fastidio: durante
+     * l'ascolto della copia uno stato "pronta" o un pacchetto vuoto si ignorano. La conferma della
+     * copia si accoda SOLO dopo che il job e' stato inviato.
+     */
+    private String lavoroCompletato(MockHttpServletRequestBuilder richiesta) throws Exception {
+        long jobPrima = contaJobInviati(); // la porta finta e' la stessa per tutto il test
+        Thread fornitore = fornitorePronta();
+        String lavoroId;
+        try {
+            assertThat(aspettaStampantePronta()).as("la stampante finta deve risultare pronta").isTrue();
+            lavoroId = leggiJson(richiesta).get("lavoroId").asText();
+            aspettaJobInviati(jobPrima + 1);
+        } finally {
+            fornitore.interrupt();
+            fornitore.join();
+        }
         porta.accodaRisposta(stato(0x01, 0, 0)); // copia 1: completata
         porta.accodaRisposta(stato(0x06, 0x00, 0)); // tornata in ricezione
         porta.accodaNessunDato();
         porta.accodaRisposta(statoPronta102()); // aggiornaStato() finale
+        return lavoroId;
     }
 
     /** Ogni job termina con il byte 0x1A ("ultima pagina"), sempre l'ultimo del suo ultimo pezzo. */
@@ -218,10 +225,10 @@ class PorzioniStampaStoricoTest {
         return mapper.readTree(risposta);
     }
 
-    private void avviaEAspettaStampantePronta() throws Exception {
-        boolean[] continua = {true};
+    /** Un thread che fa rispondere la stampante finta "pronta" (nessun dato + stato) ogni 30 ms, finche' non lo si interrompe. */
+    private Thread fornitorePronta() {
         Thread fornitore = new Thread(() -> {
-            while (continua[0]) {
+            while (!Thread.currentThread().isInterrupted()) {
                 porta.accodaNessunDato();
                 porta.accodaRisposta(statoPronta102());
                 try {
@@ -233,11 +240,7 @@ class PorzioniStampaStoricoTest {
         }, "fornitore-di-prova");
         fornitore.setDaemon(true);
         fornitore.start();
-
-        assertThat(aspettaStampantePronta()).as("la stampante finta deve risultare pronta").isTrue();
-
-        continua[0] = false;
-        fornitore.join();
+        return fornitore;
     }
 
     private boolean aspettaStampantePronta() throws Exception {

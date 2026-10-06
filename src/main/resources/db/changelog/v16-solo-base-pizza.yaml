@@ -1,0 +1,48 @@
+databaseChangeLog:
+
+  # 6 ottobre 2026, consegna a Matteo (deciso da Gianluca): un'installazione nuova parte con la sola
+  # etichetta vera, «Base pizza low carb», come nel seme 17 (l'etichetta originale di Matteo). Gli
+  # altri otto prodotti di esempio del prototipo spariscono e la Base pizza perde i conteggi d'uso
+  # inventati («usata 12 volte»).
+  #
+  # Il seme 17 resta com'e' (cambiarlo romperebbe la firma di Liquibase sui database gia' creati):
+  # questi changeset lo correggono dopo, e toccano SOLO le righe ancora identiche al seme - stesse
+  # date di creazione e modifica, mai stampate, mai in una catena. Un prodotto rinominato, modificato
+  # o stampato non si tocca. Sul PC di sviluppo gli esempi sono gia' stati eliminati a mano e la Base
+  # pizza e' stata modificata: qui non cambia niente.
+  #
+  # contextFilter "!test": i test (profilo "test", application.yml) usano ancora i nove prodotti di esempio.
+
+  - changeSet:
+      id: 140-via-prodotti-di-esempio
+      author: etichette
+      contextFilter: "!test"
+      comment: "Via gli otto prodotti di esempio del seme 17, se ancora intatti."
+      changes:
+        - sql:
+            sql: |
+              DELETE FROM prodotti
+              WHERE nome IN ('Impasto classico 24h', 'Impasto integrale', 'Focaccia al rosmarino', 'Salsa di pomodoro',
+                             'Pesto di basilico', 'Crema di zucca', 'Ragù bianco', 'Mozzarella tagliata')
+                AND creato_il = '2026-09-08 00:00:00.000'
+                AND modificato_il = '2026-09-08 00:00:00.000'
+                AND id NOT IN (SELECT prodotto_id FROM storico_stampe WHERE prodotto_id IS NOT NULL)
+                AND id NOT IN (SELECT prodotto_id FROM prodotti_tracciati)
+                AND id NOT IN (SELECT prodotto_tracciato_id FROM prodotti_tracciati WHERE prodotto_tracciato_id IS NOT NULL)
+                AND id NOT IN (SELECT prodotto_tracciato_id FROM storico_lotti WHERE prodotto_tracciato_id IS NOT NULL);
+
+  - changeSet:
+      id: 141-base-pizza-mai-usata
+      author: etichette
+      contextFilter: "!test"
+      comment: "La Base pizza low carb del seme parte senza usi inventati, se ancora intatta e mai stampata."
+      changes:
+        - sql:
+            sql: |
+              UPDATE prodotti SET usi = 0, ultimo_uso = NULL
+              WHERE nome = 'Base pizza low carb'
+                AND usi = 12
+                AND ultimo_uso = '2026-09-08 11:50:00.000'
+                AND creato_il = '2026-09-08 00:00:00.000'
+                AND modificato_il = '2026-09-08 00:00:00.000'
+                AND id NOT IN (SELECT prodotto_id FROM storico_stampe WHERE prodotto_id IS NOT NULL);

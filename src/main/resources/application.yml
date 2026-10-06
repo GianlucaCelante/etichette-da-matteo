@@ -81,3 +81,14 @@ logging:
       total-size-cap: 200MB
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+
+---
+# Profilo dei test (@ActiveProfiles("test")): Liquibase gira col contesto "test", che salta i
+# changeset marcati "!test" - quelli che tolgono i prodotti di esempio da un'installazione nuova
+# (v16-solo-base-pizza.yaml), su cui i test si appoggiano ancora.
+spring:
+  config:
+    activate:
+      on-profile: test
+  liquibase:
+    contexts: test
