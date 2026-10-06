@@ -2,7 +2,7 @@ import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "reac
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BLOCCHI_SENZA_ALLINEAMENTO, NOMIBLOCCO, SCALETTA_CORPO, type AllineamentoBlocco, type ColonnaBlocco } from "../../api/tipi";
-import { IconaCestino, IconaGiu, IconaManiglia, IconaSu } from "../Icone";
+import { IconaCestino, IconaManiglia } from "../Icone";
 import { InterruttoreCompatto } from "../Interruttore";
 import type { BloccoBozza } from "./bozza";
 import { BottoniAllineamento } from "./ControlloAllineamento";
@@ -23,12 +23,6 @@ interface ProprietaBloccoRiga {
   onRimuovi: (chiave: string) => void;
   onCambiaAllineamento: (chiave: string, allineamento: AllineamentoBlocco) => void;
   onCambiaGrassetto: (chiave: string, grassetto: boolean) => void;
-  // «Sposta su» / «Sposta giù» (2 ottobre 2026): il riordino anche senza
-  // trascinare, da tastiera o con un tocco. puoSu/puoGiu spengono il bottone
-  // in cima e in fondo alla lista.
-  onSposta: (chiave: string, verso: "su" | "giu") => void;
-  puoSu: boolean;
-  puoGiu: boolean;
   // Il blocco appena aggiunto: la riga lampeggia un attimo (index.css, ".nuovo").
   nuovo?: boolean;
   // Il numero dopo il nome, se ci sono piu' blocchi «Testo libero» (numeroDelTesto).
@@ -67,9 +61,6 @@ export default function BloccoRiga({
   onRimuovi,
   onCambiaAllineamento,
   onCambiaGrassetto,
-  onSposta,
-  puoSu,
-  puoGiu,
   nuovo,
   numero,
 }: ProprietaBloccoRiga) {
@@ -90,8 +81,6 @@ export default function BloccoRiga({
     [onCambiaCorpo, blocco.chiave],
   );
   const clicVia = useCallback(() => onRimuovi(blocco.chiave), [onRimuovi, blocco.chiave]);
-  const clicSu = useCallback(() => onSposta(blocco.chiave, "su"), [onSposta, blocco.chiave]);
-  const clicGiu = useCallback(() => onSposta(blocco.chiave, "giu"), [onSposta, blocco.chiave]);
   const cambiaAllineamento = useCallback(
     (a: AllineamentoBlocco) => onCambiaAllineamento(blocco.chiave, a),
     [onCambiaAllineamento, blocco.chiave],
@@ -114,7 +103,7 @@ export default function BloccoRiga({
       {...listeners}
     >
       <div className="testa">
-        <span className="maniglia" {...attributes} aria-label={`Trascina per riordinare ${nome} (o usa Sposta su e Sposta giù)`}>
+        <span className="maniglia" {...attributes} aria-label={`Trascina per riordinare ${nome}`}>
           <span className="posto">{indice + 1}</span>
           <IconaManiglia larghezza={14} spessoreTratto={1.5} />
         </span>
@@ -153,14 +142,6 @@ export default function BloccoRiga({
               </>
             )}
             <BottoniPosizione valore={blocco.colonna} nomeBlocco={nome} onCambia={cambiaColonna} />
-          </div>
-          <div className="azioniBlocco" role="group" aria-label={`Ordine di ${nome}`}>
-            <button type="button" className="disabled:opacity-30" data-sposta="su" onClick={clicSu} disabled={!puoSu} title={`Sposta su ${nome}`} aria-label={`Sposta su ${nome}`}>
-              <IconaSu larghezza={13} spessoreTratto={2.2} />
-            </button>
-            <button type="button" className="disabled:opacity-30" data-sposta="giu" onClick={clicGiu} disabled={!puoGiu} title={`Sposta giù ${nome}`} aria-label={`Sposta giù ${nome}`}>
-              <IconaGiu larghezza={13} spessoreTratto={2.2} />
-            </button>
           </div>
           <button type="button" className="cestino" onClick={clicVia} title={`Togli ${nome} dall'etichetta`} aria-label={`Togli ${nome} dall'etichetta`}>
             <IconaCestino larghezza={14} spessoreTratto={2} />

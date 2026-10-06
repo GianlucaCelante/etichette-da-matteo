@@ -10,8 +10,8 @@ export interface EsitoSposta {
 
 const inColonna = (b: BloccoBozza | undefined): boolean => !!b && b.colonna !== "piena";
 
-// Sposta il blocco in posizione `da` alla posizione `a` (trascinamento e
-// bottoni «Sposta su/giu'» passano di qui). I blocchi sinistra/destra
+// Sposta il blocco in posizione `da` alla posizione `a` (il trascinamento,
+// su PC e telefono, passa di qui). I blocchi sinistra/destra
 // consecutivi formano UN gruppo «due colonne»: un blocco a tutta larghezza
 // lasciato nel mezzo lo spezzava in due gruppi da un blocco ciascuno, senza
 // dirlo (prove con utenti simulati, 2 ottobre 2026). Qui non si spezza mai: se

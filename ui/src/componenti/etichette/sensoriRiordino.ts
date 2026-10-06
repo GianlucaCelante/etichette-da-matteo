@@ -23,9 +23,10 @@ export const AUTOSCROLL_RIORDINO = { acceleration: 5, threshold: { x: 0, y: 0.15
 
 // I testi per chi usa un lettore di schermo (dnd-kit li legge in inglese di
 // serie, 2 ottobre 2026): in italiano, e senza promettere la tastiera dove il
-// riordino da tastiera non c'e'. Nell'elenco dei blocchi si riordina col
-// mouse/tocco o con i bottoni «Sposta su» e «Sposta giù» di ogni riga; nelle
-// voci dei valori nutrizionali anche con la maniglia (Invio, frecce, Invio).
+// riordino da tastiera non c'e'. Nell'elenco dei blocchi si riordina solo
+// trascinando, col mouse o col dito (i bottoni «Sposta su/giù» tolti il 6
+// ottobre 2026, deciso da Gianluca: basta trascinare); nelle voci dei valori
+// nutrizionali anche con la maniglia (Invio, frecce, Invio).
 const ANNUNCI_RIORDINO = {
   onDragStart: () => "Voce presa.",
   onDragOver: ({ over }: { over: unknown }) => (over ? "Sopra un'altra voce." : undefined),
@@ -34,7 +35,7 @@ const ANNUNCI_RIORDINO = {
 };
 export const ACCESSIBILITA_RIORDINO_BLOCCHI = {
   announcements: ANNUNCI_RIORDINO,
-  screenReaderInstructions: { draggable: "Per cambiare l'ordine usa i bottoni «Sposta su» e «Sposta giù» di questa riga, oppure trascinala col mouse." },
+  screenReaderInstructions: { draggable: "Per cambiare l'ordine trascina la riga col mouse, oppure tienila premuta col dito e trascinala." },
 };
 export const ACCESSIBILITA_VALORI = {
   announcements: ANNUNCI_RIORDINO,

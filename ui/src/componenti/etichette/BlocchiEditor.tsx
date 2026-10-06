@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
@@ -125,19 +125,6 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
   const sensori = useSensoriRiordino();
   const avvisa = useAvviso();
   const { rifVassoio, chiaveNuova, segnaNuovo } = useBloccoNuovo();
-  // Il bottone «Sposta su/giù» premuto da tastiera: dopo lo spostamento la riga
-  // ha cambiato posto nel DOM e il browser può aver perso il fuoco - si rimette
-  // sullo stesso bottone (o sull'altro, se la riga è arrivata in cima o in fondo).
-  const fuocoDopoSposta = useRef<{ chiave: string; verso: "su" | "giu" } | null>(null);
-  useLayoutEffect(() => {
-    const richiesta = fuocoDopoSposta.current;
-    if (!richiesta) return;
-    fuocoDopoSposta.current = null;
-    const riga = Array.from(rifVassoio.current?.querySelectorAll<HTMLElement>("[data-chiave]") ?? []).find((r) => r.dataset.chiave === richiesta.chiave);
-    const voluto = riga?.querySelector<HTMLButtonElement>(`button[data-sposta="${richiesta.verso}"]`);
-    const altro = riga?.querySelector<HTMLButtonElement>(`button[data-sposta="${richiesta.verso === "su" ? "giu" : "su"}"]`);
-    (voluto && !voluto.disabled ? voluto : altro)?.focus();
-  }, [blocchi, rifVassoio]);
 
   const onToggleAcceso = useCallback(
     (chiave: string) => onCambiaBlocchi(blocchi.map((b) => (b.chiave === chiave ? { ...b, acceso: !b.acceso } : b))),
@@ -167,7 +154,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     [blocchi, onCambiaBlocchi],
   );
 
-  // Trascinamento e bottoni passano da qui: se un blocco a tutta larghezza cadrebbe
+  // Il trascinamento passa da qui: se un blocco a tutta larghezza cadrebbe
   // IN MEZZO a un gruppo «due colonne» il gruppo non si spezza (vedi spostaBlocco) e
   // si dice dove è finito il blocco.
   const sposta = useCallback(
@@ -191,16 +178,6 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
       const da = blocchi.findIndex((b) => b.chiave === active.id);
       const a = blocchi.findIndex((b) => b.chiave === over.id);
       if (da < 0 || a < 0) return;
-      sposta(da, a);
-    },
-    [blocchi, sposta],
-  );
-  const onSposta = useCallback(
-    (chiave: string, verso: "su" | "giu") => {
-      const da = blocchi.findIndex((b) => b.chiave === chiave);
-      const a = verso === "su" ? da - 1 : da + 1;
-      if (da < 0 || a < 0 || a >= blocchi.length) return;
-      fuocoDopoSposta.current = { chiave, verso };
       sposta(da, a);
     },
     [blocchi, sposta],
@@ -245,9 +222,6 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
         onRimuovi={onRimuovi}
         onCambiaAllineamento={onCambiaAllineamento}
         onCambiaGrassetto={onCambiaGrassetto}
-        onSposta={onSposta}
-        puoSu={indice > 0}
-        puoGiu={indice < blocchi.length - 1}
         nuovo={b.chiave === chiaveNuova}
         numero={numeroDelTesto(blocchi, b.chiave)}
       />
