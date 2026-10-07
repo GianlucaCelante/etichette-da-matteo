@@ -62,7 +62,7 @@ public class Prodotto {
     @Column(name = "valori_nutrizionali")
     private String valoriNutrizionali;
 
-    /** JSON: la ricetta (righe con i grammi, resa, scarti) - vedi it.etichette.api.RicettaDto. */
+    /** JSON: la ricetta (righe con le quantita', porzioni ottenute) - vedi it.etichette.api.RicettaDto. */
     @Column(name = "ricetta")
     private String ricetta;
 

@@ -215,36 +215,41 @@ export interface SchedaIngrediente {
   valori: ValoriPer100;
   allergeni: string[];
   tracce: string[];
-  // Come si scrive nell'elenco ingredienti calcolato; null = il nome (in
-  // maiuscolo se contiene allergeni).
-  nomeEtichetta: string | null;
 }
+
+// I millilitri contano come grammi, kg e litri per mille.
+export type UnitaRicetta = "g" | "kg" | "ml" | "l";
+export const UNITA_RICETTA: readonly UnitaRicetta[] = ["g", "kg", "ml", "l"];
 
 export interface RigaRicetta {
   tipo: TipoTracciato;
   id: number;
   nome?: string | null;
-  grammi: number | null;
+  quantita: number | null;
+  unita: UnitaRicetta;
 }
 
-// La ricetta di un prodotto: grammi per ingrediente, resa in porzioni,
-// peso di una porzione finita, porzioni scartate; quali campi
-// dell'etichetta si calcolano (per i valori: riga per riga, "calcolato").
+// La ricetta di un prodotto (si scrive in Ingredienti, «Ricette»): le
+// quantita' degli ingredienti e quante porzioni ne sono uscite; quali campi
+// dell'etichetta si calcolano (si sceglie nell'editor; per i valori riga per
+// riga, "calcolato").
 export interface Ricetta {
   righe: RigaRicetta[];
-  resaPorzioni: number | null;
-  pesoPorzione: number | null;
-  porzioniScartate: number | null;
+  porzioni: number | null;
   ingredientiAuto: boolean;
   allergeniAuto: boolean;
 }
+
+// Quello che l'editor dell'etichetta manda in "ricetta": solo gli
+// interruttori, righe e porzioni restano quelle salvate.
+export type InterruttoriRicetta = Pick<Ricetta, "ingredientiAuto" | "allergeniAuto">;
 
 // Il calcolo di una ricetta (solo lettura): campo "calcolo" del prodotto e
 // risposta di POST /api/ricette/calcolo.
 export interface CalcoloRicetta {
   pesoIngredienti: number;
-  pesoFinale: number;
-  porzioniUtili: number | null;
+  // Peso degli ingredienti diviso le porzioni; null senza porzioni.
+  pesoPorzione: number | null;
   per100: ValoriPer100;
   perPorzione: ValoriPer100 | null;
   valori: ValoreNutrizionale[];
@@ -282,8 +287,9 @@ export interface Prodotto {
   // proprie (semilavorati). L'ordine e' quello scelto in Etichette; in
   // lettura il servizio aggiunge "nome" a ogni voce.
   tracciati: Tracciato[];
-  // La ricetta (7 ottobre 2026): in scrittura assente = non toccarla.
-  ricetta?: Ricetta | null;
+  // La ricetta (7 ottobre 2026): in lettura sempre intera; in scrittura
+  // assente = non toccarla, solo interruttori = cambia solo quelli.
+  ricetta?: Ricetta | InterruttoriRicetta | null;
   // Solo lettura: null se il prodotto non ha una ricetta con almeno una riga.
   calcolo?: CalcoloRicetta | null;
 }
@@ -512,6 +518,9 @@ export interface StoricoRiga {
   // dello storico (che potrebbe essere un'altra stampa). null sulle righe
   // vecchie, scritte prima che il servizio lo mandasse.
   lavoroId: string | null;
+  // Le porzioni di questa produzione buttate dopo (sigillate male...),
+  // segnate a posteriori: 0 = nessuna.
+  scartate: number;
 }
 
 // I filtri di GET /api/storico (docs/api.md, "Storico"): tutti facoltativi e

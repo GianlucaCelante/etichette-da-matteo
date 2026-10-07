@@ -236,6 +236,13 @@ export const api = {
   // risponde col dettaglio aggiornato.
   aggiornaSchedaIngrediente: (id: number, scheda: SchedaIngrediente) =>
     richiedi<IngredienteConLotti>(`/ingredienti/${id}/scheda`, { method: "PUT", body: JSON.stringify(scheda) }),
+  // Righe e porzioni della ricetta (pagina Ingredienti, «Ricette»): risponde
+  // col prodotto ricalcolato.
+  salvaRicetta: (id: number, ricetta: Pick<Ricetta, "righe" | "porzioni">) =>
+    richiedi<Prodotto>(`/prodotti/${id}/ricetta`, { method: "PUT", body: JSON.stringify(ricetta) }),
+  // Le porzioni di una produzione buttate dopo: 0 toglie il segno.
+  segnaScartate: (id: number, scartate: number) =>
+    richiedi<StoricoRiga>(`/storico/${id}/scartate`, { method: "PUT", body: JSON.stringify({ scartate }) }),
   // Il calcolo di una ricetta in modifica, non salvata: niente viene scritto.
   calcoloRicetta: (ricetta: Ricetta, prodottoId: number | null) =>
     richiedi<CalcoloRicetta>("/ricette/calcolo", { method: "POST", body: JSON.stringify({ ricetta, prodottoId }) }),

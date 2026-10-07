@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useAggiornaIngrediente,
   useAggiornaLotto,
@@ -21,6 +21,8 @@ import CampoNomeConSimili from "../componenti/ingredienti/CampoNomeConSimili";
 import FinestraFornitori from "../componenti/ingredienti/FinestraFornitori";
 import RigaLotto from "../componenti/ingredienti/RigaLotto";
 import SchedaTecnica from "../componenti/ingredienti/SchedaTecnica";
+import SceltaVistaIngredienti from "../componenti/ricette/SceltaVistaIngredienti";
+import VistaRicette from "../componenti/ricette/VistaRicette";
 import SelettoreFornitore from "../componenti/ingredienti/SelettoreFornitore";
 import { SottoTitolo, StatoVuoto, TitoloSezione } from "../componenti/ingredienti/SezioniScheda";
 import { statoScadenzaLotto } from "../componenti/ingredienti/statoLotto";
@@ -210,7 +212,19 @@ function FilaLotto({
 // tendina dei nomi simili), fornitore abituale, e i suoi lotti (docs/api.md,
 // "Ingredienti, fornitori e lotti"; prototipo banco-lotti, vistaIngredienti/
 // schedaIngrediente/rigaLotto/nuovoIngrediente).
+// La voce «Ingredienti» del menu: l'elenco degli ingredienti (con lotti e
+// scheda tecnica) oppure le ricette delle etichette (?vista=ricette, 7
+// ottobre 2026). ?prodotto=<id> apre subito la ricetta di quell'etichetta.
 export default function Ingredienti() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("vista") === "ricette") {
+    const id = Number(searchParams.get("prodotto"));
+    return <VistaRicette prodottoIniziale={Number.isInteger(id) && id > 0 ? id : null} />;
+  }
+  return <ElencoIngredienti />;
+}
+
+function ElencoIngredienti() {
   const navigate = useNavigate();
   const avvisa = useAvviso();
 
@@ -724,6 +738,7 @@ export default function Ingredienti() {
     <div className={"schermo vistaStampa" + (dettaglio ? " dettaglio" : "")}>
       {portaleAzioni}
       <div className="colonnaElenco flex-1 min-w-0 gap-3">
+        <SceltaVistaIngredienti vista="ingredienti" />
         <div className="cerca">
           <IconaCerca larghezza={20} spessoreTratto={2} />
           <input value={cerca} onChange={cambiaCerca} placeholder="Cerca ingrediente…" aria-label="Cerca ingrediente" />

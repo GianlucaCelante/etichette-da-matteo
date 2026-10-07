@@ -77,6 +77,10 @@ public class StoricoStampa {
      * recente (difetto del 23/09/2026, due stampe quasi simultanee). {@code null} per le righe
      * scritte prima di questa colonna (v9-pulizia-collegamenti-e-lavoro-id.yaml).
      */
+    /** Le porzioni di questa produzione buttate dopo (7 ottobre 2026, segnate dallo Storico); {@code null} = nessuna. */
+    @Column(name = "porzioni_scartate")
+    private Integer porzioniScartate;
+
     @Column(name = "lavoro_id")
     private String lavoroId;
 
@@ -181,6 +185,14 @@ public class StoricoStampa {
 
     public void setCorrettoIl(LocalDateTime correttoIl) {
         this.correttoIl = correttoIl;
+    }
+
+    public Integer getPorzioniScartate() {
+        return porzioniScartate;
+    }
+
+    public void setPorzioniScartate(Integer porzioniScartate) {
+        this.porzioniScartate = porzioniScartate;
     }
 
     public String getLavoroId() {

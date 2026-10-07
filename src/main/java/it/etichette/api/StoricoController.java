@@ -355,6 +355,27 @@ public class StoricoController {
         return catena.correggi(id, r.lotti(), r.stampe());
     }
 
+    /**
+     * {@code PUT /api/storico/{id}/scartate} con {@code {"scartate": 2}} (docs/api.md, "Scheda
+     * tecnica e ricetta"): le porzioni di questa produzione buttate dopo (sigillate male...),
+     * segnate a posteriori. {@code 0} o {@code null} = nessuna. Torna la riga aggiornata.
+     */
+    @PutMapping("/{id}/scartate")
+    @org.springframework.transaction.annotation.Transactional
+    public Map<String, Object> segnaScartate(@PathVariable Long id, @RequestBody Map<String, Object> corpo) {
+        RichiestaScartate r = json.converti(corpo, RichiestaScartate.class);
+        if (r.scartate() != null && (r.scartate() < 0 || r.scartate() > 100_000)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "scartate: deve essere fra 0 e 100000");
+        }
+        StoricoStampa riga = storico.findById(id)
+                .orElseThrow(() -> new ErroreApi(HttpStatus.NOT_FOUND, "riga di storico non trovata: " + id));
+        riga.setPorzioniScartate(r.scartate() != null && r.scartate() > 0 ? r.scartate() : null);
+        return aDtos(List.of(storico.save(riga))).get(0);
+    }
+
+    private record RichiestaScartate(Integer scartate) {
+    }
+
     @PostMapping("/{id}/ristampa")
     public Map<String, Object> ristampa(HttpServletRequest request, @PathVariable Long id,
                                          @RequestBody(required = false) Map<String, Object> corpo) {
@@ -401,6 +422,8 @@ public class StoricoController {
         // la schermata Stampa lo confronta col lavoroId in corso per trovare la SUA riga, invece di
         // prendere sempre la piu' recente. null per le righe scritte prima di questa colonna.
         out.put("lavoroId", r.getLavoroId());
+        // Le porzioni buttate dopo (7 ottobre 2026): 0 se non ne sono state segnate.
+        out.put("scartate", r.getPorzioniScartate() != null ? r.getPorzioniScartate() : 0);
         return out;
     }
 }

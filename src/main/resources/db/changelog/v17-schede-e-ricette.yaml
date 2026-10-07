@@ -1,16 +1,17 @@
 databaseChangeLog:
 
   # 7 ottobre 2026 (chiesto dal cliente alla demo): la scheda tecnica di ogni ingrediente (valori
-  # nutrizionali per 100 g, allergeni contenuti, tracce) e la ricetta di ogni prodotto (grammi per
-  # ingrediente, resa in porzioni, porzioni scartate), da cui si calcolano valori nutrizionali,
+  # nutrizionali per 100 g, allergeni contenuti, tracce) e la ricetta di ogni prodotto (quantita' per
+  # ingrediente, porzioni ottenute), da cui si calcolano valori nutrizionali,
   # elenco ingredienti e allergeni dell'etichetta (it.etichette.ricette.RicetteService).
-  # Entrambe JSON, come valori_nutrizionali ed etichetta: niente tabelle nuove.
+  # Entrambe JSON, come valori_nutrizionali ed etichetta: niente tabelle nuove. In piu' le porzioni
+  # scartate di una produzione, segnate a posteriori nello Storico.
 
   - changeSet:
       id: 160-ingredienti-scheda
       author: etichette
       comment: >
-        Colonna scheda su ingredienti (JSON: valori per 100 g, allergeni, tracce, nome in etichetta).
+        Colonna scheda su ingredienti (JSON: valori per 100 g, allergeni, tracce).
         Con SQL diretto e NON con addColumn: ingredienti e' citata da chiavi esterne di altre tabelle
         e l'addColumn di Liquibase su SQLite ricostruisce la tabella e riscrive quelle chiavi - vedi
         v10-storico-lotti-chiavi-esterne.yaml e SchemaChiaviEsterneTest.
@@ -22,9 +23,20 @@ databaseChangeLog:
       id: 161-prodotti-ricetta
       author: etichette
       comment: >
-        Colonna ricetta su prodotti (JSON: righe con grammi, resa in porzioni, peso della porzione,
-        porzioni scartate, quali campi dell'etichetta si calcolano). Con SQL diretto per lo stesso
+        Colonna ricetta su prodotti (JSON: righe con le quantita', porzioni ottenute, quali campi
+        dell'etichetta si calcolano). Con SQL diretto per lo stesso
         motivo del changeset 160.
       changes:
         - sql:
             sql: ALTER TABLE prodotti ADD COLUMN ricetta TEXT
+
+  - changeSet:
+      id: 162-storico-porzioni-scartate
+      author: etichette
+      comment: >
+        Colonna porzioni_scartate su storico_stampe: le porzioni di quella produzione buttate dopo
+        (sigillate male...), segnate a posteriori dallo Storico (PUT /api/storico/{id}/scartate).
+        Null = nessuna. Con SQL diretto: storico_stampe e' citata da storico_lotti (vedi changeset 160).
+      changes:
+        - sql:
+            sql: ALTER TABLE storico_stampe ADD COLUMN porzioni_scartate INTEGER

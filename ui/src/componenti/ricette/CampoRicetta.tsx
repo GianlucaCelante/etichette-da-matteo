@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useIngredienti, useProdotti } from "../../api/hooks";
-import type { CalcoloRicetta, Ricetta, RigaRicetta, Tracciato, ValoriPer100 } from "../../api/tipi";
+import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta, type ValoriPer100 } from "../../api/tipi";
 import { IconaCestino } from "../Icone";
 import { numeroDaTesto, numeroLeggibile, testoDaNumero } from "./numeri";
+
+// I grammi di una riga: kg e litri per mille, i millilitri come grammi
+// (come RigaRicettaDto#grammi sul servizio).
+function grammiDi(r: RigaRicetta): number {
+  if (!r.quantita || r.quantita <= 0) return 0;
+  return r.unita === "kg" || r.unita === "l" ? r.quantita * 1000 : r.quantita;
+}
 
 // Un campo numerico che lascia scrivere all'italiana ("1,", "12,5") senza
 // riscrivere il testo a ogni tasto: il numero sale solo quando e' valido.
@@ -67,21 +74,24 @@ function RigaIngrediente({
   indice,
   percentuale,
   senzaScheda,
-  onGrammi,
+  onQuantita,
+  onUnita,
   onTogli,
 }: {
   riga: RigaRicetta;
   indice: number;
   percentuale: number | null;
   senzaScheda: boolean;
-  onGrammi: (indice: number, grammi: number | null) => void;
+  onQuantita: (indice: number, quantita: number | null) => void;
+  onUnita: (indice: number, unita: UnitaRicetta) => void;
   onTogli: (indice: number) => void;
 }) {
-  const grammi = useCallback((n: number | null) => onGrammi(indice, n), [onGrammi, indice]);
+  const quantita = useCallback((n: number | null) => onQuantita(indice, n), [onQuantita, indice]);
+  const unita = useCallback((e: ChangeEvent<HTMLSelectElement>) => onUnita(indice, e.target.value as UnitaRicetta), [onUnita, indice]);
   const togli = useCallback(() => onTogli(indice), [onTogli, indice]);
   const nome = riga.nome ?? "(eliminato)";
   return (
-    <div className="flex items-center gap-2 min-h-[42px] px-1.5 py-1 border-b border-[var(--riga)] text-[13px]">
+    <div className="flex items-center gap-2 min-h-[42px] px-1.5 py-1 border-b border-[var(--riga)] last:border-b-0 text-[13px]">
       <div className="flex-1 min-w-0">
         <div className="font-semibold truncate">{nome}</div>
         <div className="text-[11.5px] leading-tight text-[var(--tenue)]">
@@ -90,7 +100,19 @@ function RigaIngrediente({
           {senzaScheda && <span className="text-[var(--rosso)]"> · scheda incompleta</span>}
         </div>
       </div>
-      <CampoNumero valore={riga.grammi} onCambia={grammi} etichetta={`Grammi di ${nome}`} unita="g" stretto />
+      <CampoNumero valore={riga.quantita} onCambia={quantita} etichetta={`Quantità di ${nome}`} stretto />
+      <select
+        value={riga.unita}
+        onChange={unita}
+        aria-label={`Unità di ${nome}`}
+        className="h-8 border border-[var(--bordocampo)] rounded-md bg-white px-1 text-[13px] max-[860px]:h-10 max-[860px]:text-[16px]"
+      >
+        {UNITA_RICETTA.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
       <button type="button" className="cestino" onClick={togli} title={`Togli ${nome} dalla ricetta`} aria-label={`Togli ${nome} dalla ricetta`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
@@ -125,17 +147,11 @@ function Riepilogo({ calcolo, ricetta }: { calcolo: CalcoloRicetta; ricetta: Ric
   return (
     <div className="flex flex-col gap-2">
       <div className="text-[13px] leading-relaxed">
-        Ingredienti <b>{numeroLeggibile(calcolo.pesoIngredienti)} g</b>
-        {calcolo.pesoFinale !== calcolo.pesoIngredienti && (
+        Peso degli ingredienti <b>{numeroLeggibile(calcolo.pesoIngredienti)} g</b>
+        {calcolo.pesoPorzione !== null && ricetta.porzioni !== null && (
           <>
             {" "}
-            → finito <b>{numeroLeggibile(calcolo.pesoFinale)} g</b>
-          </>
-        )}
-        {calcolo.porzioniUtili !== null && ricetta.resaPorzioni !== null && (
-          <>
-            {" "}
-            · porzioni utili <b>{calcolo.porzioniUtili}</b> su {ricetta.resaPorzioni}
+            · {ricetta.porzioni} porzioni da circa <b>{numeroLeggibile(calcolo.pesoPorzione)} g</b>
           </>
         )}
       </div>
@@ -143,17 +159,20 @@ function Riepilogo({ calcolo, ricetta }: { calcolo: CalcoloRicetta; ricetta: Ric
         <div className="flex gap-2 px-2 py-1 border-b border-[var(--riga)] text-[11.5px] text-[var(--tenue)]">
           <span className="flex-1">Calcolato</span>
           <span className="w-[120px] text-right">per 100 g</span>
-          {conPorzione && <span className="w-[120px] text-right">per porzione</span>}
+          {conPorzione && <span className="w-[120px] text-right max-[520px]:hidden">per porzione</span>}
         </div>
         {calcolo.valori.map((v) => (
           <div key={v.voce} className="flex gap-2 px-2 py-1 border-b border-[var(--riga)] last:border-b-0">
             <span className={"flex-1 min-w-0" + (v.voce.startsWith("di cui") ? " pl-3" : "")}>{v.voce}</span>
             <span className="w-[120px] text-right font-bold">{v.valore || "—"}</span>
-            {conPorzione && <span className="w-[120px] text-right">{perPorzione(v.voce, calcolo.perPorzione) || "—"}</span>}
+            {conPorzione && <span className="w-[120px] text-right max-[520px]:hidden">{perPorzione(v.voce, calcolo.perPorzione) || "—"}</span>}
           </div>
         ))}
       </div>
       <div className="text-[13px] leading-relaxed">
+        <div>
+          Elenco ingredienti: <span className="font-semibold">{calcolo.ingredienti || "—"}</span>
+        </div>
         <div>
           Contiene: <b>{calcolo.allergeni.length ? calcolo.allergeni.join(", ") : "nessun allergene"}</b>
         </div>
@@ -163,7 +182,7 @@ function Riepilogo({ calcolo, ricetta }: { calcolo: CalcoloRicetta; ricetta: Ric
       </div>
       {calcolo.senzaValori.length > 0 && (
         <div className="text-[12.5px] leading-snug text-[var(--rosso)]">
-          Mancano dei valori nella scheda di: {calcolo.senzaValori.join(", ")}. Completala in Ingredienti, altrimenti quelle righe non si calcolano.
+          Mancano dei valori nella scheda tecnica di: {calcolo.senzaValori.join(", ")}. Completala, altrimenti quelle righe non si calcolano.
         </div>
       )}
       {calcolo.avvisi.map((a) => (
@@ -175,11 +194,11 @@ function Riepilogo({ calcolo, ricetta }: { calcolo: CalcoloRicetta; ricetta: Ric
   );
 }
 
-// La ricetta del prodotto (chiesta dal cliente alla demo del 7 ottobre
-// 2026): gli ingredienti con i grammi, quante porzioni escono, quanto pesa
-// una porzione finita e quante se ne scartano. Da qui il servizio calcola
+// La ricetta di un prodotto (chiesta dal cliente alla demo del 7 ottobre
+// 2026): le quantita' che Matteo usa davvero (un litro d'acqua, mezzo chilo
+// di farina...) e quante porzioni ne ha fatto. Da qui il servizio calcola
 // valori nutrizionali, allergeni ed elenco ingredienti (RicetteService);
-// quali campi dell'etichetta li usano si sceglie nei loro gruppi.
+// quali campi dell'etichetta li usano si sceglie nell'editor dell'etichetta.
 export default function CampoRicetta({
   ricetta,
   onCambia,
@@ -196,8 +215,12 @@ export default function CampoRicetta({
   const { data: ingredientiTutti } = useIngredienti();
   const { data: prodottiTutti } = useProdotti({ ordine: "nome" });
 
-  const cambiaGrammi = useCallback(
-    (indice: number, grammi: number | null) => onCambia({ ...ricetta, righe: ricetta.righe.map((r, i) => (i === indice ? { ...r, grammi } : r)) }),
+  const cambiaQuantita = useCallback(
+    (indice: number, quantita: number | null) => onCambia({ ...ricetta, righe: ricetta.righe.map((r, i) => (i === indice ? { ...r, quantita } : r)) }),
+    [ricetta, onCambia],
+  );
+  const cambiaUnita = useCallback(
+    (indice: number, unita: UnitaRicetta) => onCambia({ ...ricetta, righe: ricetta.righe.map((r, i) => (i === indice ? { ...r, unita } : r)) }),
     [ricetta, onCambia],
   );
   const togli = useCallback((indice: number) => onCambia({ ...ricetta, righe: ricetta.righe.filter((_, i) => i !== indice) }), [ricetta, onCambia]);
@@ -207,30 +230,27 @@ export default function CampoRicetta({
       if (!tipo || !id) return;
       const elenco = tipo === "ingrediente" ? (ingredientiTutti ?? []) : (prodottiTutti ?? []);
       const scelto = elenco.find((x) => x.id === Number(id));
-      onCambia({ ...ricetta, righe: [...ricetta.righe, { tipo: tipo as RigaRicetta["tipo"], id: Number(id), nome: scelto?.nome ?? null, grammi: null }] });
+      onCambia({ ...ricetta, righe: [...ricetta.righe, { tipo: tipo as RigaRicetta["tipo"], id: Number(id), nome: scelto?.nome ?? null, quantita: null, unita: "g" }] });
     },
     [ricetta, onCambia, ingredientiTutti, prodottiTutti],
   );
   // Si parte dagli ingredienti gia' scelti per i lotti: restano da scrivere i grammi.
   const daTracciati = useCallback(
-    () => onCambia({ ...ricetta, righe: tracciati.map((t) => ({ tipo: t.tipo, id: t.id, nome: t.nome ?? null, grammi: null })) }),
+    () => onCambia({ ...ricetta, righe: tracciati.map((t) => ({ tipo: t.tipo, id: t.id, nome: t.nome ?? null, quantita: null, unita: "g" as const })) }),
     [ricetta, onCambia, tracciati],
   );
-  const cambiaResa = useCallback((n: number | null) => onCambia({ ...ricetta, resaPorzioni: n }), [ricetta, onCambia]);
-  const cambiaPeso = useCallback((n: number | null) => onCambia({ ...ricetta, pesoPorzione: n }), [ricetta, onCambia]);
-  const cambiaScarti = useCallback((n: number | null) => onCambia({ ...ricetta, porzioniScartate: n }), [ricetta, onCambia]);
+  const cambiaPorzioni = useCallback((n: number | null) => onCambia({ ...ricetta, porzioni: n }), [ricetta, onCambia]);
 
   const presente = (tipo: string, id: number) => ricetta.righe.some((r) => r.tipo === tipo && r.id === id);
   const ingredientiLiberi = (ingredientiTutti ?? []).filter((i) => !presente("ingrediente", i.id));
   const prodottiLiberi = (prodottiTutti ?? []).filter((p) => p.id !== prodottoId && !presente("prodotto", p.id));
-  const totale = ricetta.righe.reduce((s, r) => s + (r.grammi && r.grammi > 0 ? r.grammi : 0), 0);
+  const totale = ricetta.righe.reduce((s, r) => s + grammiDi(r), 0);
   const senzaScheda = new Set(calcolo?.senzaValori ?? []);
-  const scartiTroppi = ricetta.resaPorzioni !== null && ricetta.porzioniScartate !== null && ricetta.porzioniScartate > ricetta.resaPorzioni;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[12px] leading-snug text-[var(--tenue)]">
-        Scrivi i grammi di ogni ingrediente: valori nutrizionali, allergeni ed elenco ingredienti si calcolano dalle schede tecniche (Ingredienti).
+        Scrivi le quantità che usi: valori nutrizionali, allergeni ed elenco ingredienti dell&apos;etichetta si calcolano dalle schede tecniche degli ingredienti.
       </div>
       <div className="campo">
         <div className="etichettina">Ingredienti della ricetta</div>
@@ -241,9 +261,10 @@ export default function CampoRicetta({
                 key={`${r.tipo}:${r.id}`}
                 riga={r}
                 indice={i}
-                percentuale={totale > 0 && r.grammi ? (r.grammi / totale) * 100 : null}
+                percentuale={totale > 0 && grammiDi(r) > 0 ? (grammiDi(r) / totale) * 100 : null}
                 senzaScheda={!!r.nome && senzaScheda.has(r.nome)}
-                onGrammi={cambiaGrammi}
+                onQuantita={cambiaQuantita}
+                onUnita={cambiaUnita}
                 onTogli={togli}
               />
             ))}
@@ -282,25 +303,11 @@ export default function CampoRicetta({
       </div>
 
       <div className="campo">
-        <div className="etichettina">Resa</div>
-        <div className="grid grid-cols-3 gap-2 max-[520px]:grid-cols-1">
-          <div className="flex flex-col gap-1 text-[12px] text-[var(--tenue)]">
-            Porzioni
-            <CampoNumero valore={ricetta.resaPorzioni} onCambia={cambiaResa} etichetta="Porzioni che escono dalla ricetta" interi />
-          </div>
-          <div className="flex flex-col gap-1 text-[12px] text-[var(--tenue)]">
-            Peso porzione cotta
-            <CampoNumero valore={ricetta.pesoPorzione} onCambia={cambiaPeso} etichetta="Peso di una porzione finita" unita="g" />
-          </div>
-          <div className="flex flex-col gap-1 text-[12px] text-[var(--tenue)]">
-            Scartate
-            <CampoNumero valore={ricetta.porzioniScartate} onCambia={cambiaScarti} etichetta="Porzioni scartate" interi segnaposto="0" />
-          </div>
+        <div className="etichettina">Porzioni ottenute</div>
+        <div className="w-[180px]">
+          <CampoNumero valore={ricetta.porzioni} onCambia={cambiaPorzioni} etichetta="Porzioni ottenute con queste quantità" interi />
         </div>
-        <div className="text-[12px] leading-snug text-[var(--tenue)]">
-          Quante porzioni escono dalla ricetta e quanto pesa una porzione finita: così i valori per 100 g tengono conto di quello che si perde in cottura. Le scartate (rotte, assaggi) si tolgono dalle porzioni utili.
-        </div>
-        {scartiTroppi && <div className="text-[12px] text-[var(--rosso)]">Le porzioni scartate sono più di quelle che escono: non si può salvare così.</div>}
+        <div className="text-[12px] leading-snug text-[var(--tenue)]">Quante porzioni hai fatto con queste quantità.</div>
       </div>
 
       {ricetta.righe.length > 0 && calcolo && <Riepilogo calcolo={calcolo} ricetta={ricetta} />}

@@ -28,13 +28,12 @@ interface Bozza {
   testi: Record<ChiaveValore, string>;
   allergeni: string[];
   tracce: string[];
-  nomeEtichetta: string;
 }
 
 function bozzaDa(scheda: SchedaIngrediente): Bozza {
   const testi = {} as Record<ChiaveValore, string>;
   for (const r of RIGHE) testi[r.chiave] = testoDaNumero(scheda.valori[r.chiave]);
-  return { testi, allergeni: scheda.allergeni, tracce: scheda.tracce, nomeEtichetta: scheda.nomeEtichetta ?? "" };
+  return { testi, allergeni: scheda.allergeni, tracce: scheda.tracce };
 }
 
 function stessaBozza(a: Bozza, b: Bozza): boolean {
@@ -119,7 +118,6 @@ export default function SchedaTecnica({ ingrediente }: { ingrediente: Ingredient
   const cambiaValore = useCallback((chiave: ChiaveValore, testo: string) => setBozza((b) => ({ ...b, testi: { ...b.testi, [chiave]: testo } })), []);
   const cambiaAllergeni = useCallback((allergeni: string[]) => setBozza((b) => ({ ...b, allergeni })), []);
   const cambiaTracce = useCallback((tracce: string[]) => setBozza((b) => ({ ...b, tracce })), []);
-  const cambiaNome = useCallback((e: ChangeEvent<HTMLInputElement>) => setBozza((b) => ({ ...b, nomeEtichetta: e.target.value })), []);
   const annulla = useCallback(() => setBozza(salvata), [salvata]);
 
   const numeri = useMemo(() => {
@@ -159,7 +157,6 @@ export default function SchedaTecnica({ ingrediente }: { ingrediente: Ingredient
       valori,
       allergeni: bozza.allergeni,
       tracce: bozza.tracce,
-      nomeEtichetta: bozza.nomeEtichetta.trim() || null,
     };
     salva.mutate(
       { id: ingrediente.id, scheda },
@@ -173,8 +170,6 @@ export default function SchedaTecnica({ ingrediente }: { ingrediente: Ingredient
       },
     );
   }, [sbagliati, numeri, bozza, salva, ingrediente.id, ingrediente.nome, avvisa]);
-
-  const segnapostoNome = bozza.allergeni.length > 0 ? ingrediente.nome.toLocaleUpperCase("it-IT") : ingrediente.nome;
 
   return (
     <section className="flex flex-col gap-3" aria-label="Scheda tecnica">
@@ -214,16 +209,6 @@ export default function SchedaTecnica({ ingrediente }: { ingrediente: Ingredient
         scelti={bozza.tracce}
         onCambia={cambiaTracce}
       />
-
-      <div className="campo">
-        <div className="etichettina">Come si scrive nell&apos;elenco ingredienti</div>
-        <div className="casella">
-          <input value={bozza.nomeEtichetta} onChange={cambiaNome} placeholder={segnapostoNome} aria-label="Come si scrive nell'elenco ingredienti" />
-        </div>
-        <div className="text-[12px] leading-snug text-[var(--tenue)]">
-          Facoltativo. Le parole in MAIUSCOLO escono in grassetto: per esempio «farina di GRANO tenero tipo 0».
-        </div>
-      </div>
 
       {modificata && (
         <div className="flex justify-end gap-2">

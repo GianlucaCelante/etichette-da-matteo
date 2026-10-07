@@ -4,7 +4,6 @@ import {
   useAggiornaProdotto,
   useAnnullaStampa,
   useAnteprimaProdottoInModifica,
-  useCalcoloRicetta,
   useCreaProdotto,
   useEliminaProdotto,
   useIngredienti,
@@ -53,9 +52,8 @@ import SelettoreEtichetta from "../componenti/etichette/SelettoreEtichetta";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
 import CampoConservazione from "../componenti/etichette/CampoConservazione";
 import ConfermaUscita from "../componenti/etichette/ConfermaUscita";
-import CampoRicetta from "../componenti/ricette/CampoRicetta";
 import { IngredientiDallaRicetta, LinkRicetta, PuoContenereDallaRicetta } from "../componenti/ricette/CampiDallaRicetta";
-import { conCalcolo, RICETTA_VUOTA } from "../componenti/ricette/ricetta";
+import { conCalcolo, ricettaDi } from "../componenti/ricette/ricetta";
 
 const NESSUNA_TRACCIA: string[] = [];
 
@@ -177,7 +175,7 @@ interface ProdottoBozza {
   // prodotto", 22 settembre 2026): vedi CampoIngredientiCollegati sotto.
   tracciati: Tracciato[];
   // La ricetta (7 ottobre 2026): grammi, resa, scarti e quali campi
-  // dell'etichetta si calcolano. Vedi CampoRicetta.
+  // dell'etichetta si calcolano (la ricetta si scrive in Ingredienti, VistaRicette).
   ricetta: Ricetta;
   // Lo schema del lotto e' dell'etichetta, non del locale (docs/api.md,
   // "Impostazioni come il prototipo", 22 settembre 2026 sera): vive qui, non
@@ -827,7 +825,7 @@ export default function Etichette() {
       zona: etichetta?.zona ?? { larghezzaDestra: "1/3" },
       tracciati: prodotto.tracciati ?? [],
       // Un prodotto senza ricetta (o salvato prima del 7 ottobre 2026) parte da una vuota.
-      ricetta: prodotto.ricetta ?? RICETTA_VUOTA,
+      ricetta: ricettaDi(prodotto),
       // Come dicituraScadenza e formatoData: se il servizio non la manda
       // (prodotto creato prima della migrazione), vale "data" (docs/api.md).
       schemaLotto: etichetta?.schemaLotto ?? "data",
@@ -1229,7 +1227,6 @@ export default function Etichette() {
     setBozzaProdotto((p) => (p ? { ...p, zona: { larghezzaDestra: v } } : p));
   }, []);
   const aggiornaTracciati = useCallback((nuovi: Tracciato[]) => setBozzaProdotto((p) => (p ? { ...p, tracciati: nuovi } : p)), []);
-  const aggiornaRicetta = useCallback((nuova: Ricetta) => setBozzaProdotto((p) => (p ? { ...p, ricetta: nuova } : p)), []);
   // Elenco ingredienti e «può contenere» calcolati o scritti a mano: passando
   // a mano si parte dal testo calcolato, cosi' si corregge invece di riscrivere.
   const usaIngredientiDellaRicetta = useCallback(
@@ -1242,6 +1239,9 @@ export default function Etichette() {
       setBozzaProdotto((p) => (p ? { ...p, allergeni: attivo ? p.allergeni : calcolati, ricetta: { ...p.ricetta, allergeniAuto: attivo } } : p)),
     [],
   );
+  const apriRicetta = useCallback(() => {
+    if (prodottoSalvato) navigate(`/ingredienti?vista=ricette&prodotto=${prodottoSalvato.id}`);
+  }, [prodottoSalvato, navigate]);
   const scriviIngredientiAMano = useCallback((testo: string) => usaIngredientiDellaRicetta(false, testo), [usaIngredientiDellaRicetta]);
   const ingredientiDallaRicetta = useCallback(() => usaIngredientiDellaRicetta(true, ""), [usaIngredientiDellaRicetta]);
   const scegliAllergeniAMano = useCallback((tracce: string[]) => usaAllergeniDellaRicetta(false, tracce), [usaAllergeniDellaRicetta]);
@@ -1287,12 +1287,9 @@ export default function Etichette() {
   // Un useMemo (non un semplice const) perche' salvare() e' un useCallback
   // che lo usa: senza, react-hooks/exhaustive-deps segnala un oggetto nuovo
   // a ogni resa.
-  // Il calcolo della ricetta in modifica (il servizio lo rifa' a ogni cambio,
-  // con un attimo di ritardo); finche' non arriva vale quello letto col
-  // prodotto. Senza righe non c'e' calcolo.
-  const { data: calcoloInModifica } = useCalcoloRicetta(bozzaProdotto?.ricetta ?? null, prodottoSalvato?.id ?? null);
-  const calcolo: CalcoloRicetta | null =
-    bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0 ? (calcoloInModifica ?? prodotto?.calcolo ?? null) : null;
+  // Il calcolo della ricetta, letto col prodotto: la ricetta si scrive in
+  // Ingredienti, qui si sceglie solo cosa usarne. Senza righe non c'e' calcolo.
+  const calcolo: CalcoloRicetta | null = bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0 ? (prodotto?.calcolo ?? null) : null;
   // I campi dell'etichetta con la ricetta applicata (stessa regola del servizio, ricetta.ts).
   const campiCalcolati = useMemo(
     () =>
@@ -1319,7 +1316,9 @@ export default function Etichette() {
             allergeni: campiCalcolati.allergeni,
             valoriNutrizionali: campiCalcolati.valori,
             // I nomi delle righe il servizio li ignora in scrittura.
-            ricetta: bozzaProdotto.ricetta,
+            // Solo gli interruttori: righe e porzioni si scrivono in Ingredienti e
+            // restano quelle salvate. Una bozza («Duplica») porta la ricetta intera.
+            ricetta: bozza ? bozzaProdotto.ricetta : { ingredientiAuto: bozzaProdotto.ricetta.ingredientiAuto, allergeniAuto: bozzaProdotto.ricetta.allergeniAuto },
             calcolo: undefined,
             // "nome" e' solo per l'interfaccia (le pastiglie): in scrittura
             // basterebbe {tipo, id}, ma mandarlo non fa danno (il servizio
@@ -1335,7 +1334,7 @@ export default function Etichette() {
             },
           }
         : null,
-    [prodotto, bozzaProdotto, bozzaBlocchi, campiCalcolati],
+    [prodotto, bozzaProdotto, bozzaBlocchi, campiCalcolati, bozza],
   );
 
   const pronto = !!prodottoInModifica;
@@ -1554,11 +1553,11 @@ export default function Etichette() {
   // La ricetta ha almeno una riga: solo allora i campi possono venire da li'.
   const conRicetta = !!bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0;
   const riassuntoRicetta = !bozzaProdotto
-    ? undefined
+    ? ""
     : conRicetta
       ? plurale(bozzaProdotto.ricetta.righe.length, "ingrediente", "ingredienti") +
-        (bozzaProdotto.ricetta.resaPorzioni ? ` · ${plurale(bozzaProdotto.ricetta.resaPorzioni, "porzione", "porzioni")}` : "")
-      : "Nessuna ricetta";
+        (bozzaProdotto.ricetta.porzioni ? ` · ${plurale(bozzaProdotto.ricetta.porzioni, "porzione", "porzioni")}` : "")
+      : "";
 
   const sezioni: { chiave: string; titolo: string; sottoPC?: string; sottoTel?: string; campi: React.ReactNode[]; ordine: number }[] = bozzaProdotto
     ? (
@@ -1634,6 +1633,14 @@ export default function Etichette() {
                   {!bozzaProdotto.ricetta.ingredientiAuto && " — controlla che nell'elenco siano scritti in MAIUSCOLO."}
                 </div>
               ),
+              // La ricetta si scrive in Ingredienti › Ricette (non si stampa: e'
+              // configurazione); qui solo dove trovarla.
+              usaIngredienti && !bozza && (
+                <div key="ricetta" className="text-[12.5px] leading-snug text-[var(--tenue)]">
+                  {conRicetta ? `Ricetta: ${riassuntoRicetta}. ` : "Nessuna ricetta: con la ricetta valori nutrizionali e allergeni si calcolano da soli. "}
+                  <LinkRicetta testo={conRicetta ? "Modifica la ricetta" : "Scrivi la ricetta"} onClic={apriRicetta} />
+                </div>
+              ),
               usaPuoContenere &&
                 (conRicetta && bozzaProdotto.ricetta.allergeniAuto ? (
                   <PuoContenereDallaRicetta key="allergeni" tracce={calcolo?.tracce ?? NESSUNA_TRACCIA} onScegliAMano={scegliAllergeniAMano} />
@@ -1654,25 +1661,6 @@ export default function Etichette() {
                   onCambia={aggiornaTracciati}
                 />
               ),
-            ],
-          },
-          {
-            // La ricetta (7 ottobre 2026): non e' un blocco dell'etichetta, sta
-            // subito dopo gli ingredienti (in fondo se il blocco non c'e').
-            chiave: "ricetta",
-            titolo: "Ricetta",
-            sottoPC: riassuntoRicetta,
-            sottoTel: riassuntoRicetta,
-            ordine: ordineSezione("ingredienti") + 0.5,
-            campi: [
-              <CampoRicetta
-                key="ricetta"
-                ricetta={bozzaProdotto.ricetta}
-                onCambia={aggiornaRicetta}
-                calcolo={calcolo}
-                prodottoId={prodottoSalvato?.id}
-                tracciati={bozzaProdotto.tracciati}
-              />,
             ],
           },
           {

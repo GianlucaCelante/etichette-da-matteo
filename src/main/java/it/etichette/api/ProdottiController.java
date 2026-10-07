@@ -122,6 +122,22 @@ public class ProdottiController {
         return conversioni.aDto(salvato).conTracciati(tracciatiService.leggi(id));
     }
 
+    /**
+     * {@code PUT /api/prodotti/{id}/ricetta} (docs/api.md, "Scheda tecnica e ricetta"): righe e
+     * porzioni della ricetta, dalla pagina Ingredienti. Non tocca nient'altro del prodotto, se non
+     * - la prima volta - passare l'etichetta ai valori calcolati (RicetteService#sostituisciRicetta).
+     */
+    @PutMapping("/{id}/ricetta")
+    @Transactional
+    public ProdottoDto sostituisciRicetta(@PathVariable Long id, @RequestBody Map<String, Object> corpo) {
+        Prodotto entita = trova(id);
+        RicettaDto ricetta = conversioni.convertiRicetta(corpo);
+        ricette.valida(id, ricetta);
+        ricette.sostituisciRicetta(entita, ricetta);
+        entita.setModificatoIl(LocalDateTime.now());
+        return conversioni.aDto(prodotti.save(entita)).conTracciati(tracciatiService.leggi(id));
+    }
+
     /** "Duplica prodotto" (mandato del 2026-09-08): copia tutto, etichetta compresa; nome + " (copia)"; usi=0, ultimoUso=null. */
     @PostMapping("/{id}/duplica")
     @Transactional

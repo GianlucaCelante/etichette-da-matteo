@@ -8,6 +8,7 @@ import { usePortaleAzioni } from "../hooks/useTestata";
 import { IconaCatena, IconaCerca, IconaCercaDiNuovo, IconaGiu, IconaMonitor, IconaTelefono } from "../componenti/Icone";
 import CatenaLotti from "../componenti/storico/CatenaLotti";
 import ConfermaRistampa from "../componenti/storico/ConfermaRistampa";
+import SegnaScartate, { LinkScartate } from "../componenti/storico/SegnaScartate";
 import EsportaElenco from "../componenti/storico/EsportaElenco";
 import { ScheletroStorico, StoricoAncoraVuoto, StoricoErrore, StoricoNessunRisultato } from "../componenti/storico/StatoStorico";
 import { formattaDataItaliana, formattaOra } from "../componenti/stampa/formattazione";
@@ -140,6 +141,7 @@ function RigaStoricoPC({
   confermaAperta,
   catenaAperta,
   onToggleCatena,
+  onApriScartate,
 }: {
   riga: StoricoRiga;
   nomeDispositivo: string;
@@ -151,6 +153,8 @@ function RigaStoricoPC({
   confermaAperta: boolean;
   catenaAperta: boolean;
   onToggleCatena: () => void;
+  // Le porzioni buttate dopo (7 ottobre 2026): apre SegnaScartate sotto la riga.
+  onApriScartate: () => void;
 }) {
   // Il bottone Ristampa ferma la propagazione: la riga intera apre/chiude la
   // catena adesso, non deve anche avviare una ristampa.
@@ -197,6 +201,7 @@ function RigaStoricoPC({
         <div className="text-[12.5px] text-[var(--tenue)] truncate">
           {inStampa ? "In stampa" : plurale(riga.copie, "copia", "copie")}
           <CodaEsito esito={riga.esito} />
+          <LinkScartate riga={riga} onApri={onApriScartate} />
         </div>
         {riga.esito === "interrotta" && <div className="text-[12.5px] text-[var(--ambra)] leading-snug">{NOTA_INTERROTTA}</div>}
         <RiassuntoCatena riga={riga} />
@@ -240,6 +245,7 @@ function RigaStoricoTel({
   confermaAperta,
   catenaAperta,
   onToggleCatena,
+  onApriScartate,
 }: {
   riga: StoricoRiga;
   nomeDispositivo: string;
@@ -251,6 +257,8 @@ function RigaStoricoTel({
   confermaAperta: boolean;
   catenaAperta: boolean;
   onToggleCatena: () => void;
+  // Le porzioni buttate dopo (7 ottobre 2026): apre SegnaScartate sotto la riga.
+  onApriScartate: () => void;
 }) {
   // Il ".ristampino" e' un vero bottone adesso (23 settembre 2026: toccare
   // la riga apriva la catena PRIMA, e faceva partire una ristampa vera per
@@ -296,6 +304,7 @@ function RigaStoricoTel({
       <div className="d">
         {dettaglio}
         <CodaEsito esito={riga.esito} />
+        <LinkScartate riga={riga} onApri={onApriScartate} />
       </div>
       {riga.esito === "interrotta" && <div className="d leading-snug text-[var(--ambra)]">{NOTA_INTERROTTA}</div>}
       <div className="d">
@@ -346,17 +355,21 @@ function GruppoRigaStorico({
   onToggleCatena: (id: number) => void;
 }) {
   const toggle = useCallback(() => onToggleCatena(riga.id), [onToggleCatena, riga.id]);
+  const [scartateAperto, setScartateAperto] = useState(false);
+  const apriScartate = useCallback(() => setScartateAperto(true), []);
+  const chiudiScartate = useCallback(() => setScartateAperto(false), []);
   // "storicoBlocco aperta": la riga e la sua catena formano un unico blocco
   // (sfondo e bordo arrotondato in index.css) quando e' aperta, senza una
   // linea di separazione fra le due (23 settembre 2026).
   return (
     <div className={"storicoBlocco" + (catenaAperta ? " aperta" : "")}>
       <div className="soloPC">
-        <RigaStoricoPC riga={riga} nomeDispositivo={nomeDispositivo} onRistampa={onRistampa} occupata={occupata} eliminata={eliminata} confermaAperta={confermaAperta} catenaAperta={catenaAperta} onToggleCatena={toggle} />
+        <RigaStoricoPC riga={riga} nomeDispositivo={nomeDispositivo} onRistampa={onRistampa} occupata={occupata} eliminata={eliminata} confermaAperta={confermaAperta} catenaAperta={catenaAperta} onToggleCatena={toggle} onApriScartate={apriScartate} />
       </div>
       <div className="soloTel">
-        <RigaStoricoTel riga={riga} nomeDispositivo={nomeDispositivo} onRistampa={onRistampa} occupata={occupata} eliminata={eliminata} confermaAperta={confermaAperta} catenaAperta={catenaAperta} onToggleCatena={toggle} />
+        <RigaStoricoTel riga={riga} nomeDispositivo={nomeDispositivo} onRistampa={onRistampa} occupata={occupata} eliminata={eliminata} confermaAperta={confermaAperta} catenaAperta={catenaAperta} onToggleCatena={toggle} onApriScartate={apriScartate} />
       </div>
+      {scartateAperto && <SegnaScartate riga={riga} onChiudi={chiudiScartate} />}
       {confermaAperta && <ConfermaRistampa riga={riga} onConferma={onConfermaRistampa} onAnnulla={onAnnullaRistampa} />}
       {catenaAperta && <CatenaLotti riga={riga} />}
     </div>

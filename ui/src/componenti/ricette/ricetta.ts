@@ -1,14 +1,19 @@
-import type { CalcoloRicetta, Ricetta, ValoreNutrizionale } from "../../api/tipi";
+import type { CalcoloRicetta, Prodotto, Ricetta, ValoreNutrizionale } from "../../api/tipi";
 
 // La ricetta di un prodotto che non ne ha ancora una.
 export const RICETTA_VUOTA: Ricetta = {
   righe: [],
-  resaPorzioni: null,
-  pesoPorzione: null,
-  porzioniScartate: null,
+  porzioni: null,
   ingredientiAuto: false,
   allergeniAuto: false,
 };
+
+// La ricetta letta di un prodotto (in lettura il servizio la manda sempre
+// intera; vuota se manca, per un prodotto di prima del 7 ottobre 2026).
+export function ricettaDi(prodotto: Prodotto | undefined | null): Ricetta {
+  const r = prodotto?.ricetta;
+  return r && "righe" in r ? r : RICETTA_VUOTA;
+}
 
 // Le voci che il calcolo sa riempire, nell'ordine della tabella di legge
 // (lo stesso di VociNutrizionali sul servizio).

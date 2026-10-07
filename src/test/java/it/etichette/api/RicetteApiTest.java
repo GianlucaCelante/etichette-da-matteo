@@ -50,6 +50,9 @@ class RicetteApiTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private it.etichette.dati.StoricoStampaRepository storico;
+
     private JsonNode richiesta(org.springframework.test.web.servlet.RequestBuilder r, org.springframework.test.web.servlet.ResultMatcher esito) throws Exception {
         String risposta = mockMvc.perform(r).andExpect(esito).andReturn().getResponse().getContentAsString();
         return risposta.isBlank() ? null : objectMapper.readTree(risposta);
@@ -72,7 +75,7 @@ class RicetteApiTest {
             {"valori":{"energiaKj":0,"energiaKcal":0,"grassi":0,"saturi":0,"carboidrati":0,"zuccheri":0,"fibre":0,
              "proteine":0,"sale":0},"allergeni":[],"tracce":[]}""";
 
-    /** Farina 600 g + acqua 400 g, 4 porzioni da 225 g (900 g cotti), 1 scartata. */
+    /** Farina 600 g + acqua 0,4 l (400 g), 4 porzioni. */
     private String prodottoConRicetta(long farina, long acqua) {
         return """
                 {"nome":"Pane di prova","ingredienti":"scritto a mano","allergeni":["Uova"],
@@ -80,8 +83,8 @@ class RicetteApiTest {
                    {"voce":"di cui acidi grassi saturi","valore":"","calcolato":true},{"voce":"Carboidrati","valore":"","calcolato":true},
                    {"voce":"di cui zuccheri","valore":"","calcolato":true},{"voce":"Proteine","valore":"","calcolato":true},
                    {"voce":"Sale","valore":"","calcolato":true},{"voce":"Fibre","valore":"9 g"}],
-                 "ricetta":{"righe":[{"tipo":"ingrediente","id":%d,"grammi":400},{"tipo":"ingrediente","id":%d,"grammi":600}],
-                   "resaPorzioni":4,"pesoPorzione":225,"porzioniScartate":1,"ingredientiAuto":true,"allergeniAuto":true}}"""
+                 "ricetta":{"righe":[{"tipo":"ingrediente","id":%d,"quantita":0.4,"unita":"l"},{"tipo":"ingrediente","id":%d,"quantita":600,"unita":"g"}],
+                   "porzioni":4,"ingredientiAuto":true,"allergeniAuto":true}}"""
                 .formatted(acqua, farina);
     }
 
@@ -125,10 +128,10 @@ class RicetteApiTest {
 
         JsonNode calcolo = p.get("calcolo");
         assertThat(calcolo.get("pesoIngredienti").asDouble()).isEqualTo(1000.0);
-        assertThat(calcolo.get("pesoFinale").asDouble()).isEqualTo(900.0);
-        assertThat(calcolo.get("porzioniUtili").asInt()).isEqualTo(3);
-        // 600 g x 1450 kJ / 100 = 8700 kJ su 900 g = 966,7 kJ per 100 g.
-        assertThat(calcolo.get("per100").get("energiaKj").asDouble()).isCloseTo(966.67, org.assertj.core.data.Offset.offset(0.01));
+        assertThat(calcolo.get("pesoPorzione").asDouble()).isEqualTo(250.0);
+        // 600 g x 1450 kJ / 100 = 8700 kJ su 1000 g = 870 kJ per 100 g.
+        assertThat(calcolo.get("per100").get("energiaKj").asDouble()).isCloseTo(870.0, org.assertj.core.data.Offset.offset(0.01));
+        // 72 g di proteine in 4 porzioni = 18 g a porzione.
         assertThat(calcolo.get("perPorzione").get("proteine").asDouble()).isCloseTo(18.0, org.assertj.core.data.Offset.offset(0.001));
         assertThat(calcolo.get("allergeni").toString()).isEqualTo("[\"Glutine\"]");
         // Il glutine e' contenuto: non va anche nel «può contenere».
@@ -142,12 +145,12 @@ class RicetteApiTest {
         assertThat(p.get("allergeni").toString()).isEqualTo("[\"Soia\"]");
         // ...e le righe calcolate dei valori, arrotondate come vuole la legge; la riga a mano resta com'e'.
         JsonNode valori = p.get("valoriNutrizionali");
-        assertThat(valori.get(0).get("valore").asText()).isEqualTo("967 kJ / 229 kcal");
-        assertThat(valori.get(1).get("valore").asText()).isEqualTo("0,7 g");
+        assertThat(valori.get(0).get("valore").asText()).isEqualTo("870 kJ / 206 kcal");
+        assertThat(valori.get(1).get("valore").asText()).isEqualTo("0,6 g");
         assertThat(valori.get(2).get("valore").asText()).isEqualTo("0,1 g");
-        assertThat(valori.get(3).get("valore").asText()).isEqualTo("47 g");
-        assertThat(valori.get(4).get("valore").asText()).isEqualTo("1,0 g");
-        assertThat(valori.get(5).get("valore").asText()).isEqualTo("8,0 g");
+        assertThat(valori.get(3).get("valore").asText()).isEqualTo("42 g");
+        assertThat(valori.get(4).get("valore").asText()).isEqualTo("0,9 g");
+        assertThat(valori.get(5).get("valore").asText()).isEqualTo("7,2 g");
         assertThat(valori.get(6).get("valore").asText()).isEqualTo("<0,01 g");
         assertThat(valori.get(7).get("valore").asText()).isEqualTo("9 g");
         assertThat(valori.get(7).has("calcolato")).isFalse();
@@ -164,11 +167,11 @@ class RicetteApiTest {
         long prodotto = richiesta(post("/api/prodotti").contentType("application/json").content(prodottoConRicetta(farina, acqua)),
                 status().isOk()).get("id").asLong();
 
-        // L'acqua, per sbaglio, aveva il sale a 0: ora 1 g ogni 100 g -> 4 g su 900 g = 0,44 g per 100 g.
+        // L'acqua, per sbaglio, aveva il sale a 0: ora 1 g ogni 100 g -> 4 g su 1000 g = 0,40 g per 100 g.
         scheda(acqua, SCHEDA_ACQUA.replace("\"sale\":0", "\"sale\":1"));
 
         mockMvc.perform(get("/api/prodotti/" + prodotto))
-                .andExpect(jsonPath("$.valoriNutrizionali[6].valore").value("0,44 g"));
+                .andExpect(jsonPath("$.valoriNutrizionali[6].valore").value("0,40 g"));
     }
 
     @Test
@@ -221,15 +224,15 @@ class RicetteApiTest {
                 status().isOk()).get("id").asLong();
 
         String corpo = """
-                {"ricetta":{"righe":[{"tipo":"prodotto","id":%d,"grammi":300},{"tipo":"ingrediente","id":%d,"grammi":100}]},
+                {"ricetta":{"righe":[{"tipo":"prodotto","id":%d,"quantita":300},{"tipo":"ingrediente","id":%d,"quantita":100,"unita":"g"}]},
                  "prodottoId":null}""".formatted(impasto, acqua);
         JsonNode c = richiesta(post("/api/ricette/calcolo").contentType("application/json").content(corpo), status().isOk());
 
         assertThat(c.get("ingredienti").asText()).isEqualTo("Pane di prova (FARINA DI PROVA, Acqua di prova), Acqua di prova");
         assertThat(c.get("allergeni").toString()).isEqualTo("[\"Glutine\"]");
         assertThat(c.get("tracce").toString()).isEqualTo("[\"Soia\"]");
-        // 300 g di impasto a 8 g di proteine per 100 g = 24 g su 400 g = 6 g per 100 g.
-        assertThat(c.get("per100").get("proteine").asDouble()).isCloseTo(6.0, org.assertj.core.data.Offset.offset(0.001));
+        // 300 g di impasto a 7,2 g di proteine per 100 g = 21,6 g su 400 g = 5,4 g per 100 g.
+        assertThat(c.get("per100").get("proteine").asDouble()).isCloseTo(5.4, org.assertj.core.data.Offset.offset(0.001));
     }
 
     @Test
@@ -237,17 +240,57 @@ class RicetteApiTest {
         long farina = creaIngrediente("Farina di prova");
         long prodotto = richiesta(post("/api/prodotti").contentType("application/json").content("{\"nome\":\"Uno\"}"), status().isOk())
                 .get("id").asLong();
+        String riga = "{\"tipo\":\"ingrediente\",\"id\":" + farina;
 
+        for (String ricetta : new String[] {
+                "{\"righe\":[{\"tipo\":\"prodotto\",\"id\":" + prodotto + ",\"quantita\":10}]}",
+                "{\"righe\":[" + riga + ",\"quantita\":10}],\"porzioni\":0}",
+                "{\"righe\":[" + riga + ",\"quantita\":-1}]}",
+                "{\"righe\":[" + riga + ",\"quantita\":1,\"unita\":\"tazza\"}]}"}) {
+            mockMvc.perform(put("/api/prodotti/" + prodotto + "/ricetta").contentType("application/json").content(ricetta))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void laPrimaRicettaPassaLEtichettaAiValoriCalcolati() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        scheda(farina, SCHEDA_FARINA);
+        long prodotto = richiesta(post("/api/prodotti").contentType("application/json").content("""
+                {"nome":"Focaccia","ingredienti":"a mano","valoriNutrizionali":[{"voce":"Grassi","valore":"3 g"},{"voce":"Nota","valore":"x"}]}"""),
+                status().isOk()).get("id").asLong();
+
+        JsonNode p = richiesta(put("/api/prodotti/" + prodotto + "/ricetta").contentType("application/json")
+                        .content("{\"righe\":[{\"tipo\":\"ingrediente\",\"id\":" + farina + ",\"quantita\":0.5,\"unita\":\"kg\"}],\"porzioni\":5}"),
+                status().isOk());
+
+        assertThat(p.get("ricetta").get("ingredientiAuto").asBoolean()).isTrue();
+        assertThat(p.get("ricetta").get("allergeniAuto").asBoolean()).isTrue();
+        assertThat(p.get("ingredienti").asText()).isEqualTo("FARINA DI PROVA");
+        assertThat(p.get("calcolo").get("pesoPorzione").asDouble()).isEqualTo(100.0);
+        JsonNode valori = p.get("valoriNutrizionali");
+        // Grassi calcolato, la voce sconosciuta resta a mano, le obbligatorie mancanti in coda.
+        assertThat(valori.get(0).get("valore").asText()).isEqualTo("1,0 g");
+        assertThat(valori.get(0).get("calcolato").asBoolean()).isTrue();
+        assertThat(valori.get(1).has("calcolato")).isFalse();
+        assertThat(valori.size()).isEqualTo(8);
+        assertThat(valori.get(2).get("voce").asText()).isEqualTo("Energia");
+
+        // L'editor manda solo gli interruttori: righe e porzioni restano.
         mockMvc.perform(put("/api/prodotti/" + prodotto).contentType("application/json")
-                        .content("{\"nome\":\"Uno\",\"ricetta\":{\"righe\":[{\"tipo\":\"prodotto\",\"id\":" + prodotto + ",\"grammi\":10}]}}"))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(put("/api/prodotti/" + prodotto).contentType("application/json")
-                        .content("{\"nome\":\"Uno\",\"ricetta\":{\"righe\":[{\"tipo\":\"ingrediente\",\"id\":" + farina
-                                + ",\"grammi\":10}],\"resaPorzioni\":2,\"porzioniScartate\":3}}"))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(put("/api/prodotti/" + prodotto).contentType("application/json")
-                        .content("{\"nome\":\"Uno\",\"ricetta\":{\"righe\":[{\"tipo\":\"ingrediente\",\"id\":" + farina + ",\"grammi\":-1}]}}"))
-                .andExpect(status().isBadRequest());
+                        .content("{\"nome\":\"Focaccia\",\"ingredienti\":\"scritto io\",\"ricetta\":{\"ingredientiAuto\":false}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ingredienti").value("scritto io"))
+                .andExpect(jsonPath("$.ricetta.righe.length()").value(1))
+                .andExpect(jsonPath("$.ricetta.porzioni").value(5))
+                .andExpect(jsonPath("$.ricetta.allergeniAuto").value(true));
+
+        // Una seconda ricetta non rimette gli interruttori.
+        mockMvc.perform(put("/api/prodotti/" + prodotto + "/ricetta").contentType("application/json")
+                        .content("{\"righe\":[{\"tipo\":\"ingrediente\",\"id\":" + farina + ",\"quantita\":600}],\"porzioni\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ingredienti").value("scritto io"))
+                .andExpect(jsonPath("$.ricetta.righe[0].unita").value("g"));
     }
 
     @Test
@@ -262,5 +305,22 @@ class RicetteApiTest {
         mockMvc.perform(get("/api/prodotti/" + prodotto))
                 .andExpect(jsonPath("$.ricetta.righe.length()").value(1))
                 .andExpect(jsonPath("$.ricetta.righe[0].id").value(farina));
+    }
+
+    @Test
+    void lePorzioniScartateSiSegnanoDopoNelloStorico() throws Exception {
+        long riga = storico.save(new it.etichette.dati.StoricoStampa("Base pizza low carb", 12, "completata")).getId();
+
+        mockMvc.perform(put("/api/storico/" + riga + "/scartate").contentType("application/json").content("{\"scartate\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scartate").value(2))
+                .andExpect(jsonPath("$.copie").value(12));
+        mockMvc.perform(get("/api/storico").param("periodo", "tutto"))
+                .andExpect(jsonPath("$[?(@.id == " + riga + ")].scartate").value(2));
+        // 0 toglie il segno.
+        mockMvc.perform(put("/api/storico/" + riga + "/scartate").contentType("application/json").content("{\"scartate\":0}"))
+                .andExpect(jsonPath("$.scartate").value(0));
+        mockMvc.perform(put("/api/storico/" + riga + "/scartate").contentType("application/json").content("{\"scartate\":-1}"))
+                .andExpect(status().isBadRequest());
     }
 }

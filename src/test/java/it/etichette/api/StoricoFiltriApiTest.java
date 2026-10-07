@@ -131,7 +131,7 @@ class StoricoFiltriApiTest {
         List<Map<String, Object>> righe = mapper.readValue(corpo, new TypeReference<>() { });
         assertThat(righe.get(0).keySet()).containsExactly("id", "stampatoIl", "prodottoId", "prodottoNome", "etichettaNome", "lotto",
                 "quantita", "porzioni", "scadenza", "copie", "dispositivoNome", "esito", "lottiRegistrati", "lottiNonRegistrati", "correttoIl",
-                "lavoroId");
+                "lavoroId", "scartate");
     }
 
     // ---------------------------------------------------------------------------------------

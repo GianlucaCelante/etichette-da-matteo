@@ -673,7 +673,29 @@ export function useAggiornaSchedaIngrediente() {
   });
 }
 
-// Il calcolo della ricetta in modifica nell'editor, aspettando che si smetta
+// Righe e porzioni della ricetta (Ingredienti, «Ricette»): cambiano
+// l'etichetta del prodotto e di chi lo usa come semilavorato.
+export function useSalvaRicetta() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ricetta }: { id: number; ricetta: Pick<Ricetta, "righe" | "porzioni"> }) => api.salvaRicetta(id, ricetta),
+    onSuccess: (prodotto) => {
+      client.setQueryData(chiaviQuery.prodotto(prodotto.id), prodotto);
+      void client.invalidateQueries({ queryKey: ["prodotti"] });
+    },
+  });
+}
+
+// Le porzioni scartate di una riga dello Storico.
+export function useSegnaScartate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, scartate }: { id: number; scartate: number }) => api.segnaScartate(id, scartate),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["storico"] }),
+  });
+}
+
+// Il calcolo della ricetta in modifica, aspettando che si smetta
 // di scrivere (come le proposte dal testo). Senza righe non si chiede niente.
 // Il risultato precedente resta a schermo mentre arriva il nuovo.
 export function useCalcoloRicetta(ricetta: Ricetta | null, prodottoId: number | null) {
