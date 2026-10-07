@@ -289,6 +289,7 @@ public class StampeService {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "prodotto: obbligatorio");
         }
         ProdottiConversioni.valida(prodottoRicevuto);
+        prodottoRicevuto = prodottiConversioni.conRicettaApplicata(prodottoRicevuto);
         int rotolo = verificaStampantePronta();
         LocalDate scadenza = scadenzaProposta();
         String schema = schemaLottoDi(prodottoRicevuto);

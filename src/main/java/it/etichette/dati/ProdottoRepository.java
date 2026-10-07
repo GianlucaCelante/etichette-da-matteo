@@ -20,6 +20,9 @@ public interface ProdottoRepository extends JpaRepository<Prodotto, Long> {
     /** L'ultimo prodotto salvato (per id, cioe' l'ordine di creazione): usato per proporre il produttore di un prodotto nuovo. */
     Optional<Prodotto> findTopByOrderByIdDesc();
 
+    /** I prodotti con una ricetta salvata (anche vuota): chi va ripulito quando sparisce un ingrediente o un semilavorato. */
+    List<Prodotto> findByRicettaIsNotNull();
+
     /**
      * {@code GET /api/ingredienti/{id}}, campo {@code etichette} (docs/api.md): i prodotti che
      * tracciano DIRETTAMENTE questo ingrediente (non tramite un semilavorato), una sola query,

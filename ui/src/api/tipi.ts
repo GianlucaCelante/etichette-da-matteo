@@ -190,6 +190,69 @@ export interface EtichettaProdotto {
 export interface ValoreNutrizionale {
   voce: string;
   valore: string;
+  // true = con la ricetta il valore si ricalcola da solo dalle schede degli
+  // ingredienti (docs/api.md, "Scheda tecnica e ricetta", 7 ottobre 2026);
+  // assente/false = scritto a mano.
+  calcolato?: boolean;
+}
+
+// Valori per 100 g in numeri: scheda di un ingrediente e risultato del
+// calcolo di una ricetta. null = non scritto / non calcolabile.
+export interface ValoriPer100 {
+  energiaKj: number | null;
+  energiaKcal: number | null;
+  grassi: number | null;
+  saturi: number | null;
+  carboidrati: number | null;
+  zuccheri: number | null;
+  fibre: number | null;
+  proteine: number | null;
+  sale: number | null;
+}
+
+// La scheda tecnica di un ingrediente (PUT /api/ingredienti/{id}/scheda).
+export interface SchedaIngrediente {
+  valori: ValoriPer100;
+  allergeni: string[];
+  tracce: string[];
+  // Come si scrive nell'elenco ingredienti calcolato; null = il nome (in
+  // maiuscolo se contiene allergeni).
+  nomeEtichetta: string | null;
+}
+
+export interface RigaRicetta {
+  tipo: TipoTracciato;
+  id: number;
+  nome?: string | null;
+  grammi: number | null;
+}
+
+// La ricetta di un prodotto: grammi per ingrediente, resa in porzioni,
+// peso di una porzione finita, porzioni scartate; quali campi
+// dell'etichetta si calcolano (per i valori: riga per riga, "calcolato").
+export interface Ricetta {
+  righe: RigaRicetta[];
+  resaPorzioni: number | null;
+  pesoPorzione: number | null;
+  porzioniScartate: number | null;
+  ingredientiAuto: boolean;
+  allergeniAuto: boolean;
+}
+
+// Il calcolo di una ricetta (solo lettura): campo "calcolo" del prodotto e
+// risposta di POST /api/ricette/calcolo.
+export interface CalcoloRicetta {
+  pesoIngredienti: number;
+  pesoFinale: number;
+  porzioniUtili: number | null;
+  per100: ValoriPer100;
+  perPorzione: ValoriPer100 | null;
+  valori: ValoreNutrizionale[];
+  senzaValori: string[];
+  allergeni: string[];
+  tracce: string[];
+  ingredienti: string;
+  avvisi: string[];
 }
 
 export interface Prodotto {
@@ -219,6 +282,10 @@ export interface Prodotto {
   // proprie (semilavorati). L'ordine e' quello scelto in Etichette; in
   // lettura il servizio aggiunge "nome" a ogni voce.
   tracciati: Tracciato[];
+  // La ricetta (7 ottobre 2026): in scrittura assente = non toccarla.
+  ricetta?: Ricetta | null;
+  // Solo lettura: null se il prodotto non ha una ricetta con almeno una riga.
+  calcolo?: CalcoloRicetta | null;
 }
 
 export type NuovoProdotto = Omit<Prodotto, "id" | "usi" | "ultimoUso" | "creatoIl" | "modificatoIl">;
@@ -657,6 +724,8 @@ export interface IngredienteConLotti extends Ingrediente {
   // quante stampe dello storico citano l'ingrediente o un suo lotto: 0 = mai
   // stampato, e allora DELETE lo elimina davvero; altrimenti lo archivia.
   stampe: number;
+  // La scheda tecnica, sempre presente (vuota se mai scritta).
+  scheda: SchedaIngrediente;
 }
 
 // DELETE /api/ingredienti/{id}: per l'utente e' comunque "eliminato"

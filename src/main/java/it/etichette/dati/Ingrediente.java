@@ -44,6 +44,10 @@ public class Ingrediente {
     @Column(name = "archiviato_il")
     private LocalDateTime archiviatoIl;
 
+    /** JSON: la scheda tecnica (valori per 100 g, allergeni, tracce) - vedi it.etichette.api.SchedaIngredienteDto. */
+    @Column(name = "scheda")
+    private String scheda;
+
     protected Ingrediente() {
         // per JPA
     }
@@ -103,6 +107,14 @@ public class Ingrediente {
 
     public void setArchiviatoIl(LocalDateTime archiviatoIl) {
         this.archiviatoIl = archiviatoIl;
+    }
+
+    public String getScheda() {
+        return scheda;
+    }
+
+    public void setScheda(String scheda) {
+        this.scheda = scheda;
     }
 
     public boolean isArchiviato() {

@@ -82,6 +82,7 @@ L'etichetta libera si costruisce **a blocchi, non a mano libera**: si scelgono i
 
 - Ricette con sottoricette e lista ingredienti generata in ordine di peso con le percentuali.
 - Calcolo automatico dei valori nutrizionali dagli ingredienti: richiede una banca dati alimentare e la responsabilità resta del cliente. Meglio inserimento manuale con "copia da prodotto simile".
+  **Fatto il 7 ottobre 2026, chiesto dal cliente alla demo**: niente banca dati alimentare, ogni ingrediente ha la sua scheda tecnica copiata da quella del fornitore (valori per 100 g, allergeni, tracce) e ogni etichetta la sua ricetta (grammi, resa in porzioni, porzioni scartate). Valori nutrizionali, «può contenere» ed elenco ingredienti in ordine di peso si calcolano da soli e restano correggibili a mano, riga per riga. Dettagli in `api.md`, «Scheda tecnica e ricetta».
 - Codice a barre EAN, utile solo se venderà fuori dal locale.
 
 ## Scelte tecniche che ne derivano

@@ -89,7 +89,7 @@ public class ResaController {
     private ProdottoDto prodottoPerAnteprima(CorpoAnteprima richiesta) {
         if (richiesta.prodotto() != null) {
             ProdottiConversioni.valida(richiesta.prodotto());
-            return richiesta.prodotto();
+            return prodottiConversioni.conRicettaApplicata(richiesta.prodotto());
         }
         if (richiesta.prodottoId() != null) {
             return prodottiConversioni.aDto(trovaProdotto(richiesta.prodottoId()));

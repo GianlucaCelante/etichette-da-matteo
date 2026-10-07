@@ -17,6 +17,7 @@ import type {
   FornitoreConUso,
   Impostazioni,
   Ingrediente,
+  CalcoloRicetta,
   IngredienteConLotti,
   IngredienteProposta,
   IngredienteRichiesta,
@@ -48,6 +49,8 @@ import type {
   TotaliStorico,
   UltimeValide,
   Versione,
+  Ricetta,
+  SchedaIngrediente,
 } from "./tipi";
 
 const BASE = "/api";
@@ -229,6 +232,13 @@ export const api = {
     richiedi<Ingrediente>("/ingredienti", { method: "POST", body: JSON.stringify(dati) }),
   aggiornaIngrediente: (id: number, dati: IngredienteRichiesta) =>
     richiedi<Ingrediente>(`/ingredienti/${id}`, { method: "PUT", body: JSON.stringify(dati) }),
+  // La scheda tecnica intera (docs/api.md, "Scheda tecnica e ricetta"):
+  // risponde col dettaglio aggiornato.
+  aggiornaSchedaIngrediente: (id: number, scheda: SchedaIngrediente) =>
+    richiedi<IngredienteConLotti>(`/ingredienti/${id}/scheda`, { method: "PUT", body: JSON.stringify(scheda) }),
+  // Il calcolo di una ricetta in modifica, non salvata: niente viene scritto.
+  calcoloRicetta: (ricetta: Ricetta, prodottoId: number | null) =>
+    richiedi<CalcoloRicetta>("/ricette/calcolo", { method: "POST", body: JSON.stringify({ ricetta, prodottoId }) }),
   // Sempre possibile: "eliminato" se mai stampato (via lotti, foto, tracciati),
   // "archiviato" se e' nello storico (sparisce dalle scelte, resta per il richiamo).
   eliminaIngrediente: (id: number) => richiedi<EsitoEliminaIngrediente>(`/ingredienti/${id}`, { method: "DELETE" }),

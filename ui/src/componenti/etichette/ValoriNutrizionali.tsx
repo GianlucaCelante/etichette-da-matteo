@@ -5,23 +5,34 @@ import { CSS } from "@dnd-kit/utilities";
 import { IconaCestino, IconaManiglia, IconaPiu } from "../Icone";
 import { nuovaChiave, type ValoreBozza } from "./bozza";
 import { ACCESSIBILITA_VALORI } from "./sensoriRiordino";
+import type { CalcoloRicetta } from "../../api/tipi";
+import { chiaveVoce, valoreCalcolato, VOCI_CALCOLATE } from "../ricette/ricetta";
 
 function RigaValore({
   valore,
   segnaposto,
   senzaValore,
+  calcolata,
+  calcolabile,
   onCambiaVoce,
   onCambiaValore,
   onRimuovi,
+  onCalcolata,
 }: {
   valore: ValoreBozza;
   segnaposto: string;
   // La voce c'e' ma il valore no, mentre altre righe ce l'hanno: sull'etichetta
   // questa riga non uscira' (RenditoreEtichetta la omette), e lo si dice sotto.
   senzaValore: boolean;
+  // Con la ricetta (7 ottobre 2026): la riga si calcola da sola. undefined =
+  // riga a mano; null = calcolata ma ora non calcolabile (resta l'ultimo valore).
+  calcolata: string | null | undefined;
+  // La voce e' una delle otto che la ricetta sa calcolare (e la ricetta c'e').
+  calcolabile: boolean;
   onCambiaVoce: (chiave: string, testo: string) => void;
   onCambiaValore: (chiave: string, testo: string) => void;
   onRimuovi: (chiave: string) => void;
+  onCalcolata: (chiave: string, attiva: boolean, valoreMostrato: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: valore.chiave });
   const stile = useMemo<CSSProperties>(
@@ -31,6 +42,9 @@ function RigaValore({
   const cambiaVoce = useCallback((e: ChangeEvent<HTMLInputElement>) => onCambiaVoce(valore.chiave, e.target.value), [onCambiaVoce, valore.chiave]);
   const cambiaValoreCampo = useCallback((e: ChangeEvent<HTMLInputElement>) => onCambiaValore(valore.chiave, e.target.value), [onCambiaValore, valore.chiave]);
   const rimuovi = useCallback(() => onRimuovi(valore.chiave), [onRimuovi, valore.chiave]);
+  const dallaRicetta = calcolata !== undefined;
+  const mostrato = dallaRicetta ? (calcolata ?? valore.valore) : valore.valore;
+  const alternaCalcolata = useCallback(() => onCalcolata(valore.chiave, !dallaRicetta, mostrato), [onCalcolata, valore.chiave, dallaRicetta, mostrato]);
 
   // Sul telefono il campo "Voce" a 209px (PC) crolla a 107px: una voce
   // standard come "di cui acidi grassi saturi" si tagliava senza puntini,
@@ -59,16 +73,32 @@ function RigaValore({
         </button>
       </div>
       <input
-        value={valore.valore}
+        value={mostrato}
         onChange={cambiaValoreCampo}
-        placeholder={segnaposto}
-        aria-label={`Valore di ${valore.voce || "questa voce"}`}
-        className="w-[160px] h-6 border border-[var(--bordocampo)] rounded-md bg-white text-right px-1.5 text-[12.5px] font-bold max-[860px]:ml-[22px] max-[860px]:h-10 max-[860px]:text-[16px]"
+        readOnly={dallaRicetta}
+        placeholder={dallaRicetta ? "da calcolare" : segnaposto}
+        aria-label={`Valore di ${valore.voce || "questa voce"}${dallaRicetta ? ", calcolato dalla ricetta" : ""}`}
+        className={
+          "w-[160px] h-6 border border-[var(--bordocampo)] rounded-md text-right px-1.5 text-[12.5px] font-bold max-[860px]:ml-[22px] max-[860px]:h-10 max-[860px]:text-[16px]" +
+          (dallaRicetta ? " bg-[var(--riga)]" : " bg-white")
+        }
       />
       <button type="button" className="cestino soloPC" onClick={rimuovi} title={`Togli ${valore.voce || "la voce"}`} aria-label={`Togli ${valore.voce || "la voce"}`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
-      {senzaValore && <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--spento)]">senza valore: non verrà stampata</div>}
+      {(dallaRicetta || calcolabile) && (
+        <div className="basis-full pl-[22px] flex items-baseline gap-2 text-[11.5px] leading-tight">
+          {dallaRicetta && (
+            <span className={calcolata === null ? "text-[var(--rosso)]" : "text-[var(--spento)]"}>
+              {calcolata === null ? "non calcolabile: manca nella scheda di un ingrediente" : "dalla ricetta"}
+            </span>
+          )}
+          <button type="button" className="font-bold text-[var(--verdescuro)]" onClick={alternaCalcolata}>
+            {dallaRicetta ? "Scrivi a mano" : "Calcola dalla ricetta"}
+          </button>
+        </div>
+      )}
+      {senzaValore && !dallaRicetta && <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--spento)]">senza valore: non verrà stampata</div>}
     </div>
   );
 }
@@ -76,6 +106,9 @@ function RigaValore({
 interface ProprietaValoriNutrizionali {
   valori: ValoreBozza[];
   onCambia: (nuovi: ValoreBozza[]) => void;
+  // Il prodotto ha una ricetta con almeno una riga, e il suo calcolo.
+  conRicetta?: boolean;
+  calcolo?: CalcoloRicetta | null;
 }
 
 // Le voci principali, precaricate col valore vuoto quando l'elenco e' vuoto
@@ -106,7 +139,7 @@ function segnapostoValore(voce: string): string {
 // La tabella dei valori nutrizionali della scheda prodotto: si scrivono, si
 // riordinano trascinando e si possono aggiungere voci fuori dalle otto
 // obbligatorie (funzionalita-prima-versione.md).
-export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValoriNutrizionali) {
+export default function ValoriNutrizionali({ valori, onCambia, conRicetta = false, calcolo }: ProprietaValoriNutrizionali) {
   // Anche la tastiera (Invio sulla maniglia, frecce, Invio): prima il riordino era solo col mouse.
   const sensori = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -140,6 +173,24 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
     onCambia([...righeMostrate, { chiave: nuovaChiave(), voce: "", valore: "" }]);
   }, [righeMostrate, onCambia]);
 
+  // Una riga passa fra "dalla ricetta" e "a mano"; a mano si parte dal valore che si vedeva.
+  const cambiaCalcolata = useCallback(
+    (chiave: string, attiva: boolean, valoreMostrato: string) =>
+      onCambia(righeMostrate.map((v) => (v.chiave === chiave ? { ...v, calcolato: attiva, valore: attiva ? v.valore : valoreMostrato } : v))),
+    [righeMostrate, onCambia],
+  );
+  // Tutte le voci dalla ricetta: quelle che ci sono passano a calcolate, le
+  // mancanti fra le otto si aggiungono in coda (le fibre solo se calcolabili).
+  const tuttoDallaRicetta = useCallback(() => {
+    const presenti = new Set(righeMostrate.map((v) => chiaveVoce(v.voce)).filter(Boolean));
+    const aggiornate = righeMostrate.map((v) => (chiaveVoce(v.voce) ? { ...v, calcolato: true } : v));
+    const nuove = VOCI_CALCOLATE.filter((voce) => !presenti.has(chiaveVoce(voce)) && (voce !== "Fibre" || valoreCalcolato(voce, calcolo) !== null)).map(
+      (voce) => ({ chiave: nuovaChiave(), voce, valore: valoreCalcolato(voce, calcolo) ?? "", calcolato: true }),
+    );
+    onCambia([...aggiornate, ...nuove]);
+  }, [righeMostrate, onCambia, calcolo]);
+  const qualcunaAMano = conRicetta && righeMostrate.some((v) => chiaveVoce(v.voce) && !v.calcolato);
+
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
       const { active, over } = evento;
@@ -166,6 +217,11 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
       <div className="text-[12px] leading-snug text-[var(--tenue)]">
         Scrivi il numero: sull&apos;etichetta aggiungo io il «g». Per l&apos;energia scrivi anche kJ e kcal. La virgola è quella italiana (4,1). Le righe senza valore non vengono stampate.
       </div>
+      {qualcunaAMano && (
+        <button type="button" className="self-start text-[12px] font-bold text-[var(--verdescuro)]" onClick={tuttoDallaRicetta}>
+          Calcola tutti i valori dalla ricetta
+        </button>
+      )}
       <div className="scheda overflow-hidden">
         <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_VALORI}>
           <SortableContext items={righeMostrate.map((v) => v.chiave)} strategy={verticalListSortingStrategy}>
@@ -175,9 +231,12 @@ export default function ValoriNutrizionali({ valori, onCambia }: ProprietaValori
                 valore={v}
                 segnaposto={segnapostoValore(v.voce)}
                 senzaValore={qualcunoHaIlValore && v.voce.trim() !== "" && v.valore.trim() === ""}
+                calcolata={conRicetta && v.calcolato ? valoreCalcolato(v.voce, calcolo) : undefined}
+                calcolabile={conRicetta && !!chiaveVoce(v.voce)}
                 onCambiaVoce={cambiaVoce}
                 onCambiaValore={cambiaValore}
                 onRimuovi={rimuovi}
+                onCalcolata={cambiaCalcolata}
               />
             ))}
           </SortableContext>

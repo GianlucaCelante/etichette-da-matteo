@@ -3,6 +3,7 @@ package it.etichette.api;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
 import it.etichette.dati.ProdottoTracciato;
+import it.etichette.ricette.RicetteService;
 import it.etichette.tracciati.TracciatiService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,11 +31,14 @@ public class ProdottiController {
     private final ProdottoRepository prodotti;
     private final ProdottiConversioni conversioni;
     private final TracciatiService tracciatiService;
+    private final RicetteService ricette;
 
-    public ProdottiController(ProdottoRepository prodotti, ProdottiConversioni conversioni, TracciatiService tracciatiService) {
+    public ProdottiController(ProdottoRepository prodotti, ProdottiConversioni conversioni, TracciatiService tracciatiService,
+            RicetteService ricette) {
         this.prodotti = prodotti;
         this.conversioni = conversioni;
         this.tracciatiService = tracciatiService;
+        this.ricette = ricette;
     }
 
     @GetMapping
@@ -83,6 +87,7 @@ public class ProdottiController {
         ProdottoDto dto = conversioni.converti(corpo != null ? corpo : Map.of());
         dto = conversioni.conValoriDiPartenza(dto);
         ProdottiConversioni.valida(dto);
+        ricette.valida(null, dto.ricetta());
         Prodotto entita = new Prodotto(dto.nome());
         conversioni.applicaCampi(entita, dto);
         return conversioni.aDto(prodotti.save(entita));
@@ -106,6 +111,7 @@ public class ProdottiController {
         // Validato PRIMA di toccare il prodotto: un tracciato inesistente o l'auto-riferimento non
         // devono lasciare il prodotto salvato a meta' (docs/api.md).
         List<ProdottoTracciato> tracciatiValidati = dto.tracciati() != null ? tracciatiService.valida(id, dto.tracciati()) : null;
+        ricette.valida(id, dto.ricetta());
         entita.setNome(dto.nome());
         conversioni.applicaCampi(entita, dto, schemaLottoAttuale);
         entita.setModificatoIl(LocalDateTime.now());
@@ -140,6 +146,7 @@ public class ProdottiController {
     public Map<String, Object> elimina(@PathVariable Long id) {
         trova(id);
         tracciatiService.eliminaCollegamenti(id);
+        ricette.togliProdotto(id);
         prodotti.deleteById(id);
         return Map.of();
     }
@@ -157,7 +164,8 @@ public class ProdottiController {
                 ? nomeCopia.toUpperCase(Locale.ITALY) : origine.nomeStampa();
         return new ProdottoDto(null, nomeCopia, nomeStampaCopia, origine.etichetta(), origine.ingredienti(),
                 origine.allergeni(), origine.modoUso(), origine.giorniScadenza(), origine.conservazione(), origine.quantita(),
-                origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null, List.of(), origine.porzioni());
+                origine.valoriNutrizionali(), origine.siglaOperatore(), 0, null, null, null, List.of(), origine.porzioni(),
+                origine.ricetta(), null);
     }
 
     private Prodotto trova(Long id) {

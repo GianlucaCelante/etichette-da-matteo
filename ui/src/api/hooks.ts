@@ -34,6 +34,8 @@ import type {
   Rotolo,
   StampaRichiesta,
   StoricoRiga,
+  Ricetta,
+  SchedaIngrediente,
 } from "./tipi";
 
 // Chiavi di cache condivise: gli eventi SSE in eventi.ts scrivono nella stessa
@@ -86,6 +88,8 @@ export const chiaviQuery = {
   ingrediente: (id: number) => ["ingredienti", "uno", id] as QueryKey,
   ingredientiSimili: (nome: string, escludiId?: number) => ["ingredienti", "simili", nome, escludiId ?? null] as QueryKey,
   proposteIngredienti: (testo: string) => ["ingredienti", "proposte", testo] as QueryKey,
+  // Sotto "ingredienti": una scheda salvata invalida anche i calcoli aperti.
+  calcoloRicetta: (ricetta: string, prodottoId: number | null) => ["ingredienti", "calcoloRicetta", ricetta, prodottoId] as QueryKey,
   fornitori: ["fornitori"] as QueryKey,
   usiLottoIngrediente: (id: number) => ["ingredienti", "lotto", "usi", id] as QueryKey,
   arrivo: (id: number) => ["arrivi", "uno", id] as QueryKey,
@@ -651,6 +655,35 @@ export function useAggiornaIngrediente() {
       invalidaIngredienti(client);
       invalidaFornitori(client);
     },
+  });
+}
+
+// La scheda tecnica di un ingrediente: cambia anche le etichette che lo usano
+// in una ricetta (il servizio le ricalcola in lettura), quindi si rileggono
+// anche i prodotti.
+export function useAggiornaSchedaIngrediente() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, scheda }: { id: number; scheda: SchedaIngrediente }) => api.aggiornaSchedaIngrediente(id, scheda),
+    onSuccess: (dettaglio) => {
+      client.setQueryData(chiaviQuery.ingrediente(dettaglio.id), dettaglio);
+      invalidaIngredienti(client);
+      void client.invalidateQueries({ queryKey: ["prodotti"] });
+    },
+  });
+}
+
+// Il calcolo della ricetta in modifica nell'editor, aspettando che si smetta
+// di scrivere (come le proposte dal testo). Senza righe non si chiede niente.
+// Il risultato precedente resta a schermo mentre arriva il nuovo.
+export function useCalcoloRicetta(ricetta: Ricetta | null, prodottoId: number | null) {
+  const chiave = ricetta && ricetta.righe.length > 0 ? JSON.stringify(ricetta) : "";
+  const differita = useDebounced(chiave, 300);
+  return useQuery({
+    queryKey: chiaviQuery.calcoloRicetta(differita, prodottoId),
+    queryFn: () => api.calcoloRicetta(JSON.parse(differita) as Ricetta, prodottoId),
+    enabled: differita.length > 0,
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,5 +1,7 @@
 package it.etichette.ingredienti;
 
+import it.etichette.api.SchedaIngredienteDto;
+import it.etichette.ricette.RicetteService;
 import it.etichette.api.ErroreApi;
 import it.etichette.api.IngredienteDettaglioDto;
 import it.etichette.api.IngredienteDto;
@@ -47,6 +49,7 @@ public class IngredientiService {
     private final ArrivoRepository arrivi;
     private final FotoService foto;
     private final CorrezioneLottoRepository correzioniLotti;
+    private final RicetteService ricette;
 
     /** Esito di {@code DELETE /api/ingredienti/{id}} (docs/api.md). */
     public static final String ELIMINATO = "eliminato";
@@ -55,8 +58,10 @@ public class IngredientiService {
     public IngredientiService(IngredienteRepository ingredienti, LottoIngredienteRepository lottiIngrediente,
                                ProdottoTracciatoRepository prodottiTracciati, FornitoriService fornitori,
                                IngredientiConversioni conversioni, StoricoLottoRepository storicoLotti,
-                               ArrivoRepository arrivi, FotoService foto, CorrezioneLottoRepository correzioniLotti) {
+                               ArrivoRepository arrivi, FotoService foto, CorrezioneLottoRepository correzioniLotti,
+                               RicetteService ricette) {
         this.correzioniLotti = correzioniLotti;
+        this.ricette = ricette;
         this.storicoLotti = storicoLotti;
         this.arrivi = arrivi;
         this.foto = foto;
@@ -186,6 +191,19 @@ public class IngredientiService {
     }
 
     /**
+     * {@code PUT /api/ingredienti/{id}/scheda} (docs/api.md, "Scheda tecnica e ricetta"): sostituisce
+     * la scheda tecnica e torna il dettaglio. Le etichette che usano l'ingrediente in una ricetta si
+     * ricalcolano da sole alla prossima lettura ({@code RicetteService#applica}).
+     */
+    @Transactional
+    public IngredienteDettaglioDto aggiornaScheda(Long id, SchedaIngredienteDto scheda) {
+        Ingrediente e = trova(id);
+        ricette.scriviScheda(e, scheda);
+        e.setModificatoIl(LocalDateTime.now());
+        return conversioni.aDettaglioDto(ingredienti.save(e));
+    }
+
+    /**
      * {@code DELETE /api/ingredienti/{id}} (docs/api.md): si puo' eliminare sempre. Se nessuna
      * stampa dello storico lo cita ({@code storico_lotti}, per l'ingrediente o per un suo lotto)
      * sparisce davvero, con i tracciati, i lotti, le loro foto e gli arrivi rimasti vuoti; se lo
@@ -226,6 +244,8 @@ public class IngredientiService {
                 arrivi.deleteById(arrivoId);
             }
         }
+        // Eliminato davvero: via anche dalle ricette (un archiviato invece resta, con la sua scheda).
+        ricette.togliIngrediente(id);
         ingredienti.delete(e);
         return ELIMINATO;
     }

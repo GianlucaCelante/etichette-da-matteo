@@ -72,6 +72,12 @@ public class IngredientiController {
         return ingredienti.aggiorna(id, c.nome(), c.fornitoreId(), c.fornitoreNome());
     }
 
+    /** {@code PUT /api/ingredienti/{id}/scheda} (docs/api.md, "Scheda tecnica e ricetta"): la scheda tecnica intera. */
+    @PutMapping("/{id}/scheda")
+    public IngredienteDettaglioDto aggiornaScheda(@PathVariable Long id, @RequestBody Map<String, Object> corpo) {
+        return ingredienti.aggiornaScheda(id, json.converti(corpo, SchedaIngredienteDto.class));
+    }
+
     @DeleteMapping("/{id}")
     public Map<String, String> elimina(@PathVariable Long id) {
         return Map.of("esito", ingredienti.elimina(id));

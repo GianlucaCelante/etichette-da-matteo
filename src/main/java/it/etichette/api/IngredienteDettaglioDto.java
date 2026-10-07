@@ -21,5 +21,7 @@ public record IngredienteDettaglioDto(
         List<LottoIngredienteDto> lotti,
         AvvisoSaccoDto avvisoSacco,
         List<EtichettaCollegataDto> etichette,
-        int stampe) {
+        int stampe,
+        /** La scheda tecnica (7 ottobre 2026, docs/api.md "Scheda tecnica e ricetta"): sempre presente, vuota se mai scritta. */
+        SchedaIngredienteDto scheda) {
 }

@@ -1,5 +1,6 @@
 package it.etichette.ingredienti;
 
+import it.etichette.ricette.RicetteService;
 import it.etichette.api.ArrivoDto;
 import it.etichette.api.ArrivoRiepilogoDto;
 import it.etichette.api.AvvisoSaccoDto;
@@ -50,11 +51,14 @@ public class IngredientiConversioni {
     private final ProdottoRepository prodotti;
     private final EtichetteCollegateService etichetteCollegate;
     private final CorrezioneLottoRepository correzioniLotti;
+    private final RicetteService ricette;
 
     public IngredientiConversioni(FornitoreRepository fornitori, ArrivoRepository arrivi, LottoIngredienteRepository lottiIngrediente,
                                    StoricoLottoRepository storicoLotti, FotoService foto, ProdottoRepository prodotti,
-                                   EtichetteCollegateService etichetteCollegate, CorrezioneLottoRepository correzioniLotti) {
+                                   EtichetteCollegateService etichetteCollegate, CorrezioneLottoRepository correzioniLotti,
+                                   RicetteService ricette) {
         this.correzioniLotti = correzioniLotti;
+        this.ricette = ricette;
         this.fornitori = fornitori;
         this.arrivi = arrivi;
         this.lottiIngrediente = lottiIngrediente;
@@ -134,7 +138,7 @@ public class IngredientiConversioni {
         List<EtichettaCollegataDto> etichette = etichetteCollegate.perIngrediente(e.getId());
         return new IngredienteDettaglioDto(e.getId(), e.getNome(), fornitoreDi(e), apertiDto,
                 chiusi.size(), statoDi(aperti), tuttiOrdinatiDto, avviso, etichette,
-                (int) storicoLotti.contaStampeCheCitanoIngrediente(e.getId()));
+                (int) storicoLotti.contaStampeCheCitanoIngrediente(e.getId()), ricette.scheda(e));
     }
 
     public IngredienteSimileDto aSimileDto(Ingrediente e, boolean stessoNome) {

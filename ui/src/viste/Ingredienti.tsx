@@ -20,6 +20,7 @@ import { IconaCamion, IconaCerca, IconaCestino, IconaDestra, IconaFornitore, Ico
 import CampoNomeConSimili from "../componenti/ingredienti/CampoNomeConSimili";
 import FinestraFornitori from "../componenti/ingredienti/FinestraFornitori";
 import RigaLotto from "../componenti/ingredienti/RigaLotto";
+import SchedaTecnica from "../componenti/ingredienti/SchedaTecnica";
 import SelettoreFornitore from "../componenti/ingredienti/SelettoreFornitore";
 import { SottoTitolo, StatoVuoto, TitoloSezione } from "../componenti/ingredienti/SezioniScheda";
 import { statoScadenzaLotto } from "../componenti/ingredienti/statoLotto";
@@ -926,6 +927,8 @@ export default function Ingredienti() {
                 </>
               )}
             </section>
+
+            <SchedaTecnica key={ingrediente.id} ingrediente={ingrediente} />
 
             <UsatoNelleEtichette etichette={ingrediente.etichette} nomeIngrediente={ingrediente.nome} onApri={apriEtichetta} />
           </>

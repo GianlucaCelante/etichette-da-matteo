@@ -4,6 +4,7 @@ import {
   useAggiornaProdotto,
   useAnnullaStampa,
   useAnteprimaProdottoInModifica,
+  useCalcoloRicetta,
   useCreaProdotto,
   useEliminaProdotto,
   useIngredienti,
@@ -18,7 +19,7 @@ import {
   useStampante,
 } from "../api/hooks";
 import { useScalaAnteprimaDoppia } from "../api/resa";
-import { FORMATI_DATA, NOMIBLOCCO, type FormatoData, type Prodotto, type SchemaLotto, type Tracciato, type TipoBlocco } from "../api/tipi";
+import { FORMATI_DATA, NOMIBLOCCO, type CalcoloRicetta, type FormatoData, type Prodotto, type Ricetta, type SchemaLotto, type Tracciato, type TipoBlocco } from "../api/tipi";
 import { useAvviso } from "../hooks/useAvviso";
 import { usePortaleAzioni, usePortaleStrumenti } from "../hooks/useTestata";
 import {
@@ -52,6 +53,11 @@ import SelettoreEtichetta from "../componenti/etichette/SelettoreEtichetta";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
 import CampoConservazione from "../componenti/etichette/CampoConservazione";
 import ConfermaUscita from "../componenti/etichette/ConfermaUscita";
+import CampoRicetta from "../componenti/ricette/CampoRicetta";
+import { IngredientiDallaRicetta, LinkRicetta, PuoContenereDallaRicetta } from "../componenti/ricette/CampiDallaRicetta";
+import { conCalcolo, RICETTA_VUOTA } from "../componenti/ricette/ricetta";
+
+const NESSUNA_TRACCIA: string[] = [];
 
 // Un elenco vuoto sempre lo stesso, per le props che aspettano un array mentre i prodotti arrivano.
 const NESSUN_PRODOTTO: Prodotto[] = [];
@@ -170,6 +176,9 @@ interface ProdottoBozza {
   // Chi tracciare per i lotti (docs/api.md, "Ingredienti collegati a un
   // prodotto", 22 settembre 2026): vedi CampoIngredientiCollegati sotto.
   tracciati: Tracciato[];
+  // La ricetta (7 ottobre 2026): grammi, resa, scarti e quali campi
+  // dell'etichetta si calcolano. Vedi CampoRicetta.
+  ricetta: Ricetta;
   // Lo schema del lotto e' dell'etichetta, non del locale (docs/api.md,
   // "Impostazioni come il prototipo", 22 settembre 2026 sera): vive qui, non
   // piu' nelle impostazioni globali.
@@ -817,6 +826,8 @@ export default function Etichette() {
         : { ragioneSociale: "", sedeLegale: "", sedeProduzione: "", confezionatoDa: "" },
       zona: etichetta?.zona ?? { larghezzaDestra: "1/3" },
       tracciati: prodotto.tracciati ?? [],
+      // Un prodotto senza ricetta (o salvato prima del 7 ottobre 2026) parte da una vuota.
+      ricetta: prodotto.ricetta ?? RICETTA_VUOTA,
       // Come dicituraScadenza e formatoData: se il servizio non la manda
       // (prodotto creato prima della migrazione), vale "data" (docs/api.md).
       schemaLotto: etichetta?.schemaLotto ?? "data",
@@ -1218,6 +1229,23 @@ export default function Etichette() {
     setBozzaProdotto((p) => (p ? { ...p, zona: { larghezzaDestra: v } } : p));
   }, []);
   const aggiornaTracciati = useCallback((nuovi: Tracciato[]) => setBozzaProdotto((p) => (p ? { ...p, tracciati: nuovi } : p)), []);
+  const aggiornaRicetta = useCallback((nuova: Ricetta) => setBozzaProdotto((p) => (p ? { ...p, ricetta: nuova } : p)), []);
+  // Elenco ingredienti e «può contenere» calcolati o scritti a mano: passando
+  // a mano si parte dal testo calcolato, cosi' si corregge invece di riscrivere.
+  const usaIngredientiDellaRicetta = useCallback(
+    (attivo: boolean, testoCalcolato: string) =>
+      setBozzaProdotto((p) => (p ? { ...p, ingredienti: attivo ? p.ingredienti : testoCalcolato, ricetta: { ...p.ricetta, ingredientiAuto: attivo } } : p)),
+    [],
+  );
+  const usaAllergeniDellaRicetta = useCallback(
+    (attivo: boolean, calcolati: string[]) =>
+      setBozzaProdotto((p) => (p ? { ...p, allergeni: attivo ? p.allergeni : calcolati, ricetta: { ...p.ricetta, allergeniAuto: attivo } } : p)),
+    [],
+  );
+  const scriviIngredientiAMano = useCallback((testo: string) => usaIngredientiDellaRicetta(false, testo), [usaIngredientiDellaRicetta]);
+  const ingredientiDallaRicetta = useCallback(() => usaIngredientiDellaRicetta(true, ""), [usaIngredientiDellaRicetta]);
+  const scegliAllergeniAMano = useCallback((tracce: string[]) => usaAllergeniDellaRicetta(false, tracce), [usaAllergeniDellaRicetta]);
+  const allergeniDallaRicetta = useCallback(() => usaAllergeniDellaRicetta(true, []), [usaAllergeniDellaRicetta]);
   const aggiornaSchemaLotto = useCallback((v: SchemaLotto) => setBozzaProdotto((p) => (p ? { ...p, schemaLotto: v } : p)), []);
   // Il testo dei blocchi "Testo libero": ora si scrive nel
   // gruppo del blocco (deciso da Gianluca), non piu' nella riga del vassoio,
@@ -1259,22 +1287,40 @@ export default function Etichette() {
   // Un useMemo (non un semplice const) perche' salvare() e' un useCallback
   // che lo usa: senza, react-hooks/exhaustive-deps segnala un oggetto nuovo
   // a ogni resa.
+  // Il calcolo della ricetta in modifica (il servizio lo rifa' a ogni cambio,
+  // con un attimo di ritardo); finche' non arriva vale quello letto col
+  // prodotto. Senza righe non c'e' calcolo.
+  const { data: calcoloInModifica } = useCalcoloRicetta(bozzaProdotto?.ricetta ?? null, prodottoSalvato?.id ?? null);
+  const calcolo: CalcoloRicetta | null =
+    bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0 ? (calcoloInModifica ?? prodotto?.calcolo ?? null) : null;
+  // I campi dell'etichetta con la ricetta applicata (stessa regola del servizio, ricetta.ts).
+  const campiCalcolati = useMemo(
+    () =>
+      bozzaProdotto
+        ? conCalcolo({ ingredienti: bozzaProdotto.ingredienti, allergeni: bozzaProdotto.allergeni, valori: bozzaInValori(bozzaProdotto.valori) }, bozzaProdotto.ricetta, calcolo)
+        : null,
+    [bozzaProdotto, calcolo],
+  );
+
   const prodottoInModifica: Prodotto | null = useMemo(
     () =>
-      prodotto && bozzaProdotto && bozzaBlocchi
+      prodotto && bozzaProdotto && bozzaBlocchi && campiCalcolati
         ? {
             ...prodotto,
             nome: bozzaProdotto.nome,
             nomeStampa: bozzaProdotto.nomeStampa,
-            ingredienti: bozzaProdotto.ingredienti,
+            ingredienti: campiCalcolati.ingredienti,
             modoUso: bozzaProdotto.modoUso,
             giorniScadenza: bozzaProdotto.giorniScadenza,
             conservazione: bozzaProdotto.conservazione,
             quantita: bozzaProdotto.quantita,
             porzioni: bozzaProdotto.porzioni.trim() ? bozzaProdotto.porzioni : null,
             siglaOperatore: bozzaProdotto.siglaOperatore,
-            allergeni: bozzaProdotto.allergeni,
-            valoriNutrizionali: bozzaInValori(bozzaProdotto.valori),
+            allergeni: campiCalcolati.allergeni,
+            valoriNutrizionali: campiCalcolati.valori,
+            // I nomi delle righe il servizio li ignora in scrittura.
+            ricetta: bozzaProdotto.ricetta,
+            calcolo: undefined,
             // "nome" e' solo per l'interfaccia (le pastiglie): in scrittura
             // basterebbe {tipo, id}, ma mandarlo non fa danno (il servizio
             // lo ricalcola comunque in lettura, docs/api.md).
@@ -1289,7 +1335,7 @@ export default function Etichette() {
             },
           }
         : null,
-    [prodotto, bozzaProdotto, bozzaBlocchi],
+    [prodotto, bozzaProdotto, bozzaBlocchi, campiCalcolati],
   );
 
   const pronto = !!prodottoInModifica;
@@ -1505,6 +1551,15 @@ export default function Etichette() {
     return posizioneGruppo.get(chiave) ?? Number.POSITIVE_INFINITY;
   }
 
+  // La ricetta ha almeno una riga: solo allora i campi possono venire da li'.
+  const conRicetta = !!bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0;
+  const riassuntoRicetta = !bozzaProdotto
+    ? undefined
+    : conRicetta
+      ? plurale(bozzaProdotto.ricetta.righe.length, "ingrediente", "ingredienti") +
+        (bozzaProdotto.ricetta.resaPorzioni ? ` · ${plurale(bozzaProdotto.ricetta.resaPorzioni, "porzione", "porzioni")}` : "")
+      : "Nessuna ricetta";
+
   const sezioni: { chiave: string; titolo: string; sottoPC?: string; sottoTel?: string; campi: React.ReactNode[]; ordine: number }[] = bozzaProdotto
     ? (
         [
@@ -1558,12 +1613,36 @@ export default function Etichette() {
           {
             chiave: "ingredienti",
             titolo: "Ingredienti",
-            sottoPC: usaIngredienti ? anteprimaTesto(bozzaProdotto.ingredienti, 60) : undefined,
-            sottoTel: usaIngredienti ? anteprimaTesto(bozzaProdotto.ingredienti, 60) : undefined,
+            sottoPC: usaIngredienti ? anteprimaTesto(campiCalcolati?.ingredienti ?? bozzaProdotto.ingredienti, 60) : undefined,
+            sottoTel: usaIngredienti ? anteprimaTesto(campiCalcolati?.ingredienti ?? bozzaProdotto.ingredienti, 60) : undefined,
             ordine: ordineSezione("ingredienti"),
             campi: [
-              usaIngredienti && <CampoArea key="ingredienti" etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />,
-              usaPuoContenere && <CampoAllergeni key="allergeni" allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />,
+              // Con la ricetta l'elenco e il «può contenere» possono venire da li'
+              // (7 ottobre 2026): in sola lettura, con «Scrivi a mano» per correggerli.
+              usaIngredienti &&
+                (conRicetta && bozzaProdotto.ricetta.ingredientiAuto ? (
+                  <IngredientiDallaRicetta key="ingredienti" testo={calcolo?.ingredienti ?? ""} onScriviAMano={scriviIngredientiAMano} />
+                ) : (
+                  <div key="ingredienti" className="flex flex-col gap-1">
+                    <CampoArea etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />
+                    {conRicetta && <LinkRicetta testo="Usa l'elenco della ricetta" onClic={ingredientiDallaRicetta} />}
+                  </div>
+                )),
+              usaIngredienti && conRicetta && calcolo && calcolo.allergeni.length > 0 && (
+                <div key="contiene" className="text-[12.5px] leading-snug text-[var(--tenue)]">
+                  La ricetta contiene: <b className="text-inherit">{calcolo.allergeni.join(", ")}</b>
+                  {!bozzaProdotto.ricetta.ingredientiAuto && " — controlla che nell'elenco siano scritti in MAIUSCOLO."}
+                </div>
+              ),
+              usaPuoContenere &&
+                (conRicetta && bozzaProdotto.ricetta.allergeniAuto ? (
+                  <PuoContenereDallaRicetta key="allergeni" tracce={calcolo?.tracce ?? NESSUNA_TRACCIA} onScegliAMano={scegliAllergeniAMano} />
+                ) : (
+                  <div key="allergeni" className="flex flex-col gap-1">
+                    <CampoAllergeni allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />
+                    {conRicetta && <LinkRicetta testo="Usa le tracce della ricetta" onClic={allergeniDallaRicetta} />}
+                  </div>
+                )),
               // Gli ingredienti collegati, per i lotti (docs/api.md): come
               // nel prototipo, servono il blocco "Ingredienti" sull'etichetta.
               usaIngredienti && (
@@ -1575,6 +1654,25 @@ export default function Etichette() {
                   onCambia={aggiornaTracciati}
                 />
               ),
+            ],
+          },
+          {
+            // La ricetta (7 ottobre 2026): non e' un blocco dell'etichetta, sta
+            // subito dopo gli ingredienti (in fondo se il blocco non c'e').
+            chiave: "ricetta",
+            titolo: "Ricetta",
+            sottoPC: riassuntoRicetta,
+            sottoTel: riassuntoRicetta,
+            ordine: ordineSezione("ingredienti") + 0.5,
+            campi: [
+              <CampoRicetta
+                key="ricetta"
+                ricetta={bozzaProdotto.ricetta}
+                onCambia={aggiornaRicetta}
+                calcolo={calcolo}
+                prodottoId={prodottoSalvato?.id}
+                tracciati={bozzaProdotto.tracciati}
+              />,
             ],
           },
           {
@@ -1590,7 +1688,7 @@ export default function Etichette() {
             sottoPC: "per 100 g",
             sottoTel: bozzaProdotto.valori.length ? plurale(bozzaProdotto.valori.length, "voce", "voci") + " per 100 g" : "Nessuna voce",
             ordine: ordineSezione("valori"),
-            campi: [usaValori && <ValoriNutrizionali key="valori" valori={bozzaProdotto.valori} onCambia={aggiornaValori} />],
+            campi: [usaValori && <ValoriNutrizionali key="valori" valori={bozzaProdotto.valori} onCambia={aggiornaValori} conRicetta={conRicetta} calcolo={calcolo} />],
           },
           {
             chiave: "scadenzaEtichetta",

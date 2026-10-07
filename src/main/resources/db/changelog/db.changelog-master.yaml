@@ -47,3 +47,6 @@ databaseChangeLog:
   - include:
       file: v16-solo-base-pizza.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v17-schede-e-ricette.yaml
+      relativeToChangelogFile: true

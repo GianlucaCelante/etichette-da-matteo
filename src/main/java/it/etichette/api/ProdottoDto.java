@@ -33,7 +33,11 @@ public record ProdottoDto(
          * ({@code POST /api/stampe}). In coda al record (e non accanto a {@code quantita}) per non
          * toccare i costruttori di comodo qui sotto, che restano identici per i chiamanti esistenti.
          */
-        String porzioni) {
+        String porzioni,
+        /** La ricetta (7 ottobre 2026, docs/api.md "Scheda tecnica e ricetta"); in scrittura {@code null} = non toccarla. */
+        RicettaDto ricetta,
+        /** Solo in lettura: il calcolo della ricetta, {@code null} se il prodotto non ha una ricetta. Ignorato in scrittura. */
+        CalcoloRicettaDto calcolo) {
 
     /**
      * Costruttore di comodo per i chiamanti che non maneggiano i tracciati (es. {@code
@@ -46,13 +50,33 @@ public record ProdottoDto(
             List<ValoreNutrizionaleDto> valoriNutrizionali, String siglaOperatore, int usi, LocalDateTime ultimoUso,
             LocalDateTime creatoIl, LocalDateTime modificatoIl) {
         this(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza, conservazione, quantita,
-                valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, List.of(), null);
+                valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, List.of(), null, null, null);
+    }
+
+    /** Come il canonico ma senza ricetta (i test di resa e i chiamanti di prima del 7 ottobre 2026). */
+    public ProdottoDto(Long id, String nome, String nomeStampa, EtichettaProdottoDto etichetta, String ingredienti,
+            List<String> allergeni, String modoUso, Integer giorniScadenza, String conservazione, String quantita,
+            List<ValoreNutrizionaleDto> valoriNutrizionali, String siglaOperatore, int usi, LocalDateTime ultimoUso,
+            LocalDateTime creatoIl, LocalDateTime modificatoIl, List<TracciatoDto> tracciati, String porzioni) {
+        this(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza, conservazione, quantita,
+                valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, tracciati, porzioni, null, null);
     }
 
     /** Nuovo DTO con gli stessi campi e i tracciati indicati (docs/api.md: aggiunti dal controller dopo la lettura/scrittura). */
     public ProdottoDto conTracciati(List<TracciatoDto> tracciati) {
         return new ProdottoDto(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza,
                 conservazione, quantita, valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, tracciati,
-                porzioni);
+                porzioni, ricetta, calcolo);
+    }
+
+    /**
+     * Nuovo DTO con la ricetta, il suo calcolo e i campi che ne dipendono (elenco ingredienti,
+     * «può contenere», valori nutrizionali): vedi {@code RicetteService#applica}.
+     */
+    public ProdottoDto conRicetta(String ingredienti, List<String> allergeni, List<ValoreNutrizionaleDto> valoriNutrizionali,
+            RicettaDto ricetta, CalcoloRicettaDto calcolo) {
+        return new ProdottoDto(id, nome, nomeStampa, etichetta, ingredienti, allergeni, modoUso, giorniScadenza,
+                conservazione, quantita, valoriNutrizionali, siglaOperatore, usi, ultimoUso, creatoIl, modificatoIl, tracciati,
+                porzioni, ricetta, calcolo);
     }
 }

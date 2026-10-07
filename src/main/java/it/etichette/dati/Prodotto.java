@@ -62,6 +62,10 @@ public class Prodotto {
     @Column(name = "valori_nutrizionali")
     private String valoriNutrizionali;
 
+    /** JSON: la ricetta (righe con i grammi, resa, scarti) - vedi it.etichette.api.RicettaDto. */
+    @Column(name = "ricetta")
+    private String ricetta;
+
     @Column(name = "sigla_operatore")
     private String siglaOperatore;
 
@@ -179,6 +183,14 @@ public class Prodotto {
 
     public void setValoriNutrizionali(String valoriNutrizionali) {
         this.valoriNutrizionali = valoriNutrizionali;
+    }
+
+    public String getRicetta() {
+        return ricetta;
+    }
+
+    public void setRicetta(String ricetta) {
+        this.ricetta = ricetta;
     }
 
     public String getSiglaOperatore() {

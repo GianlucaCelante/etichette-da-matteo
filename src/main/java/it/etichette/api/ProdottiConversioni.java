@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import it.etichette.dati.Contratto;
 import it.etichette.dati.Prodotto;
 import it.etichette.dati.ProdottoRepository;
+import it.etichette.ricette.RicetteService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -22,10 +23,12 @@ public class ProdottiConversioni {
 
     private final Json json;
     private final ProdottoRepository prodotti;
+    private final RicetteService ricette;
 
-    public ProdottiConversioni(Json json, ProdottoRepository prodotti) {
+    public ProdottiConversioni(Json json, ProdottoRepository prodotti, RicetteService ricette) {
         this.json = json;
         this.prodotti = prodotti;
+        this.ricette = ricette;
     }
 
     public ProdottoDto aDto(Prodotto p) {
@@ -39,10 +42,22 @@ public class ProdottiConversioni {
         // colonna, e l'interfaccia lo passa cosi' com'e' al gruppo "Ingredienti collegati" - che
         // ci chiama .trim() sopra senza aspettarselo null, mandando la pagina a schermo bianco.
         String ingredienti = p.getIngredienti() != null ? p.getIngredienti() : "";
-        return new ProdottoDto(p.getId(), p.getNome(), p.getNomeStampa(), etichetta, ingredienti,
+        ProdottoDto dto = new ProdottoDto(p.getId(), p.getNome(), p.getNomeStampa(), etichetta, ingredienti,
                 allergeni, p.getModoUso(), p.getGiorniScadenza(), p.getConservazione(), p.getQuantita(), valori,
                 p.getSiglaOperatore(), p.getUsi(), p.getUltimoUso(), p.getCreatoIl(), p.getModificatoIl(), List.of(),
-                p.getPorzioni());
+                p.getPorzioni(), null, null);
+        // La ricetta e il suo calcolo (7 ottobre 2026): da qui passano editor, stampa, anteprime e
+        // ristampe, quindi una scheda ingrediente corretta vale subito su ogni etichetta che la usa.
+        return ricette.applica(dto, ricette.ricettaSalvata(p));
+    }
+
+    /**
+     * Un prodotto arrivato COSI' COM'E' dall'editor (anteprima, «Stampa di prova»): la ricetta che
+     * porta si applica come in lettura, cosi' l'anteprima di una bozza non salvata mostra gia' i
+     * valori calcolati. Senza ricetta resta identico.
+     */
+    public ProdottoDto conRicettaApplicata(ProdottoDto dto) {
+        return dto.ricetta() != null ? ricette.applica(dto, dto.ricetta()) : dto;
     }
 
     /** Comportamento di sempre: un {@code etichetta.schemaLotto} mancante prende il default "data" (creazione, duplicazione). */
@@ -68,6 +83,10 @@ public class ProdottiConversioni {
         entita.setValoriNutrizionali(json.scrivi(dto.valoriNutrizionali() != null ? dto.valoriNutrizionali() : List.of()));
         entita.setSiglaOperatore(dto.siglaOperatore());
         entita.setEtichetta(json.scrivi(normalizzaEtichetta(dto.etichetta(), schemaLottoSeAssente, dto.conservazione())));
+        // null = non toccarla (come i tracciati in una PUT): un client che non conosce la ricetta non la cancella.
+        if (dto.ricetta() != null) {
+            entita.setRicetta(ricette.daSalvare(dto.ricetta()));
+        }
     }
 
     /** Lo schemaLotto ATTUALE di un prodotto gia' salvato, da usare come ripiego in una PUT che non lo manda (vedi {@link #applicaCampi(Prodotto, ProdottoDto, String)}). */
@@ -103,7 +122,7 @@ public class ProdottiConversioni {
         EtichettaProdottoDto etichetta = dto.etichetta() != null ? dto.etichetta() : etichettaMinima();
         return new ProdottoDto(dto.id(), nome, nomeStampa, etichetta, ingredienti, allergeni, dto.modoUso(),
                 giorniScadenza, conservazione, quantita, valori, dto.siglaOperatore(), dto.usi(), dto.ultimoUso(),
-                dto.creatoIl(), dto.modificatoIl(), List.of(), dto.porzioni());
+                dto.creatoIl(), dto.modificatoIl(), List.of(), dto.porzioni(), dto.ricetta(), null);
     }
 
     /** Titolo 14, scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2, schema del lotto "data". */
