@@ -183,7 +183,7 @@ export default function MerceArrivata() {
     return Number.isFinite(n) ? n : null;
   });
   const [torna] = useState<string | null>(() => searchParams.get("torna"));
-  const destinazioneFine = torna || "/ingredienti";
+  const destinazioneFine = torna || "/ingredienti?vista=ingredienti";
 
   const [fornitoreId, setFornitoreId] = useState<number | null>(null);
   const [fornitoreAltro, setFornitoreAltro] = useState(false);

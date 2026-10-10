@@ -22,6 +22,7 @@ import FinestraFornitori from "../componenti/ingredienti/FinestraFornitori";
 import RigaLotto from "../componenti/ingredienti/RigaLotto";
 import SchedaTecnica from "../componenti/ingredienti/SchedaTecnica";
 import SceltaVistaIngredienti from "../componenti/ricette/SceltaVistaIngredienti";
+import { vistaIngredienti } from "../componenti/ricette/vista";
 import VistaRicette from "../componenti/ricette/VistaRicette";
 import SelettoreFornitore from "../componenti/ingredienti/SelettoreFornitore";
 import { SottoTitolo, StatoVuoto, TitoloSezione } from "../componenti/ingredienti/SezioniScheda";
@@ -212,12 +213,13 @@ function FilaLotto({
 // tendina dei nomi simili), fornitore abituale, e i suoi lotti (docs/api.md,
 // "Ingredienti, fornitori e lotti"; prototipo banco-lotti, vistaIngredienti/
 // schedaIngrediente/rigaLotto/nuovoIngrediente).
-// La voce «Ingredienti» del menu: l'elenco degli ingredienti (con lotti e
-// scheda tecnica) oppure le ricette delle etichette (?vista=ricette, 7
-// ottobre 2026). ?prodotto=<id> apre subito la ricetta di quell'etichetta.
+// La voce «Ricette» del menu (9 ottobre 2026: prima era «Ingredienti»): le
+// ricette delle etichette, che e' la vista predefinita (7 ottobre 2026), oppure
+// il catalogo degli ingredienti (con lotti e scheda tecnica) con
+// ?vista=ingredienti. ?prodotto=<id> apre subito la ricetta di quell'etichetta.
 export default function Ingredienti() {
   const [searchParams] = useSearchParams();
-  if (searchParams.get("vista") === "ricette") {
+  if (vistaIngredienti(searchParams) === "ricette") {
     const id = Number(searchParams.get("prodotto"));
     return <VistaRicette prodottoIniziale={Number.isInteger(id) && id > 0 ? id : null} />;
   }

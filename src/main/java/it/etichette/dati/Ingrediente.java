@@ -44,7 +44,7 @@ public class Ingrediente {
     @Column(name = "archiviato_il")
     private LocalDateTime archiviatoIl;
 
-    /** JSON: la scheda tecnica (valori per 100 g, allergeni, tracce) - vedi it.etichette.api.SchedaIngredienteDto. */
+    /** JSON: la scheda tecnica (elenco di voci per 100 g, allergeni, tracce) - vedi it.etichette.api.SchedaIngredienteDto. */
     @Column(name = "scheda")
     private String scheda;
 

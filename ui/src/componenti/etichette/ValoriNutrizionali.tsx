@@ -1,12 +1,12 @@
 import { useCallback, useMemo, type ChangeEvent, type CSSProperties } from "react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconaCestino, IconaManiglia, IconaPiu } from "../Icone";
 import { nuovaChiave, type ValoreBozza } from "./bozza";
-import { ACCESSIBILITA_VALORI } from "./sensoriRiordino";
+import { ACCESSIBILITA_VALORI, useSensoriValori } from "./sensoriRiordino";
 import type { CalcoloRicetta } from "../../api/tipi";
-import { chiaveVoce, valoreCalcolato, VOCI_CALCOLATE } from "../ricette/ricetta";
+import { eVoceStandard, voceCalcolata, valoreCalcolato } from "../ricette/ricetta";
 
 function RigaValore({
   valore,
@@ -27,7 +27,8 @@ function RigaValore({
   // Con la ricetta (7 ottobre 2026): la riga si calcola da sola. undefined =
   // riga a mano; null = calcolata ma ora non calcolabile (resta l'ultimo valore).
   calcolata: string | null | undefined;
-  // La voce e' una delle otto che la ricetta sa calcolare (e la ricetta c'e').
+  // La ricetta c'e' e sa calcolare questa voce (c'e' nel suo calcolo: le sette
+  // standard e le voci personalizzate che stanno nella scheda di tutti gli ingredienti).
   calcolabile: boolean;
   onCambiaVoce: (chiave: string, testo: string) => void;
   onCambiaValore: (chiave: string, testo: string) => void;
@@ -141,10 +142,7 @@ function segnapostoValore(voce: string): string {
 // obbligatorie (funzionalita-prima-versione.md).
 export default function ValoriNutrizionali({ valori, onCambia, conRicetta = false, calcolo }: ProprietaValoriNutrizionali) {
   // Anche la tastiera (Invio sulla maniglia, frecce, Invio): prima il riordino era solo col mouse.
-  const sensori = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const sensori = useSensoriValori();
 
   // Il precarico e' SOLO visivo finche' non si scrive niente: se "valori" e'
   // ancora vuoto si mostrano le sette voci principali (righeMostrate), ma
@@ -179,17 +177,19 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
       onCambia(righeMostrate.map((v) => (v.chiave === chiave ? { ...v, calcolato: attiva, valore: attiva ? v.valore : valoreMostrato } : v))),
     [righeMostrate, onCambia],
   );
-  // Tutte le voci dalla ricetta: quelle che ci sono passano a calcolate, le
-  // mancanti fra le otto si aggiungono in coda (le fibre solo se calcolabili).
+  // Tutte le voci dalla ricetta: quelle che il calcolo conosce passano a
+  // calcolate, le voci standard che mancano si aggiungono in coda (le fibre
+  // solo se calcolabili). Le voci personalizzate non si aggiungono da sole: le
+  // sceglie chi scrive, con «Aggiungi voce».
   const tuttoDallaRicetta = useCallback(() => {
-    const presenti = new Set(righeMostrate.map((v) => chiaveVoce(v.voce)).filter(Boolean));
-    const aggiornate = righeMostrate.map((v) => (chiaveVoce(v.voce) ? { ...v, calcolato: true } : v));
-    const nuove = VOCI_CALCOLATE.filter((voce) => !presenti.has(chiaveVoce(voce)) && (voce !== "Fibre" || valoreCalcolato(voce, calcolo) !== null)).map(
-      (voce) => ({ chiave: nuovaChiave(), voce, valore: valoreCalcolato(voce, calcolo) ?? "", calcolato: true }),
-    );
+    const presenti = new Set(righeMostrate.map((v) => voceCalcolata(v.voce, calcolo)).filter((v) => v !== undefined));
+    const aggiornate = righeMostrate.map((v) => (voceCalcolata(v.voce, calcolo) ? { ...v, calcolato: true } : v));
+    const nuove = (calcolo?.valori ?? [])
+      .filter((c) => !presenti.has(c) && eVoceStandard(c.voce) && (!/fibr/i.test(c.voce) || c.valore.trim() !== ""))
+      .map((c) => ({ chiave: nuovaChiave(), voce: c.voce, valore: c.valore, calcolato: true }));
     onCambia([...aggiornate, ...nuove]);
   }, [righeMostrate, onCambia, calcolo]);
-  const qualcunaAMano = conRicetta && righeMostrate.some((v) => chiaveVoce(v.voce) && !v.calcolato);
+  const qualcunaAMano = conRicetta && righeMostrate.some((v) => voceCalcolata(v.voce, calcolo) && !v.calcolato);
 
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
@@ -206,16 +206,14 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
   return (
     <div className="campo">
       <div className="capoValori flex items-baseline justify-between gap-2">
-        <div className="etichettina">
-          Valori nutrizionali <span className="font-normal normal-case tracking-normal text-[var(--spento)]">· per 100 g</span>
-        </div>
+        <div className="text-[12.5px] text-[var(--tenue)]">per 100 g</div>
         <button type="button" className="text-[12px] font-bold text-[var(--verdescuro)]" onClick={aggiungi}>
           <IconaPiu larghezza={12} spessoreTratto={2.5} className="inline align-[-1px] mr-0.5" />
           Aggiungi voce
         </button>
       </div>
       <div className="text-[12px] leading-snug text-[var(--tenue)]">
-        Scrivi il numero: sull&apos;etichetta aggiungo io il «g». Per l&apos;energia scrivi anche kJ e kcal. La virgola è quella italiana (4,1). Le righe senza valore non vengono stampate.
+        Scrivi il numero, il «g» lo aggiungo io (energia: kJ e kcal). Virgola italiana (4,1). Le righe senza valore non si stampano.
       </div>
       {qualcunaAMano && (
         <button type="button" className="self-start text-[12px] font-bold text-[var(--verdescuro)]" onClick={tuttoDallaRicetta}>
@@ -232,7 +230,7 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
                 segnaposto={segnapostoValore(v.voce)}
                 senzaValore={qualcunoHaIlValore && v.voce.trim() !== "" && v.valore.trim() === ""}
                 calcolata={conRicetta && v.calcolato ? valoreCalcolato(v.voce, calcolo) : undefined}
-                calcolabile={conRicetta && !!chiaveVoce(v.voce)}
+                calcolabile={conRicetta && !!voceCalcolata(v.voce, calcolo)}
                 onCambiaVoce={cambiaVoce}
                 onCambiaValore={cambiaValore}
                 onRimuovi={rimuovi}

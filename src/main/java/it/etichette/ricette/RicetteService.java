@@ -10,7 +10,10 @@ import it.etichette.api.RigaRicettaDto;
 import it.etichette.api.SchedaIngredienteDto;
 import it.etichette.api.TracciatoDto;
 import it.etichette.api.ValoreNutrizionaleDto;
-import it.etichette.api.ValoriPer100Dto;
+import it.etichette.api.VoceCalcolataDto;
+import it.etichette.api.VoceNonCalcolabileDto;
+import it.etichette.api.VoceSchedaDto;
+import it.etichette.ricette.VociNutrizionali.Valore;
 import it.etichette.dati.Contratto;
 import it.etichette.dati.Ingrediente;
 import it.etichette.dati.IngredienteRepository;
@@ -20,8 +23,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,9 +47,10 @@ import java.util.stream.Collectors;
  * <p>Il calcolo entra nell'etichetta in {@link #applica}: lo chiama {@code
  * ProdottiConversioni#aDto}, da cui passano tutte le letture di un prodotto - editor, stampa,
  * anteprime, ristampe - quindi una scheda ingrediente corretta si vede subito su ogni etichetta
- * che la usa, senza riaprirle una per una. Si calcola solo cio' che il prodotto chiede: l'elenco
- * ingredienti e il «può contenere» se la ricetta lo dice, i valori nutrizionali riga per riga
- * ({@link ValoreNutrizionaleDto#calcolato()}). Il resto resta scritto a mano, come prima.
+ * che la usa, senza riaprirle una per una. Si calcola solo cio' che il prodotto chiede: il «può
+ * contenere» se la ricetta lo dice, i valori nutrizionali riga per riga
+ * ({@link ValoreNutrizionaleDto#calcolato()}). Il testo degli ingredienti resta scritto a mano
+ * (l'elenco calcolato, in {@code calcolo.ingredienti}, l'editor lo importa con un tasto).
  *
  * <p>Un semilavorato (un altro prodotto nella ricetta) entra con la SUA ricetta se ce l'ha,
  * altrimenti con i valori e il «può contenere» scritti sulla sua etichetta; i suoi allergeni
@@ -57,6 +62,10 @@ public class RicetteService {
 
     /** Oltre questa profondita' di semilavorati la visita si ferma comunque (dati anomali). */
     private static final int LIMITE_PROFONDITA = 10;
+
+    /** I nomi fissi delle voci standard in minuscolo: una riga calcolata con uno di questi nomi non e' una voce personalizzata. */
+    private static final Set<String> NOMI_STANDARD = Arrays.stream(VociNutrizionali.values())
+            .map(s -> s.voce().toLowerCase(Locale.ITALY)).collect(Collectors.toSet());
 
     private final IngredienteRepository ingredienti;
     private final ProdottoRepository prodotti;
@@ -78,30 +87,62 @@ public class RicetteService {
         return s.normalizzata();
     }
 
-    /** {@code PUT /api/ingredienti/{id}/scheda}: valida e salva (l'entita' non e' salvata qui). */
+    /** Al massimo tante voci in una scheda. */
+    public static final int MASSIMO_VOCI = 40;
+
+    /** Al massimo tanti caratteri nel nome di una voce. */
+    public static final int MASSIMO_NOME_VOCE = 60;
+
+    /**
+     * {@code PUT /api/ingredienti/{id}/scheda}: valida e salva (l'entita' non e' salvata qui). Il
+     * vecchio corpo ({@code valori}, nove numeri fissi) e' convertito nelle nove voci standard; si
+     * salva sempre il formato nuovo ({@code voci}), nell'ordine ricevuto.
+     */
     public void scriviScheda(Ingrediente i, SchedaIngredienteDto scheda) {
         SchedaIngredienteDto s = (scheda != null ? scheda : SchedaIngredienteDto.VUOTA).normalizzata();
         validaAllergeni("allergeni", s.allergeni());
         validaAllergeni("tracce", s.tracce());
-        ValoriPer100Dto v = s.valori();
-        validaNumero("valori.energiaKj", v.energiaKj(), 0, 4000);
-        validaNumero("valori.energiaKcal", v.energiaKcal(), 0, 1000);
-        validaNumero("valori.grassi", v.grassi(), 0, 100);
-        validaNumero("valori.saturi", v.saturi(), 0, 100);
-        validaNumero("valori.carboidrati", v.carboidrati(), 0, 100);
-        validaNumero("valori.zuccheri", v.zuccheri(), 0, 100);
-        validaNumero("valori.fibre", v.fibre(), 0, 100);
-        validaNumero("valori.proteine", v.proteine(), 0, 100);
-        validaNumero("valori.sale", v.sale(), 0, 100);
+        List<VoceSchedaDto> voci = validaVoci(s.voci());
         // Allergeni e tracce nell'ordine di legge, senza doppioni: una scheda salvata due volte resta identica.
-        i.setScheda(json.scrivi(new SchedaIngredienteDto(v, inOrdine(s.allergeni()), inOrdine(s.tracce()))));
+        i.setScheda(json.scrivi(new SchedaIngredienteDto(voci, null, inOrdine(s.allergeni()), inOrdine(s.tracce()))));
+    }
+
+    /** Le voci validate, con l'unita' in forma canonica; rifiuta con 400 la prima che non va. */
+    private static List<VoceSchedaDto> validaVoci(List<VoceSchedaDto> voci) {
+        if (voci.size() > MASSIMO_VOCI) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci: al massimo " + MASSIMO_VOCI + " voci, ricevute " + voci.size());
+        }
+        List<VoceSchedaDto> valide = new ArrayList<>();
+        Set<String> viste = new HashSet<>();
+        for (VoceSchedaDto v : voci) {
+            if (v == null || v.voce() == null || v.voce().isBlank()) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci.voce: il nome della voce è obbligatorio");
+            }
+            if (!v.voce().equals(v.voce().trim())) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci.voce: il nome non deve avere spazi all'inizio o in fondo: «" + v.voce() + "»");
+            }
+            if (v.voce().length() > MASSIMO_NOME_VOCE) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci.voce: al massimo " + MASSIMO_NOME_VOCE + " caratteri: «" + v.voce() + "»");
+            }
+            String unita = VociNutrizionali.unitaCanonica(v.unita());
+            if (unita == null) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci.unita: valore non ammesso per «" + v.voce() + "»: " + v.unita()
+                        + " (ammessi: " + String.join(", ", VociNutrizionali.UNITA) + ")");
+            }
+            if (!viste.add(Valore.chiaveDi(v.voce(), unita))) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "scheda.voci: la voce «" + v.voce() + "» in " + unita + " c'è già");
+            }
+            validaNumero("scheda.voci." + v.voce() + ".valore", v.valore(), 0, VociNutrizionali.massimo(unita));
+            valide.add(new VoceSchedaDto(v.voce(), unita, v.valore()));
+        }
+        return valide;
     }
 
     /** La ricetta salvata di un prodotto, senza i nomi delle righe (vuota se mai scritta). */
     public RicettaDto ricettaSalvata(Prodotto p) {
         RicettaDto r = json.leggi(p.getRicetta(), new TypeReference<RicettaDto>() {
         }, RicettaDto.VUOTA);
-        return r.righe() != null ? r : new RicettaDto(List.of(), r.porzioni(), r.ingredientiAuto(), r.allergeniAuto());
+        return r.righe() != null ? r : new RicettaDto(List.of(), r.porzioni(), r.allergeniAuto());
     }
 
     /**
@@ -144,7 +185,7 @@ public class RicetteService {
     /**
      * La ricetta che resta dopo una {@code PUT /api/prodotti/{id}}: con {@code righe} assente
      * (l'editor dell'etichetta, che sceglie solo cosa calcolare) righe e porzioni restano quelle
-     * salvate e cambiano solo gli interruttori mandati; con le righe si sostituisce tutto.
+     * salvate e cambia solo l'interruttore mandato; con le righe si sostituisce tutto.
      */
     public RicettaDto unisci(RicettaDto salvata, RicettaDto ricevuta) {
         if (ricevuta == null) {
@@ -154,25 +195,24 @@ public class RicetteService {
             return ricevuta;
         }
         return new RicettaDto(salvata.righe(), salvata.porzioni(),
-                ricevuta.ingredientiAuto() != null ? ricevuta.ingredientiAuto() : salvata.ingredientiAuto(),
                 ricevuta.allergeniAuto() != null ? ricevuta.allergeniAuto() : salvata.allergeniAuto());
     }
 
     /**
      * {@code PUT /api/prodotti/{id}/ricetta} (pagina Ingredienti, «Ricette»): sostituisce righe e
-     * porzioni, lascia gli interruttori come sono. La PRIMA volta che il prodotto ha una ricetta
+     * porzioni, lascia l'interruttore come e'. La PRIMA volta che il prodotto ha una ricetta
      * l'etichetta passa da sola ai valori calcolati (chiesto dal cliente: «calcolati
-     * automaticamente»): elenco ingredienti, «può contenere» e le righe dei valori nutrizionali
-     * che il calcolo conosce, aggiungendo in coda quelle obbligatorie che mancano. Si torna a mano
-     * dall'editor, campo per campo. L'entita' non e' salvata qui.
+     * automaticamente»): «può contenere» e le righe dei valori nutrizionali che il calcolo conosce,
+     * aggiungendo in coda quelle obbligatorie che mancano. Si torna a mano dall'editor, campo per
+     * campo. Il testo degli ingredienti NON si tocca mai: l'elenco della ricetta si importa dall'editor
+     * (9 ottobre 2026). L'entita' non e' salvata qui.
      */
     public void sostituisciRicetta(Prodotto p, RicettaDto ricevuta) {
         RicettaDto salvata = ricettaSalvata(p);
         List<RigaRicettaDto> righe = ricevuta.righe() != null ? ricevuta.righe() : List.of();
         boolean prima = !salvata.haRighe() && !righe.isEmpty();
-        boolean ingredientiAuto = prima || salvata.ingredientiCalcolati();
         boolean allergeniAuto = prima || salvata.allergeniCalcolati();
-        p.setRicetta(daSalvare(new RicettaDto(righe, ricevuta.porzioni(), ingredientiAuto, allergeniAuto)));
+        p.setRicetta(daSalvare(new RicettaDto(righe, ricevuta.porzioni(), allergeniAuto)));
         if (prima) {
             p.setValoriNutrizionali(json.scrivi(valoriTuttiCalcolati(json.leggi(p.getValoriNutrizionali(),
                     new TypeReference<List<ValoreNutrizionaleDto>>() {
@@ -200,12 +240,12 @@ public class RicetteService {
         return risultato;
     }
 
-    /** La ricetta come si salva: senza i nomi (si ricalcolano in lettura), interruttori mai {@code null}. */
+    /** La ricetta come si salva: senza i nomi (si ricalcolano in lettura), interruttore mai {@code null}. */
     public String daSalvare(RicettaDto r) {
         List<RigaRicettaDto> righe = (r.righe() != null ? r.righe() : List.<RigaRicettaDto>of()).stream()
                 .map(riga -> new RigaRicettaDto(riga.tipo(), riga.id(), null, riga.quantita(), riga.unita() != null ? riga.unita() : "g"))
                 .toList();
-        return json.scrivi(new RicettaDto(righe, r.porzioni(), r.ingredientiCalcolati(), r.allergeniCalcolati()));
+        return json.scrivi(new RicettaDto(righe, r.porzioni(), r.allergeniCalcolati()));
     }
 
     /** Toglie un ingrediente eliminato davvero dalle ricette che lo usavano (un archiviato resta: la sua scheda c'e' ancora). */
@@ -223,7 +263,7 @@ public class RicetteService {
             RicettaDto r = ricettaSalvata(p);
             if (r.righe().stream().anyMatch(daTogliere)) {
                 List<RigaRicettaDto> restano = r.righe().stream().filter(daTogliere.negate()).toList();
-                p.setRicetta(daSalvare(new RicettaDto(restano, r.porzioni(), r.ingredientiAuto(), r.allergeniAuto())));
+                p.setRicetta(daSalvare(new RicettaDto(restano, r.porzioni(), r.allergeniAuto())));
                 prodotti.save(p);
             }
         }
@@ -234,10 +274,11 @@ public class RicetteService {
 
     /**
      * Il prodotto con la ricetta applicata: {@code ricetta} coi nomi delle righe, {@code calcolo}
-     * (se la ricetta ha almeno una riga), e - solo se la ricetta lo chiede - l'elenco ingredienti,
-     * il «può contenere» e le righe dei valori nutrizionali segnate {@code calcolato} sostituiti
-     * dal calcolo. Una riga calcolata che ora non si puo' calcolare (manca un valore in una
-     * scheda) tiene il valore salvato, cioe' l'ultimo calcolo riuscito.
+     * (se la ricetta ha almeno una riga), e - solo se la ricetta lo chiede - il «può contenere» e
+     * le righe dei valori nutrizionali segnate {@code calcolato} sostituiti dal calcolo. Il testo
+     * degli ingredienti resta SEMPRE quello scritto a mano (9 ottobre 2026): l'elenco calcolato sta
+     * solo in {@code calcolo.ingredienti}. Una riga calcolata che ora non si puo' calcolare (manca
+     * un valore in una scheda) tiene il valore salvato, cioe' l'ultimo calcolo riuscito.
      */
     public ProdottoDto applica(ProdottoDto dto, RicettaDto ricettaSalvata) {
         RicettaDto r = conNomi(ricettaSalvata != null ? ricettaSalvata : RicettaDto.VUOTA);
@@ -245,20 +286,45 @@ public class RicetteService {
             return dto.conRicetta(dto.ingredienti(), dto.allergeni(), dto.valoriNutrizionali(), r, null);
         }
         CalcoloRicettaDto c = calcola(r, dto.id());
-        String testo = r.ingredientiCalcolati() ? c.ingredienti() : dto.ingredienti();
         List<String> puoContenere = r.allergeniCalcolati() ? c.tracce() : dto.allergeni();
         List<ValoreNutrizionaleDto> valori = (dto.valoriNutrizionali() != null ? dto.valoriNutrizionali() : List.<ValoreNutrizionaleDto>of())
                 .stream().map(v -> conValoreCalcolato(v, c)).toList();
-        return dto.conRicetta(testo, puoContenere, valori, r, c);
+        return dto.conRicetta(dto.ingredienti(), puoContenere, valori, r, c);
     }
 
     private static ValoreNutrizionaleDto conValoreCalcolato(ValoreNutrizionaleDto v, CalcoloRicettaDto c) {
         if (!v.daCalcolare()) {
             return v;
         }
-        VociNutrizionali voce = VociNutrizionali.daNome(v.voce());
-        String calcolato = voce != null ? voce.scrivi(c.per100()) : null;
+        String calcolato = testoCalcolato(v.voce(), c.valori());
         return calcolato != null ? new ValoreNutrizionaleDto(v.voce(), calcolato, true) : v;
+    }
+
+    /**
+     * Il testo calcolato per una riga dell'etichetta, {@code null} se il calcolo non ha quella voce.
+     * Prima le voci personalizzate per nome uguale (senza maiuscole e spazi ai bordi): «Sodio»,
+     * «Grassi monoinsaturi»; poi le standard come sempre, per parole chiave sul nome della riga.
+     */
+    private static String testoCalcolato(String nomeRiga, List<ValoreNutrizionaleDto> calcolati) {
+        if (nomeRiga == null) {
+            return null;
+        }
+        String nome = nomeRiga.trim().toLowerCase(Locale.ITALY);
+        for (ValoreNutrizionaleDto c : calcolati) {
+            String nomeCalcolato = c.voce().trim().toLowerCase(Locale.ITALY);
+            if (nomeCalcolato.equals(nome) && !NOMI_STANDARD.contains(nomeCalcolato)) {
+                return c.valore();
+            }
+        }
+        VociNutrizionali voce = VociNutrizionali.daNome(nomeRiga);
+        if (voce != null) {
+            for (ValoreNutrizionaleDto c : calcolati) {
+                if (c.voce().equals(voce.voce())) {
+                    return c.valore();
+                }
+            }
+        }
+        return null;
     }
 
     /** {@code POST /api/ricette/calcolo} e {@link #applica}: il calcolo di una ricetta del prodotto {@code prodottoId} (null = nuovo). */
@@ -270,11 +336,28 @@ public class RicetteService {
         return calcola(r, visitati, 0);
     }
 
-    /** Un pezzo della ricetta pronto per il calcolo: un ingrediente con la sua scheda, o un semilavorato col suo calcolo. */
-    private record Componente(String nome, String inElenco, ValoriPer100Dto per100, Set<String> allergeni, Set<String> tracce) {
+    /**
+     * Un pezzo della ricetta pronto per il calcolo: un ingrediente con la sua scheda, o un
+     * semilavorato col suo calcolo. {@code valori}: le voci per 100 g, nell'ordine in cui il pezzo le ha.
+     */
+    private record Componente(String nome, String inElenco, List<Valore> valori, Set<String> allergeni, Set<String> tracce) {
+
+        Map<String, Valore> perChiave() {
+            Map<String, Valore> m = new LinkedHashMap<>();
+            valori.forEach(v -> m.putIfAbsent(v.chiave(), v));
+            return m;
+        }
+    }
+
+    /** Il calcolo con, in piu', i numeri per 100 g delle voci calcolate (servono a un'altra ricetta che usa questa come semilavorato). */
+    private record Esito(CalcoloRicettaDto calcolo, List<Valore> per100) {
     }
 
     private CalcoloRicettaDto calcola(RicettaDto r, Set<Long> visitati, int profondita) {
+        return calcolaEsito(r, visitati, profondita).calcolo();
+    }
+
+    private Esito calcolaEsito(RicettaDto r, Set<Long> visitati, int profondita) {
         List<RigaRicettaDto> righe = r.righe() != null ? r.righe() : List.of();
         Map<Long, Ingrediente> ingredientiPerId = ingredienti.findAllById(idDi(righe, TracciatoDto.INGREDIENTE)).stream()
                 .collect(Collectors.toMap(Ingrediente::getId, Function.identity()));
@@ -282,17 +365,16 @@ public class RicetteService {
                 .collect(Collectors.toMap(Prodotto::getId, Function.identity()));
 
         List<String> avvisi = new ArrayList<>();
-        Map<VociNutrizionali, Double> somme = new EnumMap<>(VociNutrizionali.class);
-        double sommaKcal = 0;
-        Set<VociNutrizionali> incomplete = new HashSet<>();
-        boolean kcalIncomplete = false;
-        Set<String> senzaValori = new LinkedHashSet<>();
         Set<String> allergeni = new HashSet<>();
         Set<String> tracce = new HashSet<>();
         double pesoIngredienti = 0;
         record VoceElenco(String testo, double grammi, int posizione) {
         }
         List<VoceElenco> elenco = new ArrayList<>();
+        // I pezzi con una quantita' > 0, nell'ordine della ricetta, ciascuno con le sue voci per chiave: solo loro contano nei valori.
+        record Pezzo(Componente comp, double grammi, Map<String, Valore> voci) {
+        }
+        List<Pezzo> pezzi = new ArrayList<>();
 
         for (int posizione = 0; posizione < righe.size(); posizione++) {
             RigaRicettaDto riga = righe.get(posizione);
@@ -305,24 +387,8 @@ public class RicetteService {
             allergeni.addAll(comp.allergeni());
             tracce.addAll(comp.tracce());
             elenco.add(new VoceElenco(comp.inElenco(), grammi, posizione));
-            if (grammi == 0) {
-                continue;
-            }
-            for (VociNutrizionali voce : VociNutrizionali.values()) {
-                Double valore = voce.di(comp.per100());
-                if (valore == null) {
-                    incomplete.add(voce);
-                    if (VociNutrizionali.OBBLIGATORIE.contains(voce)) {
-                        senzaValori.add(comp.nome());
-                    }
-                } else {
-                    somme.merge(voce, grammi * valore / 100, Double::sum);
-                }
-            }
-            if (comp.per100().energiaKcal() == null) {
-                kcalIncomplete = true;
-            } else {
-                sommaKcal += grammi * comp.per100().energiaKcal() / 100;
+            if (grammi > 0) {
+                pezzi.add(new Pezzo(comp, grammi, comp.perChiave()));
             }
         }
 
@@ -331,23 +397,63 @@ public class RicetteService {
         Integer porzioni = r.porzioni();
         Double pesoPorzione = porzioni != null && porzioni > 0 && pesoIngredienti > 0 ? pesoIngredienti / porzioni : null;
 
-        Map<VociNutrizionali, Double> per100 = new EnumMap<>(VociNutrizionali.class);
-        for (VociNutrizionali voce : VociNutrizionali.values()) {
-            if (pesoFinale > 0 && pesoIngredienti > 0 && !incomplete.contains(voce)) {
-                per100.put(voce, somme.getOrDefault(voce, 0.0) / pesoFinale * 100);
+        // Chi non ha una delle sette voci obbligatorie (o ce l'ha senza valore): come sempre, per nome.
+        Set<String> senzaValori = new LinkedHashSet<>();
+        for (Pezzo p : pezzi) {
+            for (VociNutrizionali obbligatoria : VociNutrizionali.OBBLIGATORIE) {
+                Valore v = p.voci().get(obbligatoria.name());
+                if (v == null || !v.haValore()) {
+                    senzaValori.add(p.comp().nome());
+                }
             }
         }
-        Double kcal100 = pesoFinale > 0 && pesoIngredienti > 0 && !kcalIncomplete ? sommaKcal / pesoFinale * 100 : null;
-        ValoriPer100Dto valori100 = new ValoriPer100Dto(per100.get(VociNutrizionali.ENERGIA), kcal100,
-                per100.get(VociNutrizionali.GRASSI), per100.get(VociNutrizionali.SATURI), per100.get(VociNutrizionali.CARBOIDRATI),
-                per100.get(VociNutrizionali.ZUCCHERI), per100.get(VociNutrizionali.FIBRE), per100.get(VociNutrizionali.PROTEINE),
-                per100.get(VociNutrizionali.SALE));
-        ValoriPer100Dto valoriPorzione = pesoPorzione != null ? scala(valori100, pesoPorzione / 100) : null;
 
+        // Le voci della ricetta: le standard nell'ordine di legge, poi le personalizzate nell'ordine di prima comparsa
+        // (ingredienti nell'ordine della ricetta, voci nell'ordine della scheda); il nome e' quello del primo che la ha.
+        Map<String, Valore> modello = new LinkedHashMap<>();
+        pezzi.forEach(p -> p.voci().values().forEach(v -> modello.putIfAbsent(v.chiave(), v)));
+        List<Valore> ordinate = new ArrayList<>(modello.values());
+        ordinate.sort(Comparator.comparingInt(v -> v.standard() != null ? v.standard().ordinal() : VociNutrizionali.values().length));
+
+        List<Valore> per100 = new ArrayList<>();
+        List<VoceNonCalcolabileDto> nonCalcolabili = new ArrayList<>();
+        for (Valore m : ordinate) {
+            double somma = 0;
+            double sommaKcal = 0;
+            int conValore = 0;
+            Set<String> mancaIn = new LinkedHashSet<>();
+            for (Pezzo p : pezzi) {
+                Valore v = p.voci().get(m.chiave());
+                if (v != null && v.haValore()) {
+                    conValore++;
+                    somma += p.grammi() * v.valore() / 100;
+                    sommaKcal += p.grammi() * (v.kcal() != null ? v.kcal() : 0) / 100;
+                } else {
+                    mancaIn.add(p.comp().nome());
+                }
+            }
+            if (mancaIn.isEmpty() && pesoFinale > 0) {
+                per100.add(new Valore(m.chiave(), m.nome(), m.unita(), m.standard(), somma / pesoFinale * 100,
+                        m.standard() == VociNutrizionali.ENERGIA ? sommaKcal / pesoFinale * 100 : null));
+            } else if (conValore > 0 && (m.standard() == null || !VociNutrizionali.OBBLIGATORIE.contains(m.standard()))) {
+                // Qualcuno la ha e altri no: non si calcola, e si dice a chi manca. Le sette standard obbligatorie sono gia' dette da senzaValori;
+                // una voce che nessuno ha scritto non fa rumore.
+                nonCalcolabili.add(new VoceNonCalcolabileDto(m.nome(), List.copyOf(mancaIn)));
+            }
+        }
+
+        List<VoceCalcolataDto> voci = new ArrayList<>();
         List<ValoreNutrizionaleDto> scritti = new ArrayList<>();
-        for (VociNutrizionali voce : VociNutrizionali.values()) {
-            String testo = voce.scrivi(valori100);
-            scritti.add(new ValoreNutrizionaleDto(voce.voce(), testo != null ? testo : "", true));
+        // Due voci con lo stesso nome mostrato (senza maiuscole e spazi ai bordi): quella non standard si mostra con l'unita' fra parentesi.
+        Map<String, Integer> perNome = new HashMap<>();
+        per100.forEach(v -> perNome.merge(v.nome().trim().toLowerCase(Locale.ITALY), 1, Integer::sum));
+        for (Valore v : per100) {
+            String testo = v.testo();
+            String testoPorzione = pesoPorzione != null ? v.per(pesoPorzione / 100).testo() : null;
+            boolean omonima = v.standard() == null && perNome.get(v.nome().trim().toLowerCase(Locale.ITALY)) > 1;
+            String nome = omonima ? v.nome() + " (" + v.unita() + ")" : v.nome();
+            voci.add(new VoceCalcolataDto(nome, testo, testoPorzione));
+            scritti.add(new ValoreNutrizionaleDto(nome, testo, true));
         }
 
         tracce.removeAll(allergeni);
@@ -358,8 +464,9 @@ public class RicetteService {
                 .filter(t -> t != null && !t.isBlank())
                 .collect(Collectors.joining(", "));
 
-        return new CalcoloRicettaDto(pesoIngredienti, pesoPorzione, valori100, valoriPorzione, scritti,
-                List.copyOf(senzaValori), inOrdine(allergeni), inOrdine(tracce), testoIngredienti, avvisi);
+        CalcoloRicettaDto calcolo = new CalcoloRicettaDto(pesoIngredienti, pesoPorzione, voci, scritti, List.copyOf(senzaValori),
+                nonCalcolabili, inOrdine(allergeni), inOrdine(tracce), testoIngredienti, avvisi);
+        return new Esito(calcolo, per100);
     }
 
     private Componente componente(RigaRicettaDto riga, Map<Long, Ingrediente> ingredientiPerId, Map<Long, Prodotto> prodottiPerId,
@@ -374,7 +481,7 @@ public class RicetteService {
             Set<String> contenuti = new HashSet<>(s.allergeni());
             // Chi contiene allergeni va tutto in maiuscolo: in etichetta esce in grassetto.
             String inElenco = contenuti.isEmpty() ? i.getNome() : i.getNome().toUpperCase(Locale.ITALY);
-            return new Componente(i.getNome(), inElenco, VociNutrizionali.conEnergiaCompleta(s.valori()), contenuti,
+            return new Componente(i.getNome(), inElenco, VociNutrizionali.daScheda(s.voci()), contenuti,
                     new HashSet<>(s.tracce()));
         }
         Prodotto p = prodottiPerId.get(riga.id());
@@ -392,15 +499,17 @@ public class RicetteService {
         if (sua.haRighe()) {
             Set<Long> visitatiQui = new HashSet<>(visitati);
             visitatiQui.add(p.getId());
-            CalcoloRicettaDto c = calcola(sua, visitatiQui, profondita + 1);
-            String interno = sua.ingredientiCalcolati() ? c.ingredienti() : p.getIngredienti();
+            Esito esito = calcolaEsito(sua, visitatiQui, profondita + 1);
+            CalcoloRicettaDto c = esito.calcolo();
+            // Fra parentesi l'elenco scritto sulla sua etichetta; se non ne ha uno, quello calcolato dalla sua ricetta.
+            String interno = p.getIngredienti() != null && !p.getIngredienti().isBlank() ? p.getIngredienti() : c.ingredienti();
             Set<String> tracceSue = new HashSet<>(sua.allergeniCalcolati() ? c.tracce() : suoiPuoContenere);
             c.avvisi().forEach(a -> {
                 if (!avvisi.contains(a)) {
                     avvisi.add(a);
                 }
             });
-            return new Componente(p.getNome(), conInterno(p.getNome(), interno), c.per100(), new HashSet<>(c.allergeni()), tracceSue);
+            return new Componente(p.getNome(), conInterno(p.getNome(), interno), esito.per100(), new HashSet<>(c.allergeni()), tracceSue);
         }
         avvisi.add("«" + p.getNome() + "» non ha una ricetta: uso i valori e il «può contenere» della sua etichetta,"
                 + " ma i suoi allergeni contenuti non li conosco - controlla l'elenco ingredienti.");
@@ -417,17 +526,11 @@ public class RicetteService {
         return interno != null && !interno.isBlank() ? nome + " (" + interno.trim() + ")" : nome;
     }
 
-    private static ValoriPer100Dto scala(ValoriPer100Dto v, double fattore) {
-        Function<Double, Double> f = x -> x == null ? null : x * fattore;
-        return new ValoriPer100Dto(f.apply(v.energiaKj()), f.apply(v.energiaKcal()), f.apply(v.grassi()), f.apply(v.saturi()),
-                f.apply(v.carboidrati()), f.apply(v.zuccheri()), f.apply(v.fibre()), f.apply(v.proteine()), f.apply(v.sale()));
-    }
-
     /** La ricetta coi nomi delle righe letti ora (un ingrediente rinominato si vede subito). */
     private RicettaDto conNomi(RicettaDto r) {
         List<RigaRicettaDto> righe = r.righe() != null ? r.righe() : List.of();
         if (righe.isEmpty()) {
-            return new RicettaDto(List.of(), r.porzioni(), r.ingredientiCalcolati(), r.allergeniCalcolati());
+            return new RicettaDto(List.of(), r.porzioni(), r.allergeniCalcolati());
         }
         Map<Long, String> nomiIngredienti = ingredienti.findAllById(idDi(righe, TracciatoDto.INGREDIENTE)).stream()
                 .collect(Collectors.toMap(Ingrediente::getId, Ingrediente::getNome));
@@ -438,7 +541,7 @@ public class RicetteService {
                         TracciatoDto.INGREDIENTE.equals(riga.tipo()) ? nomiIngredienti.get(riga.id()) : nomiProdotti.get(riga.id()),
                         riga.quantita(), riga.unita() != null ? riga.unita() : "g"))
                 .toList();
-        return new RicettaDto(conNome, r.porzioni(), r.ingredientiCalcolati(), r.allergeniCalcolati());
+        return new RicettaDto(conNome, r.porzioni(), r.allergeniCalcolati());
     }
 
     private static List<Long> idDi(List<RigaRicettaDto> righe, String tipo) {

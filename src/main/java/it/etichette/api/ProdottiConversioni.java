@@ -60,7 +60,7 @@ public class ProdottiConversioni {
         if (dto.ricetta() == null) {
             return dto;
         }
-        // L'editor manda solo gli interruttori: righe e porzioni sono quelle salvate del prodotto.
+        // L'editor manda solo l'interruttore: righe e porzioni sono quelle salvate del prodotto.
         RicettaDto salvata = dto.id() != null ? prodotti.findById(dto.id()).map(ricette::ricettaSalvata).orElse(RicettaDto.VUOTA)
                 : RicettaDto.VUOTA;
         return ricette.applica(dto, ricette.unisci(salvata, dto.ricetta()));
@@ -90,7 +90,7 @@ public class ProdottiConversioni {
         entita.setSiglaOperatore(dto.siglaOperatore());
         entita.setEtichetta(json.scrivi(normalizzaEtichetta(dto.etichetta(), schemaLottoSeAssente, dto.conservazione())));
         // null = non toccarla (come i tracciati in una PUT): un client che non conosce la ricetta non
-        // la cancella; senza righe cambiano solo gli interruttori (RicetteService#unisci).
+        // la cancella; senza righe cambia solo l'interruttore (RicetteService#unisci).
         if (dto.ricetta() != null) {
             entita.setRicetta(ricette.daSalvare(ricette.unisci(ricette.ricettaSalvata(entita), dto.ricetta())));
         }
@@ -108,7 +108,7 @@ public class ProdottiConversioni {
     /** Il corpo di {@code PUT /api/prodotti/{id}/ricetta}; senza righe e' una ricetta vuota. */
     public RicettaDto convertiRicetta(Object corpoGrezzo) {
         RicettaDto r = json.converti(corpoGrezzo, RicettaDto.class);
-        return r.righe() != null ? r : new RicettaDto(java.util.List.of(), r.porzioni(), r.ingredientiAuto(), r.allergeniAuto());
+        return r.righe() != null ? r : new RicettaDto(java.util.List.of(), r.porzioni(), r.allergeniAuto());
     }
 
     /**

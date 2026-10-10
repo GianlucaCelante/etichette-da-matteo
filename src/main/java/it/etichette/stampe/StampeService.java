@@ -224,6 +224,12 @@ public class StampeService {
                 testo(scadenza), testo(lotto), lotti != null ? lottiOrdinati.toString() : "-");
     }
 
+    /** Il prodotto ha il blocco «quantita» (il «Peso») acceso nella sua etichetta; senza etichetta o senza blocco: no. */
+    static boolean pesoAcceso(ProdottoDto p) {
+        return p != null && p.etichetta() != null && p.etichetta().blocchi() != null
+                && p.etichetta().blocchi().stream().anyMatch(b -> "quantita".equals(b.tipo()) && b.acceso());
+    }
+
     private static String testo(String s) {
         return s != null ? s.trim() : "";
     }
@@ -253,7 +259,9 @@ public class StampeService {
         // numero a ogni tentativo, che e' il caso PIU' comune di tutti).
         int rotolo = verificaStampantePronta();
         LocalDate scadenza = scadenzaValida != null ? scadenzaValida : scadenzaProposta();
-        String quantita = nonVuoto(quantitaRichiesta) ? quantitaRichiesta : p.quantita();
+        // Il Peso esiste solo se l'etichetta ha il blocco «quantita» acceso (9/10/2026): altrimenti
+        // niente, qualunque cosa mandi il client e senza ripiegare sul prodotto.
+        String quantita = !pesoAcceso(p) ? null : nonVuoto(quantitaRichiesta) ? quantitaRichiesta : p.quantita();
         // Le porzioni (29/09/2026) come la quantita': quelle della richiesta, altrimenti quelle del prodotto.
         String porzioni = nonVuoto(porzioniRichieste) ? porzioniRichieste : p.porzioni();
         // Se il lotto ricevuto e' vuoto o coincide con la proposta corrente di quello schema
@@ -295,7 +303,7 @@ public class StampeService {
         String schema = schemaLottoDi(prodottoRicevuto);
         // Solo la proposta (prossimoConSchema): una prova non consuma il progressivo. Una prova non
         // registra lotti (come gia' non aggiorna usi, docs/api.md): nessuna risoluzione da fare.
-        return avvia(prodottoRicevuto, 1, prodottoRicevuto.quantita(), prodottoRicevuto.porzioni(), scadenza, () -> lotti.prossimoConSchema(schema),
+        return avvia(prodottoRicevuto, 1, pesoAcceso(prodottoRicevuto) ? prodottoRicevuto.quantita() : null, prodottoRicevuto.porzioni(), scadenza, () -> lotti.prossimoConSchema(schema),
                 dispositivoNome, true, List.of(), rotolo);
     }
 
@@ -332,7 +340,9 @@ public class StampeService {
         // preparazione, si copiano quelli della riga originale invece di ricalcolarli.
         List<LottoDaRegistrare> righeLotti = risolutoreLotti.copiaDaStorico(riga.getId());
         String lotto = riga.getLotto();
-        return avvia(p, copie, riga.getQuantita(), riga.getPorzioni(), scadenza, () -> lotto, dispositivoNome, false, righeLotti, rotolo);
+        // Il peso della riga, ma solo se l'etichetta (corrente) ha ancora il blocco Peso acceso.
+        String quantita = pesoAcceso(p) ? riga.getQuantita() : null;
+        return avvia(p, copie, quantita, riga.getPorzioni(), scadenza, () -> lotto, dispositivoNome, false, righeLotti, rotolo);
     }
 
     /**

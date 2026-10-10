@@ -74,7 +74,7 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
   }, [elimina, avvisa, onCambiato]);
 
   return (
-    <div className="flex items-center gap-3.5 flex-wrap py-1">
+    <div className="flex items-center gap-3.5 flex-wrap">
       <div className="w-20 h-20 rounded-2xl border border-[var(--bordo)] bg-[var(--sabbia)] flex items-center justify-center overflow-hidden flex-shrink-0">
         {esiste ? (
           <img src={`${percorsoLogo}?v=${chiaveVersione}`} alt="Logo caricato" className="max-w-full max-h-full object-contain" />

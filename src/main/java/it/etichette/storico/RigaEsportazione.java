@@ -5,6 +5,7 @@ import it.etichette.dati.StoricoStampa;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * Una riga di {@code GET /api/storico/esporta} (docs/api.md, "Storico"): gli stessi campi di
@@ -17,7 +18,7 @@ import java.time.format.DateTimeFormatter;
  */
 public record RigaEsportazione(LocalDate data, String ora, String etichetta, int copie, String lotto,
                                 String quantita, String porzioni, String scadenza, String da, String esito,
-                                String ingredientiELotti, String fornitori) {
+                                String ingredientiELotti, String fornitori, List<RigaLotto> lotti) {
 
     static final DateTimeFormatter DATA_ITALIANA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter ORA_ITALIANA = DateTimeFormatter.ofPattern("HH:mm");
@@ -31,13 +32,13 @@ public record RigaEsportazione(LocalDate data, String ora, String etichetta, int
         return new RigaEsportazione(stampatoIl.toLocalDate(), stampatoIl.format(ORA_ITALIANA), r.getProdottoNome(),
                 r.getCopie(), vuotaSeNull(r.getLotto()), vuotaSeNull(r.getQuantita()),
                 vuotaSeNull(r.getPorzioni()), scadenzaTesto,
-                vuotaSeNull(r.getDispositivoNome()), esitoInParole(r.getEsito()), "", "");
+                vuotaSeNull(r.getDispositivoNome()), esitoInParole(r.getEsito()), "", "", List.of());
     }
 
     /** La stessa riga con le due celle della catena ({@link CatenaPerEsportazione#perRighe}). */
     public RigaEsportazione conCatena(CatenaPerEsportazione.TestoCatena catena) {
         return new RigaEsportazione(data, ora, etichetta, copie, lotto, quantita, porzioni, scadenza, da, esito,
-                catena.ingredientiELotti(), catena.fornitori());
+                catena.ingredientiELotti(), catena.fornitori(), catena.dettaglio());
     }
 
     /**

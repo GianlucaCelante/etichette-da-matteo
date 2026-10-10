@@ -56,8 +56,8 @@ public class CatenaPerEsportazione {
     private static final String FORNITORE_NON_INDICATO = "fornitore non indicato";
 
     /** Le due celle di una riga: «ingredienti e lotti» e «fornitori»; entrambe vuote se la stampa non ha catena. */
-    public record TestoCatena(String ingredientiELotti, String fornitori) {
-        public static final TestoCatena VUOTO = new TestoCatena("", "");
+    public record TestoCatena(String ingredientiELotti, String fornitori, List<RigaLotto> dettaglio) {
+        public static final TestoCatena VUOTO = new TestoCatena("", "", List.of());
     }
 
     private final StoricoStampaRepository storico;
@@ -196,10 +196,15 @@ public class CatenaPerEsportazione {
     private TestoCatena testo(StoricoStampa riga, List<Voce> voci, Map<Long, Arrivo> arriviPerId) {
         Set<String> fornitori = new LinkedHashSet<>();
         List<String> parti = new ArrayList<>();
+        List<RigaLotto> dettaglio = new ArrayList<>();
+        String notaCorretta = riga.getCorrettoIl() != null
+                ? "catena corretta a mano il " + riga.getCorrettoIl().toLocalDate().format(DATA_ITALIANA) : "";
         for (Voce v : voci) {
             String intestazione = v.ingrediente() + (v.via() != null ? " (via " + v.via() + ")" : "");
             if (v.lotti().isEmpty()) {
-                parti.add(intestazione + ": " + (v.corretta() ? "nessun lotto indicato" : "non registrato"));
+                String motivo = v.corretta() ? "nessun lotto indicato" : "non registrato";
+                parti.add(intestazione + ": " + motivo);
+                dettaglio.add(new RigaLotto(v.ingrediente(), v.via() != null ? v.via() : "", "", "", "", motivo));
                 continue;
             }
             List<String> descrizioni = new ArrayList<>();
@@ -210,6 +215,8 @@ public class CatenaPerEsportazione {
                 String codice = IngredientiConversioni.codiceEffettivo(l, arrivo);
                 String scadenza = l.getScadenza() != null ? "scad. " + LottiIngredienteService.formattaItaliano(l.getScadenza()) : "senza scadenza";
                 descrizioni.add((codice != null ? codice : "senza codice") + " (" + fornitore + ", " + scadenza + ")");
+                dettaglio.add(new RigaLotto(v.ingrediente(), v.via() != null ? v.via() : "", codice != null ? codice : "senza codice", fornitore,
+                        l.getScadenza() != null ? LottiIngredienteService.formattaItaliano(l.getScadenza()) : "senza scadenza", notaCorretta));
             }
             parti.add(intestazione + ": " + String.join(" | ", descrizioni));
         }
@@ -217,6 +224,6 @@ public class CatenaPerEsportazione {
         if (riga.getCorrettoIl() != null) {
             lotti += " [catena corretta a mano il " + riga.getCorrettoIl().toLocalDate().format(DATA_ITALIANA) + "]";
         }
-        return new TestoCatena(lotti, String.join("; ", fornitori));
+        return new TestoCatena(lotti, String.join("; ", fornitori), dettaglio);
     }
 }

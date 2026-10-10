@@ -99,17 +99,17 @@ class StoricoEsportaCatenaApiTest {
         List<List<String>> tabella = leggiCsv(scarica(get("/api/storico/esporta").param("formato", "csv")));
 
         // titolo, generazione, intestazione, poi le righe (la piu' recente prima: la focaccia)
-        assertThat(tabella.get(2)).hasSize(12).endsWith("Ingredienti e lotti del fornitore", "Fornitori");
+        assertThat(tabella.get(2)).hasSize(10).endsWith("Ingredienti e lotti del fornitore", "Fornitori");
         List<String> conCatena = tabella.get(4);
         assertThat(conCatena.get(2)).isEqualTo("Impasto classico 24h");
-        assertThat(conCatena.get(10)).isEqualTo("Farina tipo 00: F2410-A (Molino Rossi, scad. 05/06/2027); "
+        assertThat(conCatena.get(8)).isEqualTo("Farina tipo 00: F2410-A (Molino Rossi, scad. 05/06/2027); "
                 + "Pomodoro: CS-88 (Conserve Sud, scad. 10/01/2028); Sale: non registrato");
-        assertThat(conCatena.get(11)).isEqualTo("Molino Rossi; Conserve Sud");
+        assertThat(conCatena.get(9)).isEqualTo("Molino Rossi; Conserve Sud");
         // una stampa senza catena: le due celle restano vuote
         List<String> vuota = tabella.get(3);
         assertThat(vuota.get(2)).isEqualTo(senzaCatena.getProdottoNome());
-        assertThat(vuota.get(10)).isEmpty();
-        assertThat(vuota.get(11)).isEmpty();
+        assertThat(vuota.get(8)).isEmpty();
+        assertThat(vuota.get(9)).isEmpty();
     }
 
     @Test
@@ -123,8 +123,8 @@ class StoricoEsportaCatenaApiTest {
 
         List<String> cella = leggiCsv(scarica(get("/api/storico/esporta").param("formato", "csv"))).get(3);
 
-        assertThat(cella.get(10)).isEqualTo("Farina tipo 00: F2410-A (Molino Rossi, scad. 05/06/2027) | MB-5 (Mulino Bianchi, senza scadenza)");
-        assertThat(cella.get(11)).isEqualTo("Molino Rossi; Mulino Bianchi");
+        assertThat(cella.get(8)).isEqualTo("Farina tipo 00: F2410-A (Molino Rossi, scad. 05/06/2027) | MB-5 (Mulino Bianchi, senza scadenza)");
+        assertThat(cella.get(9)).isEqualTo("Molino Rossi; Mulino Bianchi");
     }
 
     @Test
@@ -137,7 +137,7 @@ class StoricoEsportaCatenaApiTest {
                         .content("{\"lotti\":{\"" + farina + "\":[]}}"))
                 .andExpect(status().isOk());
 
-        String cella = leggiCsv(scarica(get("/api/storico/esporta").param("formato", "csv"))).get(3).get(10);
+        String cella = leggiCsv(scarica(get("/api/storico/esporta").param("formato", "csv"))).get(3).get(8);
 
         assertThat(cella).startsWith("Farina tipo 00: nessun lotto indicato").doesNotContain("non registrato");
         assertThat(cella).contains("[catena corretta a mano il " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) + "]");
@@ -157,8 +157,8 @@ class StoricoEsportaCatenaApiTest {
 
         List<String> rigaPizza = tabella.get(3);
         assertThat(rigaPizza.get(2)).isEqualTo("Base pizza low carb");
-        assertThat(rigaPizza.get(10)).isEqualTo("Farina tipo 00 (via Impasto classico 24h L 20261001-001): F2410-A (Molino Rossi, scad. 05/06/2027)");
-        assertThat(rigaPizza.get(11)).isEqualTo("Molino Rossi");
+        assertThat(rigaPizza.get(8)).isEqualTo("Farina tipo 00 (via Impasto classico 24h L 20261001-001): F2410-A (Molino Rossi, scad. 05/06/2027)");
+        assertThat(rigaPizza.get(9)).isEqualTo("Molino Rossi");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -180,7 +180,11 @@ class StoricoEsportaCatenaApiTest {
                 .contains("Ingredienti e lotti del fornitore").contains("Fornitori")
                 .contains("Farina tipo 00: F2410-A (Molino Rossi, scad. 05/06/2027)");
         // il filtro automatico sta sull'intestazione (terza riga), non sul titolo
-        assertThat(foglio).contains("<autoFilter ref=\"A3:L3\"");
+        assertThat(foglio).contains("<autoFilter ref=\"A3:J3\"");
+        // secondo foglio «Lotti»: una riga per lotto, con ingrediente, lotto e fornitore in celle separate
+        String lotti = leggiVoceZip(risposta.getContentAsByteArray(), "xl/worksheets/sheet2.xml");
+        assertThat(lotti).contains("Lotto fornitore").contains("Farina tipo 00").contains("F2410-A").contains("Molino Rossi")
+                .contains("<autoFilter ref=\"A3:J3\"");
     }
 
     @Test

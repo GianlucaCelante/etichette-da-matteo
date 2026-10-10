@@ -70,8 +70,8 @@ public record ProdottoDto(
     }
 
     /**
-     * Nuovo DTO con la ricetta, il suo calcolo e i campi che ne dipendono (elenco ingredienti,
-     * «può contenere», valori nutrizionali): vedi {@code RicetteService#applica}.
+     * Nuovo DTO con la ricetta, il suo calcolo e i campi che ne dipendono («può contenere»,
+     * valori nutrizionali; gli ingredienti restano quelli scritti a mano): vedi {@code RicetteService#applica}.
      */
     public ProdottoDto conRicetta(String ingredienti, List<String> allergeni, List<ValoreNutrizionaleDto> valoriNutrizionali,
             RicettaDto ricetta, CalcoloRicettaDto calcolo) {

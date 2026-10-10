@@ -103,20 +103,15 @@ class PorzioniStampaStoricoTest {
         assertThat(rigaC).isNotEqualTo(rigaA);
         assertThat(porzioniDellaRiga(rigaC)).isEqualTo("6");
 
-        // 4) L'esportazione ha la colonna «Porzioni» accanto alla quantita'.
+        // 4) L'esportazione NON ha piu' la colonna «Porzioni» (10 ottobre 2026): le porzioni restano
+        // nella riga di storico e nella ristampa, ma non nel file.
         String csv = esportaCsv();
         String[] righe = csv.split("\r\n");
-        // Righe 1 e 2: titolo col filtro e «generato il …»; l'intestazione e' la terza, con le 10
-        // colonne di sempre nello stesso ordine e, in coda, quelle dei lotti degli ingredienti e dei fornitori.
         assertThat(righe[0]).startsWith("Storico stampe · ");
         assertThat(righe[1]).startsWith("generato il ");
-        assertThat(righe[2]).startsWith("Data;Ora;Etichetta;Copie;Lotto;Quantità;Porzioni;Scadenza;Da;Esito");
+        assertThat(righe[2]).startsWith("Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito").doesNotContain("Porzioni");
         String rigaCsvA = righeCsvConLotto(righe, lavoroRiga(rigaA));
-        String[] campi = rigaCsvA.split(";", -1);
-        assertThat(campi[5]).isEqualTo("2148 g");
-        assertThat(campi[6]).isEqualTo("6");
-        // le tre righe (A, B, C) portano ciascuna le sue porzioni: 6, 4, 6
-        assertThat(java.util.Arrays.stream(righe).skip(3).map(r -> r.split(";", -1)[6]).toList()).containsExactlyInAnyOrder("6", "4", "6");
+        assertThat(rigaCsvA).doesNotContain("2148 g"); // niente Peso nel file
     }
 
     // ---------------------------------------------------------------------------------------

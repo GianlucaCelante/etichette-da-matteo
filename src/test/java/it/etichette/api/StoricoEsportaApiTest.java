@@ -48,8 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class StoricoEsportaApiTest {
 
     private static final DateTimeFormatter FORMATO_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    /** Le dieci colonne di sempre, in coda i lotti degli ingredienti e i fornitori (2 ottobre 2026). */
-    private static final String INTESTAZIONE_CSV = "Data;Ora;Etichetta;Copie;Lotto;Quantità;Porzioni;Scadenza;Da;Esito;Ingredienti e lotti del fornitore;Fornitori";
+    /** Le otto colonne di sempre, in coda i lotti degli ingredienti e i fornitori (2 ottobre 2026). */
+    private static final String INTESTAZIONE_CSV = "Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito;Ingredienti e lotti del fornitore;Fornitori";
 
     private static Path cartellaDati;
 
@@ -109,7 +109,7 @@ class StoricoEsportaApiTest {
         assertThat(righe[0]).isEqualTo("Storico stampe · Tutto lo storico");
         assertThat(righe[1]).startsWith("generato il ").endsWith(" · 1 stampe · 3 etichette");
         assertThat(righe[2]).isEqualTo(INTESTAZIONE_CSV);
-        assertThat(righe[3]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;2 pz;4;25/09/2026;Telefono della cucina;stampata;;");
+        assertThat(righe[3]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;25/09/2026;Telefono della cucina;stampata;;");
         // Split con limite -1: l'ultimo elemento vuoto conferma che il file finisce con l'ultimo
         // CRLF e niente altro dopo.
         assertThat(righe[righe.length - 1]).isEmpty();
@@ -159,7 +159,7 @@ class StoricoEsportaApiTest {
 
         byte[] corpo = risposta.getContentAsByteArray();
         String sheet1 = leggiVoceZip(corpo, "xl/worksheets/sheet1.xml");
-        assertThat(sheet1).contains("Impasto per pizza speciale").contains("Porzioni").contains("6 porzioni");
+        assertThat(sheet1).contains("Impasto per pizza speciale").doesNotContain("Porzioni").doesNotContain("6 porzioni");
         assertThat(leggiVoceZip(corpo, "[Content_Types].xml")).isNotEmpty(); // e' davvero uno zip OOXML valido
     }
 

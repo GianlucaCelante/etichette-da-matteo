@@ -51,7 +51,8 @@ interface Seguito {
   lavoroId: string;
   prodottoId: number | null;
   prodottoNome: string;
-  quantita: string;
+  // Il Peso di questa stampa; undefined se l'etichetta non ha il blocco Peso.
+  quantita?: string;
   // Le porzioni di questa stampa ("" = nessuna); undefined se l'etichetta
   // non ha il blocco Porzioni.
   porzioni?: string;
@@ -125,7 +126,8 @@ function RigaProdotto({
       {/* Niente piu' "Scade dopo N giorni" (deciso da Gianluca il 24/09/2026: la
           scadenza si sceglie solo alla stampa, non e' piu' una proprieta' fissa
           del prodotto) - resta solo la quantita'. */}
-      <span className="d">{prodotto.quantita}</span>
+      {/* Il peso c'e' solo se l'etichetta ha il blocco «Peso» acceso, come nella schermata Stampa (9 ottobre 2026). */}
+      {prodotto.etichetta?.blocchi?.some((b) => b.tipo === "quantita" && b.acceso) && <span className="d">{prodotto.quantita}</span>}
       <span className="freccia soloTel">
         <IconaDestra larghezza={20} spessoreTratto={2} />
       </span>
@@ -162,47 +164,22 @@ function ContatoreCopie({
     />
   );
   return (
-    // "campoCopieStampa": stessa riga intera di ".campoLottoStampa" sotto gli
-    // 860px (index.css) - a meta' della griglia 2x2 i tre tasti non ci
-    // stavano piu' dopo aver stretto il gutter a 10px (difetto trovato da
-    // 320px, 25 settembre 2026). Copie era gia' sola sulla sua riga (Lotto
-    // occupa tutta quella sopra), quindi prendersi tutta la riga non costa
-    // spazio verticale in piu'.
+    // "campoCopieStampa" (9 ottobre 2026, allineamento Lotto/Copie): una sola
+    // struttura per PC e telefono, uguale a quella di Lotto - etichetta sopra
+    // (".campo": stessa distanza di 6px) e tre caselle alte quanto le altre
+    // (--d-campo) - cosi' i due campi, nella stessa riga della griglia, hanno
+    // etichette sulla stessa linea e bordi alto e basso coincidenti. I due
+    // tasti sono stretti sul telefono (44px) perche' la cella e' mezza larghezza.
     <div className="campo campoCopieStampa">
-      {/* PC/tablet: invariato, etichetta sopra e contatore sotto a tutta
-          larghezza della cella (meta' scheda, non tutto lo schermo come sul
-          telefono) - la casella centrale si restringe con flex-1, qualunque
-          sia la larghezza della cella. */}
-      <div className="soloPC">
-        <div className="etichettina">Copie</div>
-        <div className="flex gap-1.5 h-[var(--d-campo)]">
-          <button type="button" className="casella w-[52px] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
-            <IconaMeno larghezza={20} spessoreTratto={2.4} />
-          </button>
-          <div className="casella flex-1 justify-center">{campo}</div>
-          <button type="button" className="casella w-[52px] justify-center" onClick={onPiu} disabled={copie >= COPIE_MASSIME} aria-label="Una copia in più">
-            <IconaPiu larghezza={20} spessoreTratto={2.4} />
-          </button>
-        </div>
-      </div>
-      {/* Telefono (S2, deciso da Gianluca, 25/09/2026): etichetta a
-          sinistra e contatore compatto a destra, sulla STESSA riga. Larghezze
-          fisse (48/56/48px) invece di flex-1: qui la riga e' sempre a tutta
-          larghezza dello schermo (".campoCopieStampa" sotto gli 860px). Il
-          campo c'e' due volte nel DOM (PC e telefono), ma uno dei due e'
-          sempre nascosto con display:none, quindi fuori dal Tab e da chi
-          legge lo schermo. */}
-      <div className="soloTel flex items-center justify-between gap-3 h-[var(--d-campo)]">
-        <div className="etichettina">Copie</div>
-        <div className="flex gap-1.5">
-          <button type="button" className="casella w-12 h-[var(--d-campo)] justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
-            <IconaMeno larghezza={20} spessoreTratto={2.4} />
-          </button>
-          <div className="casella w-14 h-[var(--d-campo)] justify-center">{campo}</div>
-          <button type="button" className="casella w-12 h-[var(--d-campo)] justify-center" onClick={onPiu} disabled={copie >= COPIE_MASSIME} aria-label="Una copia in più">
-            <IconaPiu larghezza={20} spessoreTratto={2.4} />
-          </button>
-        </div>
+      <div className="etichettina">Copie</div>
+      <div className="flex gap-1.5 h-[var(--d-campo)]">
+        <button type="button" className="casella w-[52px] max-[860px]:w-11 justify-center" onClick={onMeno} disabled={copie <= 1} aria-label="Una copia in meno">
+          <IconaMeno larghezza={20} spessoreTratto={2.4} />
+        </button>
+        <div className="casella flex-1 min-w-0 justify-center">{campo}</div>
+        <button type="button" className="casella w-[52px] max-[860px]:w-11 justify-center" onClick={onPiu} disabled={copie >= COPIE_MASSIME} aria-label="Una copia in più">
+          <IconaPiu larghezza={20} spessoreTratto={2.4} />
+        </button>
       </div>
     </div>
   );
@@ -211,6 +188,7 @@ function ContatoreCopie({
 function PannelloProdotto({
   prodotto,
   quantita,
+  mostraPeso,
   porzioni,
   mostraPorzioni,
   scadenza,
@@ -238,6 +216,9 @@ function PannelloProdotto({
 }: {
   prodotto: Prodotto;
   quantita: string;
+  // L'etichetta ha il blocco Peso acceso: solo allora il campo si vede e il
+  // valore viaggia con la stampa e le anteprime.
+  mostraPeso: boolean;
   porzioni: string;
   // L'etichetta ha il blocco Porzioni acceso: solo allora il campo si vede e
   // il valore viaggia con la stampa e le anteprime.
@@ -278,7 +259,7 @@ function PannelloProdotto({
   const srcAnteprima = useAnteprimaProdottoSrc(prodotto.id, {
     rotolo,
     scala,
-    quantita,
+    quantita: mostraPeso ? quantita : undefined,
     porzioni: mostraPorzioni ? porzioni : undefined,
     scadenza: scadenzaOk ? scadenza : undefined,
     lotto,
@@ -472,16 +453,19 @@ function PannelloProdotto({
             commento in CampiComuni.tsx) - impediva di tornare a una sola
             colonna sotto i 360px da CSS. Le colonne vivono tutte in
             index.css adesso. */}
-        <div className={"grid gap-3 grigliaCampiStampa" + (mostraPorzioni ? " conPorzioni" : "")}>
-          <div className="campo">
-            {/* "Peso" (deciso da Gianluca, 25/09/2026: il blocco dell'etichetta
-                che genera questo valore si chiama cosi' adesso) - il campo
-                resta quello di sempre, cambia solo l'etichetta. */}
-            <div className="etichettina">Peso</div>
-            <div className="casella">
-              <input value={quantita} onChange={onCambiaQuantita} aria-label="Peso" className="font-bold" />
+        <div className={"grid gap-3 grigliaCampiStampa" + (mostraPeso && mostraPorzioni ? " conPorzioni" : "")}>
+          {/* "Peso" (deciso da Gianluca, 25/09/2026: il blocco dell'etichetta
+              che genera questo valore si chiama cosi' adesso). Come le
+              Porzioni, il campo c'e' solo se l'etichetta ha il blocco acceso
+              (9/10/2026): spento, niente campo e niente peso nella stampa. */}
+          {mostraPeso && (
+            <div className="campo">
+              <div className="etichettina">Peso</div>
+              <div className="casella">
+                <input value={quantita} onChange={onCambiaQuantita} aria-label="Peso" className="font-bold" />
+              </div>
             </div>
-          </div>
+          )}
           {/* "Porzioni": accanto al Peso, solo se l'etichetta ha il blocco
               Porzioni acceso; il valore di partenza e' quello del prodotto.
               Con questo campo la Scadenza passa sotto, a tutta riga
@@ -494,7 +478,9 @@ function PannelloProdotto({
               </div>
             </div>
           )}
-          <div className="campo campoScadenzaStampa">
+          {/* Senza Peso e senza Porzioni la Scadenza prende tutta la riga (la
+              classe di index.css vale solo con le Porzioni accanto al Peso). */}
+          <div className={"campo campoScadenzaStampa" + (!mostraPeso && !mostraPorzioni ? " [grid-column:1/-1]" : "")}>
             <div className="etichettina">Scadenza</div>
             <div className="casella">
               {/* max: l'anno resta di 4 cifre (con un anno a 5 cifre il
@@ -899,7 +885,7 @@ export default function Stampa() {
       lavoroId: daSeguire.lavoroId,
       prodottoId: daSeguire.prodottoId,
       prodottoNome: daSeguire.prodottoNome,
-      quantita: daSeguire.quantita ?? "",
+      quantita: daSeguire.quantita ?? undefined,
       porzioni: daSeguire.porzioni ?? undefined,
       scadenza: daSeguire.scadenza,
       lotto: daSeguire.lotto,
@@ -952,6 +938,8 @@ export default function Stampa() {
   const cambiaPorzioni = useCallback((evento: ChangeEvent<HTMLInputElement>) => setPorzioni(evento.target.value), []);
   // Il campo Porzioni c'e' solo se l'etichetta ha il blocco acceso.
   const mostraPorzioni = !!prodotto?.etichetta?.blocchi?.some((b) => b.tipo === "porzioni" && b.acceso);
+  // Il Peso (blocco «quantita») uguale: spento, il campo non c'e' e non si invia (9/10/2026).
+  const mostraPeso = !!prodotto?.etichetta?.blocchi?.some((b) => b.tipo === "quantita" && b.acceso);
   const cambiaScadenza = useCallback((evento: ChangeEvent<HTMLInputElement>) => setScadenza(evento.target.value), []);
   const cambiaLotto = useCallback((evento: ChangeEvent<HTMLInputElement>) => setLotto(evento.target.value), []);
   // Le copie: solo cifre, al massimo due; uscendo dal campo si rimette un
@@ -988,15 +976,16 @@ export default function Stampa() {
     // risolteLottiRef sopra.
     const lottiRisolti = risolteLottiRef.current;
     const porzioniDaInviare = mostraPorzioni ? porzioni : undefined;
+    const quantitaDaInviare = mostraPeso ? quantita : undefined;
     creaStampa.mutate(
-      { prodottoId: prodotto.id, copie, quantita, porzioni: porzioniDaInviare, scadenza, lotto: lottoDaInviare, lotti: lottiRisolti },
+      { prodottoId: prodotto.id, copie, quantita: quantitaDaInviare, porzioni: porzioniDaInviare, scadenza, lotto: lottoDaInviare, lotti: lottiRisolti },
       {
         onSuccess: (dati) => {
           segui({
             lavoroId: dati.lavoroId,
             prodottoId: prodotto.id,
             prodottoNome: prodotto.nome,
-            quantita,
+            quantita: quantitaDaInviare,
             porzioni: porzioniDaInviare,
             scadenza: dati.scadenza,
             lotto: dati.lotto,
@@ -1022,7 +1011,7 @@ export default function Stampa() {
         },
       },
     );
-  }, [prodotto, schemaAttuale, lotto, lottoProposto, copieTesto, quantita, mostraPorzioni, porzioni, scadenza, creaStampa, avvisa, queryClient, segui]);
+  }, [prodotto, schemaAttuale, lotto, lottoProposto, copieTesto, quantita, mostraPeso, mostraPorzioni, porzioni, scadenza, creaStampa, avvisa, queryClient, segui]);
 
   // "Nuova etichetta" (deciso da Gianluca, al posto di "Ristampa ultima"):
   // va diretto alla creazione di un prodotto nuovo in Etichette, la stessa
@@ -1304,6 +1293,7 @@ export default function Stampa() {
             <PannelloProdotto
               prodotto={prodotto}
               quantita={quantita}
+              mostraPeso={mostraPeso}
               porzioni={porzioni}
               mostraPorzioni={mostraPorzioni}
               scadenza={scadenza}

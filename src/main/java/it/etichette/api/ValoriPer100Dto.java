@@ -1,10 +1,11 @@
 package it.etichette.api;
 
 /**
- * Valori nutrizionali per 100 g, in numeri (docs/api.md, "Scheda tecnica e ricetta"): la scheda
- * di un ingrediente e il risultato del calcolo di una ricetta. {@code null} = non scritto (nella
- * scheda) o non calcolabile (nel calcolo: a qualche ingrediente della ricetta manca quel valore).
- * Energia in kJ e kcal; tutto il resto in grammi.
+ * Il VECCHIO formato della scheda di un ingrediente (7 ottobre 2026, docs/api.md "Scheda tecnica
+ * e ricetta"): nove valori fissi per 100 g. Dal 9 ottobre 2026 la scheda e' un elenco libero di
+ * voci ({@link VoceSchedaDto}); questo record serve solo a leggere una scheda salvata o inviata
+ * nel vecchio formato, che {@link SchedaIngredienteDto#normalizzata()} converte nelle nove voci
+ * standard. {@code null} = non scritto. Energia in kJ e kcal; tutto il resto in grammi.
  */
 public record ValoriPer100Dto(
         Double energiaKj,

@@ -34,7 +34,7 @@ import java.util.List;
  * della risposta - nessuno dei tre formati costruisce prima l'intero file in un array, cosi' i
  * 40.000 righe di un {@code periodo=tutto} non raddoppiano in memoria.
  *
- * <p>Le colonne sono le dieci di sempre (stesso ordine) piu' due in coda, i lotti degli ingredienti
+ * <p>Le colonne sono le otto di sempre (stesso ordine) piu' due in coda, i lotti degli ingredienti
  * con il fornitore e la scadenza, e i fornitori ({@link CatenaPerEsportazione}). Ogni file dichiara
  * in testa il filtro con cui e' stato fatto - il periodo (o l'intervallo di date) e la ricerca - e
  * quando e' stato generato: un file portato a un controllo deve dire da solo cosa contiene.
@@ -42,7 +42,7 @@ import java.util.List;
 @Component
 public class EsportazioneStoricoService {
 
-    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto", "Quantità", "Porzioni", "Scadenza", "Da", "Esito",
+    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Scadenza", "Da", "Esito",
             "Ingredienti e lotti del fornitore", "Fornitori"};
     private static final DateTimeFormatter DATA_ITALIANA = RigaEsportazione.DATA_ITALIANA;
     private static final DateTimeFormatter ORA_ITALIANA = DateTimeFormatter.ofPattern("HH:mm");
@@ -96,13 +96,11 @@ public class EsportazioneStoricoService {
             campi[2] = r.etichetta();
             campi[3] = String.valueOf(r.copie());
             campi[4] = r.lotto();
-            campi[5] = r.quantita();
-            campi[6] = r.porzioni();
-            campi[7] = r.scadenza();
-            campi[8] = r.da();
-            campi[9] = r.esito();
-            campi[10] = r.ingredientiELotti();
-            campi[11] = r.fornitori();
+            campi[5] = r.scadenza();
+            campi[6] = r.da();
+            campi[7] = r.esito();
+            campi[8] = r.ingredientiELotti();
+            campi[9] = r.fornitori();
             scriviRigaCsv(scrittore, campi);
         }
         scrittore.flush(); // niente close(): chiuderebbe anche "out", che e' del chiamante (la risposta HTTP)
@@ -156,7 +154,7 @@ public class EsportazioneStoricoService {
             foglio.range(intestazione, 0, intestazione, INTESTAZIONI.length - 1).style().bold().fillColor("D9D9D9").set();
             foglio.freezePane(0, intestazione + 1);
             foglio.setAutoFilter(intestazione, 0, INTESTAZIONI.length - 1);
-            int[] larghezze = {12, 8, 32, 8, 16, 12, 12, 12, 20, 14, 70, 28};
+            int[] larghezze = {12, 8, 32, 8, 16, 12, 20, 14, 70, 28};
             for (int c = 0; c < larghezze.length; c++) {
                 foglio.width(c, larghezze[c]);
             }
@@ -169,16 +167,58 @@ public class EsportazioneStoricoService {
                 foglio.inlineString(riga, 2, r.etichetta());
                 foglio.value(riga, 3, r.copie());
                 foglio.inlineString(riga, 4, r.lotto());
-                foglio.inlineString(riga, 5, r.quantita());
-                foglio.inlineString(riga, 6, r.porzioni());
-                foglio.inlineString(riga, 7, r.scadenza());
-                foglio.inlineString(riga, 8, r.da());
-                foglio.inlineString(riga, 9, r.esito());
-                foglio.inlineString(riga, 10, r.ingredientiELotti());
-                foglio.inlineString(riga, 11, r.fornitori());
+                foglio.inlineString(riga, 5, r.scadenza());
+                foglio.inlineString(riga, 6, r.da());
+                foglio.inlineString(riga, 7, r.esito());
+                foglio.inlineString(riga, 8, r.ingredientiELotti());
+                foglio.inlineString(riga, 9, r.fornitori());
                 if (!r.ingredientiELotti().isEmpty()) {
-                    foglio.style(riga, 10).wrapText(true).set();
+                    foglio.style(riga, 8).wrapText(true).set();
                 }
+                riga++;
+            }
+            scriviFoglioLotti(cartella, righe);
+        }
+    }
+
+    private static final String[] INTESTAZIONI_LOTTI = {"Data", "Ora", "Etichetta", "Lotto interno", "Ingrediente", "Via (preparazione)",
+            "Lotto fornitore", "Fornitore", "Scadenza lotto", "Note"};
+
+    /**
+     * Secondo foglio, «Lotti» (10 ottobre 2026): una riga per ogni lotto di ogni ingrediente di ogni
+     * stampa, cosi' si filtra per ingrediente o per lotto del fornitore - la cella riepilogativa del
+     * primo foglio non si presta. Le stampe senza catena non hanno righe qui.
+     */
+    private void scriviFoglioLotti(Workbook cartella, List<RigaEsportazione> righe) {
+        Worksheet foglio = cartella.newWorksheet("Lotti");
+        foglio.inlineString(0, 0, "Lotti degli ingredienti usati in ogni stampa");
+        foglio.style(0, 0).bold().fontSize(12).set();
+        foglio.inlineString(1, 0, "Una riga per lotto. «Lotto interno» e' quello stampato sull'etichetta, «Lotto fornitore» quello dell'ingrediente.");
+        int intestazione = RIGHE_DI_TESTA;
+        for (int c = 0; c < INTESTAZIONI_LOTTI.length; c++) {
+            foglio.inlineString(intestazione, c, INTESTAZIONI_LOTTI[c]);
+        }
+        foglio.range(intestazione, 0, intestazione, INTESTAZIONI_LOTTI.length - 1).style().bold().fillColor("D9D9D9").set();
+        foglio.freezePane(0, intestazione + 1);
+        foglio.setAutoFilter(intestazione, 0, INTESTAZIONI_LOTTI.length - 1);
+        int[] larghezze = {12, 8, 32, 16, 28, 36, 18, 24, 14, 36};
+        for (int c = 0; c < larghezze.length; c++) {
+            foglio.width(c, larghezze[c]);
+        }
+        int riga = intestazione + 1;
+        for (RigaEsportazione r : righe) {
+            for (RigaLotto l : r.lotti()) {
+                foglio.value(riga, 0, r.data());
+                foglio.style(riga, 0).format("dd/mm/yyyy").set();
+                foglio.inlineString(riga, 1, r.ora());
+                foglio.inlineString(riga, 2, r.etichetta());
+                foglio.inlineString(riga, 3, r.lotto());
+                foglio.inlineString(riga, 4, l.ingrediente());
+                foglio.inlineString(riga, 5, l.via());
+                foglio.inlineString(riga, 6, l.lottoFornitore());
+                foglio.inlineString(riga, 7, l.fornitore());
+                foglio.inlineString(riga, 8, l.scadenza());
+                foglio.inlineString(riga, 9, l.nota());
                 riga++;
             }
         }
@@ -191,7 +231,7 @@ public class EsportazioneStoricoService {
      * A4 orizzontale: titolo, riga del filtro applicato (periodo o intervallo di date, piu' la
      * ricerca) e riga di riepilogo, poi la tabella (o la frase "Nessuna stampa in questo periodo."
      * se {@code righe} e' vuota - una tabella senza righe di dati sarebbe solo l'intestazione, meno
-     * chiaro di una frase). Dodici colonne in 7,5 punti: la colonna dei lotti prende un quarto della
+     * chiaro di una frase). Dieci colonne in 7,5 punti: la colonna dei lotti prende un quarto della
      * larghezza e va a capo, il resto resta leggibile nella pagina senza uscirne (la tabella e' sempre
      * alla larghezza del testo). Font Liberation Sans incorporato (risorse del progetto): l'Helvetica
      * standard di PDF non ha le lettere accentate.
@@ -232,7 +272,7 @@ public class EsportazioneStoricoService {
      * supera la pagina corrente - senza calcolare noi le interruzioni di pagina.
      */
     private PdfPTable tabella(List<RigaEsportazione> righe) throws DocumentException {
-        PdfPTable tabella = new PdfPTable(new float[] {7.5f, 4.5f, 11, 4, 9, 6, 5, 7, 8, 6, 24, 9});
+        PdfPTable tabella = new PdfPTable(new float[] {7.5f, 4.5f, 11, 4, 9, 7, 8, 6, 24, 9});
         tabella.setWidthPercentage(100);
         tabella.setHeaderRows(1);
 
@@ -255,8 +295,6 @@ public class EsportazioneStoricoService {
             aggiungiCella(tabella, r.etichetta(), testoCella, sfondo);
             aggiungiCella(tabella, String.valueOf(r.copie()), testoCella, sfondo);
             aggiungiCella(tabella, r.lotto(), testoCella, sfondo);
-            aggiungiCella(tabella, r.quantita(), testoCella, sfondo);
-            aggiungiCella(tabella, r.porzioni(), testoCella, sfondo);
             aggiungiCella(tabella, r.scadenza(), testoCella, sfondo);
             aggiungiCella(tabella, r.da(), testoCella, sfondo);
             aggiungiCella(tabella, r.esito(), testoCella, sfondo);

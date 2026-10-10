@@ -196,23 +196,22 @@ export interface ValoreNutrizionale {
   calcolato?: boolean;
 }
 
-// Valori per 100 g in numeri: scheda di un ingrediente e risultato del
-// calcolo di una ricetta. null = non scritto / non calcolabile.
-export interface ValoriPer100 {
-  energiaKj: number | null;
-  energiaKcal: number | null;
-  grassi: number | null;
-  saturi: number | null;
-  carboidrati: number | null;
-  zuccheri: number | null;
-  fibre: number | null;
-  proteine: number | null;
-  sale: number | null;
+// Le unita' di una voce della scheda tecnica di un ingrediente.
+export type UnitaVoce = "kJ" | "kcal" | "g" | "mg" | "µg";
+export const UNITA_VOCI: readonly UnitaVoce[] = ["kJ", "kcal", "g", "mg", "µg"];
+
+// Una voce nutrizionale della scheda, per 100 g: valore null = non scritto.
+export interface VoceScheda {
+  voce: string;
+  unita: UnitaVoce;
+  valore: number | null;
 }
 
-// La scheda tecnica di un ingrediente (PUT /api/ingredienti/{id}/scheda).
+// La scheda tecnica di un ingrediente (PUT /api/ingredienti/{id}/scheda,
+// 9 ottobre 2026): un elenco libero di voci, nell'ordine salvato, come i
+// valori nutrizionali dell'editor delle etichette.
 export interface SchedaIngrediente {
-  valori: ValoriPer100;
+  voci: VoceScheda[];
   allergeni: string[];
   tracce: string[];
 }
@@ -231,18 +230,29 @@ export interface RigaRicetta {
 
 // La ricetta di un prodotto (si scrive in Ingredienti, «Ricette»): le
 // quantita' degli ingredienti e quante porzioni ne sono uscite; quali campi
-// dell'etichetta si calcolano (si sceglie nell'editor; per i valori riga per
-// riga, "calcolato").
+// dell'etichetta si calcolano (si sceglie nell'editor: il «può contenere»; per
+// i valori riga per riga, "calcolato"). Gli ingredienti sono sempre testo
+// libero: l'elenco della ricetta (CalcoloRicetta.ingredienti) si importa con un tasto.
 export interface Ricetta {
   righe: RigaRicetta[];
   porzioni: number | null;
-  ingredientiAuto: boolean;
   allergeniAuto: boolean;
 }
 
-// Quello che l'editor dell'etichetta manda in "ricetta": solo gli
-// interruttori, righe e porzioni restano quelle salvate.
-export type InterruttoriRicetta = Pick<Ricetta, "ingredientiAuto" | "allergeniAuto">;
+// Quello che l'editor dell'etichetta manda in "ricetta": solo
+// l'interruttore, righe e porzioni restano quelle salvate.
+export type InterruttoriRicetta = Pick<Ricetta, "allergeniAuto">;
+
+export interface VoceCalcolata {
+  voce: string;
+  per100: string;
+  perPorzione: string | null;
+}
+
+export interface VoceNonCalcolabile {
+  voce: string;
+  mancaIn: string[];
+}
 
 // Il calcolo di una ricetta (solo lettura): campo "calcolo" del prodotto e
 // risposta di POST /api/ricette/calcolo.
@@ -250,9 +260,14 @@ export interface CalcoloRicetta {
   pesoIngredienti: number;
   // Peso degli ingredienti diviso le porzioni; null senza porzioni.
   pesoPorzione: number | null;
-  per100: ValoriPer100;
-  perPorzione: ValoriPer100 | null;
+  // Le righe come vanno in etichetta, per 100 g (calcolato: true).
   valori: ValoreNutrizionale[];
+  // Le voci calcolabili gia' scritte in testo ("870 kJ / 206 kcal"), standard
+  // prima e personalizzate poi; perPorzione null senza porzioni.
+  voci: VoceCalcolata[];
+  // Voci presenti nella scheda di qualche ingrediente ma non in tutti.
+  nonCalcolabili: VoceNonCalcolabile[];
+  // Nomi degli ingredienti a cui manca una delle sette voci obbligatorie.
   senzaValori: string[];
   allergeni: string[];
   tracce: string[];
@@ -495,7 +510,8 @@ export interface StoricoRiga {
   prodottoId: number;
   prodottoNome: string;
   lotto: string;
-  quantita: string;
+  // Il Peso di questa stampa; null se l'etichetta non aveva il blocco Peso acceso.
+  quantita?: string | null;
   // Le porzioni scritte per questa stampa (null/assente = non c'erano); la
   // ristampa dallo storico le riusa.
   porzioni?: string | null;

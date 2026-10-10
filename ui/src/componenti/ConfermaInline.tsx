@@ -9,6 +9,11 @@ interface ProprietaConfermaInline {
   // Impostazioni - coerenza decisa il 23 settembre 2026 con l'eliminazione di
   // un'etichetta (stesso rosso pieno, invece dei due bottoni bianchi di prima).
   etichettaConferma?: string;
+  // Versione piccola e quieta (campo Ingredienti dell'etichetta, 9 ottobre
+  // 2026): bottoni compatti, la conferma verde invece del rosso pieno (li'
+  // non si toglie niente di prezioso: si sostituisce un testo), una riga
+  // sola «domanda · No · Sì» che sul telefono va a capo in modo pulito.
+  discreta?: boolean;
 }
 
 // Conferma a due tocchi senza finestra, come "Scollega" nel prototipo: il
@@ -20,7 +25,7 @@ interface ProprietaConfermaInline {
 // Fuoco da tastiera (2 ottobre 2026): il bottone che si e' premuto sparisce, quindi
 // il fuoco va al «No» (la scelta che non fa danni, e la domanda gli fa da
 // descrizione); se si risponde «No» il fuoco torna al bottone di partenza.
-export default function ConfermaInline({ etichetta, domanda, onConferma, disabilitato, etichettaConferma }: ProprietaConfermaInline) {
+export default function ConfermaInline({ etichetta, domanda, onConferma, disabilitato, etichettaConferma, discreta }: ProprietaConfermaInline) {
   const [chiesto, setChiesto] = useState(false);
   const idDomanda = useId();
   const rifNo = useRef<HTMLButtonElement>(null);
@@ -50,23 +55,25 @@ export default function ConfermaInline({ etichetta, domanda, onConferma, disabil
 
   if (!chiesto) {
     return (
-      <button ref={rifPartenza} type="button" className="btn" onClick={chiedi} disabled={disabilitato}>
+      <button ref={rifPartenza} type="button" className={discreta ? "btn compatto piccoloTel" : "btn"} onClick={chiedi} disabled={disabilitato}>
         {etichetta}
       </button>
     );
   }
 
   return (
-    <span className="flex flex-wrap items-center justify-end gap-2" role="group" aria-labelledby={idDomanda}>
-      <span id={idDomanda} className="text-[13px] text-[var(--tenue)]">
+    <span className={discreta ? "confermaDiscreta" : "flex flex-wrap items-center justify-end gap-2"} role="group" aria-labelledby={idDomanda}>
+      <span id={idDomanda} className={discreta ? "domanda" : "text-[13px] text-[var(--tenue)]"}>
         {domanda}
       </span>
-      <button ref={rifNo} type="button" className="btn" onClick={annulla}>
-        No
-      </button>
-      <button type="button" className="btn elimina forte" onClick={conferma}>
-        {etichettaConferma ?? "Sì"}
-      </button>
+      <span className={discreta ? "bottoni" : "contents"}>
+        <button ref={rifNo} type="button" className={discreta ? "btn compatto piccoloTel" : "btn"} onClick={annulla}>
+          No
+        </button>
+        <button type="button" className={discreta ? "btn compatto piccoloTel primario" : "btn elimina forte"} onClick={conferma}>
+          {etichettaConferma ?? "Sì"}
+        </button>
+      </span>
     </span>
   );
 }

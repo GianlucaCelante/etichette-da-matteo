@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { useBlocker, useNavigate, useSearchParams, type BlockerFunction } from "react-router-dom";
+import { Link, useBlocker, useNavigate, useSearchParams, type BlockerFunction } from "react-router-dom";
 import {
   useAggiornaProdotto,
   useAnnullaStampa,
   useAnteprimaProdottoInModifica,
   useCreaProdotto,
   useEliminaProdotto,
-  useIngredienti,
   useLavoroStampa,
   useLogoEsiste,
   useLotto,
   useProdotti,
   useProdotto,
   useProdottoBozza,
-  useProposteIngredienti,
   useProvaProdotto,
   useStampante,
 } from "../api/hooks";
@@ -27,20 +25,18 @@ import {
   IconaCestino,
   IconaDestra,
   IconaDuplica,
+  IconaIngredienti,
   IconaPiu,
   IconaRipristina,
   IconaSalva,
   IconaSinistra,
   IconaStampa,
-  IconaStellina,
-  IconaVia,
 } from "../componenti/Icone";
 import Finestra from "../componenti/Finestra";
 import RiquadroAnteprima from "../componenti/RiquadroAnteprima";
-import NuovoIngredienteModale from "../componenti/ingredienti/NuovoIngredienteModale";
 import { PannelloErrore, PannelloFatta, PannelloInCorso } from "../componenti/stampa/PannelliStampa";
 import { GIORNI_SCADENZA_PROPOSTI, oggiPiuGiorni } from "../componenti/stampa/formattazione";
-import { CampoAllergeni, CampoArea, CampoInline, CampoSelezione, CampoTesto, Gruppo } from "../componenti/etichette/CampiComuni";
+import { CampoArea, CampoSelezione, CampoTesto, Gruppo } from "../componenti/etichette/CampiComuni";
 import { blocchiInBozza, bozzaInBlocchi, bozzaInValori, valoriInBozza, type BloccoBozza, type ValoreBozza } from "../componenti/etichette/bozza";
 import { bloccoNuovo, numeroDelTesto } from "../componenti/etichette/corpoBlocco";
 import { useBloccoNuovo } from "../componenti/etichette/useBloccoNuovo";
@@ -52,10 +48,8 @@ import SelettoreEtichetta from "../componenti/etichette/SelettoreEtichetta";
 import ValoriNutrizionali from "../componenti/etichette/ValoriNutrizionali";
 import CampoConservazione from "../componenti/etichette/CampoConservazione";
 import ConfermaUscita from "../componenti/etichette/ConfermaUscita";
-import { IngredientiDallaRicetta, LinkRicetta, PuoContenereDallaRicetta } from "../componenti/ricette/CampiDallaRicetta";
+import BloccoIngredienti from "../componenti/etichette/BloccoIngredienti";
 import { conCalcolo, ricettaDi } from "../componenti/ricette/ricetta";
-
-const NESSUNA_TRACCIA: string[] = [];
 
 // Un elenco vuoto sempre lo stesso, per le props che aspettano un array mentre i prodotti arrivano.
 const NESSUN_PRODOTTO: Prodotto[] = [];
@@ -247,6 +241,12 @@ function chiaveLsGruppoPC(nomeGruppo: string): string {
 // nome sopra, il peso sotto, stato scelto ".on"). Il testo "N blocchi accesi"
 // sotto il nome non c'e' piu' (deciso dal cliente, 25/09/2026): sotto al nome
 // sta il peso, come nelle altre viste.
+// A destra, sulla riga del peso, la pillola «Ricetta» (9 ottobre 2026): porta alla
+// ricetta dell'etichetta nella pagina Ricette, o - se non ce l'ha - alla
+// schermata per crearla (ambra, «Crea la ricetta»). E' un fratello del bottone
+// della carta, non dentro (un link dentro un bottone non e' valido ne' per la
+// tastiera ne' per lo schermo parlante): cosi' il suo clic non seleziona la
+// carta. ".voceProdotto" e ".linkRicetta" in index.css.
 function VoceProdotto({
   prodotto,
   selezionato,
@@ -262,13 +262,29 @@ function VoceProdotto({
 }) {
   const clic = useCallback(() => onScegli(prodotto.id), [onScegli, prodotto.id]);
   const nome = nomeInModifica ?? prodotto.nome;
+  const conPeso = !!prodotto.etichetta?.blocchi?.some((b) => b.tipo === "quantita" && b.acceso);
+  const ingredienti = ricettaDi(prodotto).righe.length;
+  const testoRicetta = ingredienti > 0 ? `Ricetta · ${plurale(ingredienti, "ingrediente", "ingredienti")}` : "Crea la ricetta";
+  const testoPillola = ingredienti > 0 ? plurale(ingredienti, "ingrediente", "ingredienti") : "Crea la ricetta";
   return (
-    <button type="button" className={"prodotto" + (selezionato ? " on" : "")} onClick={clic} aria-pressed={selezionato}>
-      <span className="n" title={nome}>
-        {nome}
-      </span>
-      <span className="d">{prodotto.quantita}</span>
-    </button>
+    <div className="voceProdotto">
+      <button type="button" className={"prodotto" + (selezionato ? " on" : "") + (conPeso ? "" : " senzaPeso")} onClick={clic} aria-pressed={selezionato}>
+        <span className="n" title={nome}>
+          {nome}
+        </span>
+        {/* Il peso c'e' solo se l'etichetta ha il blocco «Peso» acceso (9 ottobre 2026). */}
+        {conPeso && <span className="d">{prodotto.quantita}</span>}
+      </button>
+      <Link
+        className={"linkRicetta" + (ingredienti > 0 ? "" : " crea")}
+        to={`/ingredienti?vista=ricette&prodotto=${prodotto.id}`}
+        aria-label={`${testoRicetta}: ${nome}`}
+        title={testoRicetta}
+      >
+        {ingredienti > 0 ? <IconaIngredienti larghezza={14} spessoreTratto={2} /> : <IconaPiu larghezza={13} spessoreTratto={2.4} />}
+        <span>{testoPillola}</span>
+      </Link>
+    </div>
   );
 }
 
@@ -352,10 +368,10 @@ function CampoLottoRapido({
   const schemaManoNonOfferto = schemaLotto === "mano" && !schemaInfo;
   return (
     <div className="campo campoLotto">
-      <div className="etichettina">Lotto</div>
       <div className="casella p-0">
         <select
           value={schemaLotto}
+          title="Lo schema vale per questa etichetta."
           onChange={cambiaSchema}
           aria-label="Schema del lotto"
           className="flex-1 min-w-0 bg-transparent text-[16px] font-bold px-3.5 h-[calc(var(--d-campo)-2px)] cursor-pointer"
@@ -371,9 +387,6 @@ function CampoLottoRapido({
       <div className="mono text-[12px] text-[var(--spento)]">
         {schemaLotto === "mano" ? "a mano: si scrive prima di stampare" : `oggi: ${schemaInfo?.oggi ?? "…"}`}
       </div>
-      {/* Il biglietto di Matteo dice che il lotto sta nelle Impostazioni, ma lo schema è di ogni
-          etichetta (2 ottobre 2026, prove con utenti simulati): lo si dice qui, dove si sceglie. */}
-      <div className="text-[12px] text-[var(--tenue)]">Il lotto si imposta qui, per ogni etichetta.</div>
     </div>
   );
 }
@@ -385,208 +398,9 @@ function CampoTestoBloccoLibero({ blocco, onCambia }: { blocco: BloccoBozza; onC
   const cambia = useCallback((evento: ChangeEvent<HTMLInputElement>) => onCambia(blocco.chiave, evento.target.value), [onCambia, blocco.chiave]);
   return (
     <div className="campo">
-      <div className="etichettina">Testo</div>
       <div className="casella">
         <input value={blocco.testo ?? ""} onChange={cambia} placeholder="Scrivi il testo…" aria-label={`Testo di ${NOMIBLOCCO[blocco.tipo]}`} data-fuoco-nuovo />
       </div>
-    </div>
-  );
-}
-
-// Le tre pastiglie con un gesto legato al tracciato/ingrediente/prodotto:
-// componenti a parte cosi' l'onClick e' una callback stabile, non una
-// funzione nuova ricreata a ogni resa dentro i .map qui sotto.
-function ChipTracciato({ tracciato, senzaLotto, onTogli }: { tracciato: Tracciato; senzaLotto: boolean; onTogli: (tipo: Tracciato["tipo"], id: number) => void }) {
-  const clic = useCallback(() => onTogli(tracciato.tipo, tracciato.id), [onTogli, tracciato.tipo, tracciato.id]);
-  return (
-    <button type="button" className="chip on" title="Togli" aria-label={`Togli ${tracciato.nome} dagli ingredienti da tracciare`} onClick={clic}>
-      {tracciato.tipo === "prodotto" && <IconaStampa larghezza={13} spessoreTratto={2} className="opacity-80" />}
-      <span>{tracciato.nome}</span>
-      {senzaLotto && <span className="w-2 h-2 rounded-full bg-[var(--ambra)]" title="nessun lotto in uso" />}
-      <span className="x">
-        <IconaVia larghezza={13} spessoreTratto={2.4} />
-      </span>
-    </button>
-  );
-}
-function ChipIngredienteLibero({ id, nome, onAggiungi }: { id: number; nome: string; onAggiungi: (id: number, nome: string) => void }) {
-  const clic = useCallback(() => onAggiungi(id, nome), [onAggiungi, id, nome]);
-  return (
-    <button type="button" className="chip" onClick={clic}>
-      {nome}
-    </button>
-  );
-}
-// La pastiglia di una proposta "da creare" (id null: il servizio ha trovato
-// nel testo un pezzo che non corrisponde a nessun ingrediente esistente,
-// docs/api.md "Proponi dal testo", deciso dal cliente il 25/09/2026):
-// tratteggiata come "+ Aggiungi"/"+ Ingrediente nuovo…", ma con la stellina
-// al posto del "+" - a colpo d'occhio "nuovo, non ancora in anagrafica",
-// niente x per toglierla (quelle che non servono si ignorano e basta). Il
-// tocco apre "Nuovo ingrediente" col nome gia' scritto (ChipIngredienteLibero
-// qui sopra invece collega subito un ingrediente che esiste gia').
-function ChipIngredienteNuovo({ nome, pezzo, onCrea }: { nome: string; pezzo: string; onCrea: (nome: string, pezzo: string) => void }) {
-  const clic = useCallback(() => onCrea(nome, pezzo), [onCrea, nome, pezzo]);
-  return (
-    <button type="button" className="chip aggiungi" onClick={clic} title={`Crea l'ingrediente «${nome}»`}>
-      <IconaStellina larghezza={13} spessoreTratto={2} />
-      <span>{nome}</span>
-    </button>
-  );
-}
-function ChipProduzioneLibera({ id, nome, onAggiungi }: { id: number; nome: string; onAggiungi: (id: number, nome: string) => void }) {
-  const clic = useCallback(() => onAggiungi(id, nome), [onAggiungi, id, nome]);
-  return (
-    <button type="button" className="chip" onClick={clic}>
-      <IconaStampa larghezza={13} spessoreTratto={2} className="text-[var(--tenue)]" />
-      <span>{nome}</span>
-    </button>
-  );
-}
-
-// Gli ingredienti collegati al prodotto, per i lotti (campoCollegati del
-// prototipo, docs/api.md "Ingredienti collegati a un prodotto"): pastiglie
-// con la x per togliere, "+ Aggiungi" per scegliere fra gli ingredienti
-// liberi o crearne uno nuovo, "Le tue produzioni" per collegare un altro
-// prodotto come semilavorato. Le proposte dal testo (POST /api/ingredienti/
-// proposte) non sono piu' un bottone a comando (deciso da Gianluca, 23
-// settembre 2026: un bottone e' un gesto che ci si dimentica di fare):
-// compaiono da sole sotto le pastiglie collegate mentre si scrive
-// l'elenco degli ingredienti, una per una si toccano per collegarle - non
-// si collegano mai da sole. Si salva dentro prodotto.tracciati.
-function CampoIngredientiCollegati({
-  tracciati,
-  prodottoId,
-  ingredientiTesto,
-  onCambia,
-}: {
-  tracciati: Tracciato[];
-  prodottoId: number | undefined;
-  ingredientiTesto: string;
-  onCambia: (nuovi: Tracciato[]) => void;
-}) {
-  const { data: ingredientiTutti } = useIngredienti();
-  const { data: prodottiTutti } = useProdotti({ ordine: "nome" });
-  const { data: proposteTrovate } = useProposteIngredienti(ingredientiTesto);
-  const [aggiungi, setAggiungi] = useState(false);
-  // null = chiusa; altrimenti il nome da precompilare (vuoto per "+
-  // Ingrediente nuovo…") e, per le proposte "da creare", il "pezzo" di testo
-  // che le ha fatte proporre (serve solo a nuovoIngredientePronto sotto).
-  const [modaleNuovoIngrediente, setModaleNuovoIngrediente] = useState<{ nomeIniziale: string; pezzoProposta: string | null } | null>(null);
-  // Le proposte "da creare" (id null) che l'utente ha gia' trasformato in un
-  // ingrediente con un nome DIVERSO da quello proposto (vedi
-  // nuovoIngredientePronto): tenute qui, non salvate da nessuna parte -
-  // durano solo per questa scheda aperta (deciso dal cliente, 25/09/2026),
-  // si azzerano cambiando prodotto.
-  const [pezziNascosti, setPezziNascosti] = useState<Set<string>>(() => new Set());
-  useEffect(() => setPezziNascosti(new Set()), [prodottoId]);
-
-  const toggleAggiungi = useCallback(() => setAggiungi((v) => !v), []);
-  const togli = useCallback(
-    (tipo: Tracciato["tipo"], id: number) => onCambia(tracciati.filter((t) => !(t.tipo === tipo && t.id === id))),
-    [tracciati, onCambia],
-  );
-  const aggiungiIngrediente = useCallback((id: number, nome: string) => onCambia([...tracciati, { tipo: "ingrediente", id, nome }]), [tracciati, onCambia]);
-  const aggiungiProduzione = useCallback((id: number, nome: string) => onCambia([...tracciati, { tipo: "prodotto", id, nome }]), [tracciati, onCambia]);
-  const apriNuovoIngrediente = useCallback(() => setModaleNuovoIngrediente({ nomeIniziale: "", pezzoProposta: null }), []);
-  // Tocco su una proposta "da creare" (ChipIngredienteNuovo sotto): stessa
-  // finestra di "+ Ingrediente nuovo…", ma col nome gia' scritto.
-  const apriNuovoDaProposta = useCallback((nome: string, pezzo: string) => setModaleNuovoIngrediente({ nomeIniziale: nome, pezzoProposta: pezzo }), []);
-  const chiudiNuovoIngrediente = useCallback(() => setModaleNuovoIngrediente(null), []);
-  const nuovoIngredientePronto = useCallback(
-    (ingrediente: { id: number; nome: string }) => {
-      setModaleNuovoIngrediente((stato) => {
-        // Si arriva da una proposta "da creare" (pezzoProposta valorizzato) e
-        // il nome e' stato cambiato nel modale: il pezzo di testo originale
-        // potrebbe continuare a proporsi come nuovo (il servizio cerca il
-        // nome NUOVO in un pezzo scritto per il nome VECCHIO, che magari non
-        // lo contiene piu') - si nasconde per non vederlo tornare all'infinito.
-        if (stato?.pezzoProposta && ingrediente.nome.trim().toLowerCase() !== stato.nomeIniziale.trim().toLowerCase()) {
-          const pezzo = stato.pezzoProposta;
-          setPezziNascosti((prima) => (prima.has(pezzo) ? prima : new Set(prima).add(pezzo)));
-        }
-        return null;
-      });
-      aggiungiIngrediente(ingrediente.id, ingrediente.nome);
-    },
-    [aggiungiIngrediente],
-  );
-
-  const ingredientiLiberi = (ingredientiTutti ?? []).filter((i) => !tracciati.some((t) => t.tipo === "ingrediente" && t.id === i.id));
-  const prodottiLiberi = (prodottiTutti ?? []).filter((p) => p.id !== prodottoId && !tracciati.some((t) => t.tipo === "prodotto" && t.id === p.id));
-  // Le une e le altre insieme, nell'ordine in cui arrivano dal servizio
-  // (quello del testo, docs/api.md "Proponi dal testo"): quelle con un
-  // ingrediente esistente (id numerico) gia' collegato spariscono da qui
-  // (sono gia' fra le pastiglie sopra) senza bisogno di tenerne traccia a
-  // parte, e non tornano in fila da sole alla battuta successiva; quelle "da
-  // creare" (id null, dal 25/09/2026) restano finche' non sono in
-  // pezziNascosti (vedi sopra) - niente x per toglierle, deciso dal cliente.
-  const proposte = (proposteTrovate ?? [])
-    .filter((p) => (p.id !== null ? !tracciati.some((t) => t.tipo === "ingrediente" && t.id === p.id) : !pezziNascosti.has(p.pezzo)))
-    // Lo stesso ingrediente puo' essere trovato da due pezzi del testo («Farina
-    // di grano tenero tipo 0», «farina»): una proposta sola per ingrediente
-    // (2 ottobre 2026, sera; per quelle da creare, per nome), la prima che arriva.
-    .filter((p, i, tutte) => tutte.findIndex((q) => (p.id !== null ? q.id === p.id : q.id === null && q.nome.trim().toLowerCase() === p.nome.trim().toLowerCase())) === i);
-
-  return (
-    <div className="collegati">
-      {/* Parole da cucina (2 ottobre 2026: «collegati, per i lotti» non lo capiva nessuno): cosa
-          fa, in una riga. Il nome interno («tracciati») non cambia. */}
-      <div className="etichettina flex items-center gap-2 text-[var(--verdescuro)]">Ingredienti da tracciare</div>
-      <div className="text-[12px] text-[var(--tenue)]">
-        Scegli quelli di cui vuoi sapere da quale sacco arrivano: lo Storico ricorda il lotto che hai usato a ogni stampa.
-      </div>
-      <div className="chips">
-        {tracciati.map((t) => {
-          const senzaLotto = t.tipo === "ingrediente" && (ingredientiTutti ?? []).find((i) => i.id === t.id)?.stato === "manca";
-          return <ChipTracciato key={`${t.tipo}:${t.id}`} tracciato={t} senzaLotto={senzaLotto} onTogli={togli} />;
-        })}
-        {/* Icona + testo (deciso da Gianluca, 25/09/2026: "+ Aggiungi"/"Fatto"
-            in testo puro non si capiva) - chiuso: "+" e "Aggiungi", aperto:
-            una "x" e "Chiudi", cosi' e' chiaro che il secondo tocco chiude il
-            pannello invece di aggiungere ancora. */}
-        <button type="button" className="chip aggiungi" onClick={toggleAggiungi} aria-expanded={aggiungi}>
-          {aggiungi ? <IconaVia larghezza={13} spessoreTratto={2.4} /> : <IconaPiu larghezza={13} spessoreTratto={2.4} />}
-          <span>{aggiungi ? "Chiudi" : "Aggiungi"}</span>
-        </button>
-      </div>
-      {/* Niente riga vuota o "nessuna proposta" quando non c'e' niente da
-          proporre (deciso da Gianluca): il riquadro resta com'era. */}
-      {proposte.length > 0 && (
-        <>
-          <div className="etichettina mt-0.5">Trovati nel testo degli ingredienti (tocca per aggiungerli):</div>
-          <div className="chips">
-            {proposte.map((p) =>
-              p.id !== null ? (
-                <ChipIngredienteLibero key={`e-${p.id}`} id={p.id} nome={p.nome} onAggiungi={aggiungiIngrediente} />
-              ) : (
-                <ChipIngredienteNuovo key={`n-${p.pezzo}`} nome={p.nome} pezzo={p.pezzo} onCrea={apriNuovoDaProposta} />
-              ),
-            )}
-          </div>
-        </>
-      )}
-      {aggiungi && (
-        <>
-          <div className="chips">
-            {ingredientiLiberi.map((i) => (
-              <ChipIngredienteLibero key={i.id} id={i.id} nome={i.nome} onAggiungi={aggiungiIngrediente} />
-            ))}
-            <button type="button" className="chip aggiungi" onClick={apriNuovoIngrediente}>
-              + Ingrediente nuovo…
-            </button>
-          </div>
-          <div className="etichettina mt-0.5">Le tue preparazioni (da usare come ingrediente)</div>
-          <div className="chips">
-            {prodottiLiberi.map((p) => (
-              <ChipProduzioneLibera key={p.id} id={p.id} nome={p.nome} onAggiungi={aggiungiProduzione} />
-            ))}
-          </div>
-        </>
-      )}
-      {modaleNuovoIngrediente && (
-        <NuovoIngredienteModale nomeIniziale={modaleNuovoIngrediente.nomeIniziale} onChiudi={chiudiNuovoIngrediente} onPronto={nuovoIngredientePronto} />
-      )}
     </div>
   );
 }
@@ -1227,13 +1041,11 @@ export default function Etichette() {
     setBozzaProdotto((p) => (p ? { ...p, zona: { larghezzaDestra: v } } : p));
   }, []);
   const aggiornaTracciati = useCallback((nuovi: Tracciato[]) => setBozzaProdotto((p) => (p ? { ...p, tracciati: nuovi } : p)), []);
-  // Elenco ingredienti e «può contenere» calcolati o scritti a mano: passando
-  // a mano si parte dal testo calcolato, cosi' si corregge invece di riscrivere.
-  const usaIngredientiDellaRicetta = useCallback(
-    (attivo: boolean, testoCalcolato: string) =>
-      setBozzaProdotto((p) => (p ? { ...p, ingredienti: attivo ? p.ingredienti : testoCalcolato, ricetta: { ...p.ricetta, ingredientiAuto: attivo } } : p)),
-    [],
-  );
+  // Gli ingredienti sono sempre testo libero; l'elenco della ricetta si importa
+  // con un tasto (9 ottobre 2026) e poi e' testo come un altro. Il «può
+  // contenere» invece puo' essere calcolato o scritto a mano: passando a mano
+  // si parte dal testo calcolato, cosi' si corregge invece di riscrivere.
+  const importaIngredientiDallaRicetta = useCallback((elenco: string) => setBozzaProdotto((p) => (p ? { ...p, ingredienti: elenco } : p)), []);
   const usaAllergeniDellaRicetta = useCallback(
     (attivo: boolean, calcolati: string[]) =>
       setBozzaProdotto((p) => (p ? { ...p, allergeni: attivo ? p.allergeni : calcolati, ricetta: { ...p.ricetta, allergeniAuto: attivo } } : p)),
@@ -1242,8 +1054,6 @@ export default function Etichette() {
   const apriRicetta = useCallback(() => {
     if (prodottoSalvato) navigate(`/ingredienti?vista=ricette&prodotto=${prodottoSalvato.id}`);
   }, [prodottoSalvato, navigate]);
-  const scriviIngredientiAMano = useCallback((testo: string) => usaIngredientiDellaRicetta(false, testo), [usaIngredientiDellaRicetta]);
-  const ingredientiDallaRicetta = useCallback(() => usaIngredientiDellaRicetta(true, ""), [usaIngredientiDellaRicetta]);
   const scegliAllergeniAMano = useCallback((tracce: string[]) => usaAllergeniDellaRicetta(false, tracce), [usaAllergeniDellaRicetta]);
   const allergeniDallaRicetta = useCallback(() => usaAllergeniDellaRicetta(true, []), [usaAllergeniDellaRicetta]);
   const aggiornaSchemaLotto = useCallback((v: SchemaLotto) => setBozzaProdotto((p) => (p ? { ...p, schemaLotto: v } : p)), []);
@@ -1316,9 +1126,9 @@ export default function Etichette() {
             allergeni: campiCalcolati.allergeni,
             valoriNutrizionali: campiCalcolati.valori,
             // I nomi delle righe il servizio li ignora in scrittura.
-            // Solo gli interruttori: righe e porzioni si scrivono in Ingredienti e
+            // Solo l'interruttore: righe e porzioni si scrivono in Ingredienti e
             // restano quelle salvate. Una bozza («Duplica») porta la ricetta intera.
-            ricetta: bozza ? bozzaProdotto.ricetta : { ingredientiAuto: bozzaProdotto.ricetta.ingredientiAuto, allergeniAuto: bozzaProdotto.ricetta.allergeniAuto },
+            ricetta: bozza ? bozzaProdotto.ricetta : { allergeniAuto: bozzaProdotto.ricetta.allergeniAuto },
             calcolo: undefined,
             // "nome" e' solo per l'interfaccia (le pastiglie): in scrittura
             // basterebbe {tipo, id}, ma mandarlo non fa danno (il servizio
@@ -1552,12 +1362,8 @@ export default function Etichette() {
 
   // La ricetta ha almeno una riga: solo allora i campi possono venire da li'.
   const conRicetta = !!bozzaProdotto && bozzaProdotto.ricetta.righe.length > 0;
-  const riassuntoRicetta = !bozzaProdotto
-    ? ""
-    : conRicetta
-      ? plurale(bozzaProdotto.ricetta.righe.length, "ingrediente", "ingredienti") +
-        (bozzaProdotto.ricetta.porzioni ? ` · ${plurale(bozzaProdotto.ricetta.porzioni, "porzione", "porzioni")}` : "")
-      : "";
+  // Il «Può contenere» si calcola dalla ricetta (e non si sceglie a mano).
+  const tracceDallaRicetta = usaPuoContenere && conRicetta && !!bozzaProdotto && bozzaProdotto.ricetta.allergeniAuto;
 
   const sezioni: { chiave: string; titolo: string; sottoPC?: string; sottoTel?: string; campi: React.ReactNode[]; ordine: number }[] = bozzaProdotto
     ? (
@@ -1573,7 +1379,7 @@ export default function Etichette() {
             ordine: ordineSezione("titolo"),
             campi: [
               usaTitolo && (
-                <CampoTesto key="nomeStampa" etichetta="Nome stampato" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} grassetto />
+                <CampoTesto key="nomeStampa" etichetta="Nome stampato" valore={bozzaProdotto.nomeStampa} campo="nomeStampa" onCambia={aggiornaCampoProdotto} placeholder="Nome stampato" grassetto senzaEtichetta />
               ),
             ],
           },
@@ -1588,9 +1394,7 @@ export default function Etichette() {
             ordine: ordineSezione("quantita"),
             campi: [
               usaQuantita && (
-                <CampoInline key="quantita" etichetta="Peso">
-                  <CampoQuantitaInline valore={bozzaProdotto.quantita} onCambia={aggiornaQuantita} />
-                </CampoInline>
+                <CampoQuantitaInline key="quantita" valore={bozzaProdotto.quantita} onCambia={aggiornaQuantita} />
               ),
             ],
           },
@@ -1603,9 +1407,7 @@ export default function Etichette() {
             ordine: ordineSezione("porzioni"),
             campi: [
               usaPorzioni && (
-                <CampoInline key="porzioni" etichetta="Porzioni">
-                  <CampoPorzioniInline valore={bozzaProdotto.porzioni} onCambia={aggiornaPorzioni} />
-                </CampoInline>
+                <CampoPorzioniInline key="porzioni" valore={bozzaProdotto.porzioni} onCambia={aggiornaPorzioni} />
               ),
             ],
           },
@@ -1616,49 +1418,30 @@ export default function Etichette() {
             sottoTel: usaIngredienti ? anteprimaTesto(campiCalcolati?.ingredienti ?? bozzaProdotto.ingredienti, 60) : undefined,
             ordine: ordineSezione("ingredienti"),
             campi: [
-              // Con la ricetta l'elenco e il «può contenere» possono venire da li'
-              // (7 ottobre 2026): in sola lettura, con «Scrivi a mano» per correggerli.
-              usaIngredienti &&
-                (conRicetta && bozzaProdotto.ricetta.ingredientiAuto ? (
-                  <IngredientiDallaRicetta key="ingredienti" testo={calcolo?.ingredienti ?? ""} onScriviAMano={scriviIngredientiAMano} />
-                ) : (
-                  <div key="ingredienti" className="flex flex-col gap-1">
-                    <CampoArea etichetta="Ingredienti" valore={bozzaProdotto.ingredienti} campo="ingredienti" onCambia={aggiornaCampoProdotto} />
-                    {conRicetta && <LinkRicetta testo="Usa l'elenco della ricetta" onClic={ingredientiDallaRicetta} />}
-                  </div>
-                )),
-              usaIngredienti && conRicetta && calcolo && calcolo.allergeni.length > 0 && (
-                <div key="contiene" className="text-[12.5px] leading-snug text-[var(--tenue)]">
-                  La ricetta contiene: <b className="text-inherit">{calcolo.allergeni.join(", ")}</b>
-                  {!bozzaProdotto.ricetta.ingredientiAuto && " — controlla che nell'elenco siano scritti in MAIUSCOLO."}
-                </div>
-              ),
-              // La ricetta si scrive in Ingredienti › Ricette (non si stampa: e'
-              // configurazione); qui solo dove trovarla.
-              usaIngredienti && !bozza && (
-                <div key="ricetta" className="text-[12.5px] leading-snug text-[var(--tenue)]">
-                  {conRicetta ? `Ricetta: ${riassuntoRicetta}. ` : "Nessuna ricetta: con la ricetta valori nutrizionali e allergeni si calcolano da soli. "}
-                  <LinkRicetta testo={conRicetta ? "Modifica la ricetta" : "Scrivi la ricetta"} onClic={apriRicetta} />
-                </div>
-              ),
-              usaPuoContenere &&
-                (conRicetta && bozzaProdotto.ricetta.allergeniAuto ? (
-                  <PuoContenereDallaRicetta key="allergeni" tracce={calcolo?.tracce ?? NESSUNA_TRACCIA} onScegliAMano={scegliAllergeniAMano} />
-                ) : (
-                  <div key="allergeni" className="flex flex-col gap-1">
-                    <CampoAllergeni allergeni={bozzaProdotto.allergeni} onCambia={aggiornaAllergeni} />
-                    {conRicetta && <LinkRicetta testo="Usa le tracce della ricetta" onClic={allergeniDallaRicetta} />}
-                  </div>
-                )),
-              // Gli ingredienti collegati, per i lotti (docs/api.md): come
-              // nel prototipo, servono il blocco "Ingredienti" sull'etichetta.
-              usaIngredienti && (
-                <CampoIngredientiCollegati
-                  key="collegati"
+              // Il blocco intero (riga della ricetta, Testo, Allergeni, Tracciabilita'):
+              // vedi BloccoIngredienti (9 ottobre 2026).
+              (usaIngredienti || usaPuoContenere) && (
+                <BloccoIngredienti
+                  key="bloccoIngredienti"
+                  usaIngredienti={usaIngredienti}
+                  usaPuoContenere={usaPuoContenere}
+                  conRicetta={conRicetta}
+                  righeRicetta={bozzaProdotto.ricetta.righe.length}
+                  porzioniRicetta={bozzaProdotto.ricetta.porzioni}
+                  tracceDallaRicetta={tracceDallaRicetta}
+                  calcolo={calcolo}
+                  bozza={!!bozza}
+                  testoIngredienti={bozzaProdotto.ingredienti}
+                  allergeni={bozzaProdotto.allergeni}
                   tracciati={bozzaProdotto.tracciati}
                   prodottoId={prodottoSalvato?.id}
-                  ingredientiTesto={bozzaProdotto.ingredienti}
-                  onCambia={aggiornaTracciati}
+                  onCambiaTesto={aggiornaCampoProdotto}
+                  onImporta={importaIngredientiDallaRicetta}
+                  onApriRicetta={apriRicetta}
+                  onScegliAMano={scegliAllergeniAMano}
+                  onAllergeniDallaRicetta={allergeniDallaRicetta}
+                  onCambiaAllergeni={aggiornaAllergeni}
+                  onCambiaTracciati={aggiornaTracciati}
                 />
               ),
             ],
@@ -1668,7 +1451,7 @@ export default function Etichette() {
             titolo: NOMIBLOCCO.modoUso,
             sottoTel: bozzaProdotto.modoUso ? undefined : "Da scrivere",
             ordine: ordineSezione("modoUso"),
-            campi: [usaModoUso && <CampoArea key="modoUso" etichetta="Modo d'uso" valore={bozzaProdotto.modoUso} campo="modoUso" onCambia={aggiornaCampoProdotto} />],
+            campi: [usaModoUso && <CampoArea key="modoUso" etichetta="Modo d'uso" valore={bozzaProdotto.modoUso} campo="modoUso" onCambia={aggiornaCampoProdotto} placeholder="Modo d'uso" senzaEtichetta />],
           },
           {
             chiave: "valori",
@@ -1685,8 +1468,8 @@ export default function Etichette() {
             ordine: ordineSezione("scadenzaEtichetta"),
             campi: [
               usaScadenza && (
-                <div key="due" className="grid grid-cols-2 gap-3.5">
-                  <CampoSelezione etichetta="Dicitura scadenza" valore={bozzaProdotto.dicituraScadenza} campo="dicituraScadenza" opzioni={OPZIONI_DICITURA_SCADENZA} onCambia={aggiornaCondiviso} />
+                <div key="due" className="grid grid-cols-2 gap-2.5">
+                  <CampoSelezione etichetta="Dicitura" nomeAccessibile="Dicitura scadenza" valore={bozzaProdotto.dicituraScadenza} campo="dicituraScadenza" opzioni={OPZIONI_DICITURA_SCADENZA} onCambia={aggiornaCondiviso} />
                   <CampoSelezione etichetta="Formato data" valore={bozzaProdotto.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />
                 </div>
               ),
@@ -1732,21 +1515,20 @@ export default function Etichette() {
               usaProduttore && <CampoTesto key="rs" etichetta="Ragione sociale" valore={bozzaProdotto.produttore.ragioneSociale} campo="ragioneSociale" onCambia={aggiornaProduttore} />,
               usaProduttore && <CampoTesto key="sl" etichetta="Sede legale" valore={bozzaProdotto.produttore.sedeLegale} campo="sedeLegale" onCambia={aggiornaProduttore} />,
               usaProduttore && (
-                <CampoTesto key="sp" etichetta="Sede di produzione · facoltativa" valore={bozzaProdotto.produttore.sedeProduzione} campo="sedeProduzione" onCambia={aggiornaProduttore} />
+                <CampoTesto key="sp" etichetta="Sede di produzione (facoltativa)" valore={bozzaProdotto.produttore.sedeProduzione} campo="sedeProduzione" onCambia={aggiornaProduttore} />
               ),
               // Facoltativo (deciso da Gianluca, 25/09/2026): solo se a
               // confezionare e' stato qualcun altro - vuoto non si stampa
               // (" - Confezionato da: …" in coda al blocco, lato servizio).
               usaProduttore && (
-                <div key="cd" className="flex flex-col gap-1.5">
-                  <CampoTesto
-                    etichetta="Confezionato da · facoltativo"
-                    valore={bozzaProdotto.produttore.confezionatoDa}
-                    campo="confezionatoDa"
-                    onCambia={aggiornaProduttore}
-                  />
-                  <div className="text-[12px] text-[var(--spento)]">Solo se l&apos;ha confezionato qualcun altro.</div>
-                </div>
+                <CampoTesto
+                  key="cd"
+                  etichetta="Confezionato da (facoltativo)"
+                  valore={bozzaProdotto.produttore.confezionatoDa}
+                  campo="confezionatoDa"
+                  onCambia={aggiornaProduttore}
+                  placeholder="Solo se l'ha confezionato qualcun altro"
+                />
               ),
             ],
           },
@@ -1757,7 +1539,7 @@ export default function Etichette() {
             campi: [
               usaDataProduzione && (
                 <div key="info" className="text-[13px] text-[var(--tenue)]">
-                  Sull&apos;etichetta esce la data di stampa di oggi: non si scrive a mano.
+                  Esce la data di stampa di oggi: non si scrive.
                 </div>
               ),
             ],

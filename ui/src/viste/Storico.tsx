@@ -207,11 +207,6 @@ function RigaStoricoPC({
         <RiassuntoCatena riga={riga} />
       </div>
       <div className="mono text-[12.5px] text-[var(--tenue)] truncate">{riga.lotto}</div>
-      {/* Il Peso e, sotto, le Porzioni se quella stampa ne aveva. */}
-      <div className="min-w-0">
-        <div className="text-[14px] truncate">{riga.quantita}</div>
-        {riga.porzioni && <div className="text-[12.5px] text-[var(--tenue)] truncate">{`Porzioni: ${riga.porzioni}`}</div>}
-      </div>
       <div className="text-[14px]">{riga.scadenza ? formattaData(riga.scadenza) : "—"}</div>
       <div className="flex items-center gap-1.5 text-[13px] text-[var(--tenue)] min-w-0">
         <IconaDispositivo nome={riga.dispositivoNome} />
@@ -290,7 +285,12 @@ function RigaStoricoTel({
   // Una frase sola, non pezzi di testo e di elementi uno dopo l'altro: cosi'
   // niente spazi strani prima dei punti e delle virgole.
   const dettaglio = `${formattaOra(riga.stampatoIl)} · ${inStampa ? "in stampa" : plurale(riga.copie, "copia", "copie")} · da ${nomeDispositivo}`;
-  const dettaglioProdotto = `${riga.quantita}${riga.porzioni ? ` · Porzioni: ${riga.porzioni}` : ""}${riga.scadenza ? ` · scade ${formattaData(riga.scadenza)}` : ""}`;
+  // Solo i pezzi che ci sono (scadenza), uniti da « · »: mai un separatore orfano.
+  const dettaglioProdotto = [
+    riga.scadenza ? `scade ${formattaData(riga.scadenza)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div
       className={"vocestorico tel" + (prova ? " opacity-60" : "") + (haCatena ? " apribile" : "") + (catenaAperta ? " aperta" : "")}
@@ -628,11 +628,9 @@ export default function Storico() {
         {/* L'intestazione delle colonne solo se ci sono righe da intestare. */}
         {!!righe?.length && !intervalloNonValido && (
           <div className="tabella grigliaStorico soloPC">
-            {/* "Peso" invece di "Quantità" (deciso da Gianluca, 25/09/2026): qui
-                si intende il peso/quantita' del prodotto stampato, stesso nome
-                del campo nella scheda di Stampa. «Lotto interno»: il numero che
-                esce sull'etichetta, non il lotto del fornitore. */}
-            {["Ora", "Etichetta", "Lotto interno", "Peso", "Scadenza", "Da", "", ""].map((t, i) => (
+            {/* «Lotto interno»: il numero che esce sull'etichetta, non il lotto del fornitore.
+                Il Peso non c'e' piu' qui (10 ottobre 2026): resta nell'esportazione. */}
+            {["Ora", "Etichetta", "Lotto interno", "Scadenza", "Da", "", ""].map((t, i) => (
               <div key={i} className="etichettina">
                 {t}
               </div>

@@ -1,4 +1,5 @@
-import { MouseSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { KeyboardSensor, MouseSensor, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 // I sensori del riordino dei blocchi, gli stessi per PC e telefono.
 // Mouse: la riga parte dopo 6px di spostamento (come sempre: sotto la soglia
@@ -41,3 +42,13 @@ export const ACCESSIBILITA_VALORI = {
   announcements: ANNUNCI_RIORDINO,
   screenReaderInstructions: { draggable: "Per riordinare la voce premi Invio, muovila con le frecce su e giù, poi premi Invio per posarla o Esc per annullare." },
 };
+
+// I sensori del riordino delle voci dei valori nutrizionali (editor delle
+// etichette e scheda tecnica degli ingredienti): il mouse e il dito dalla
+// maniglia, e la tastiera (Invio sulla maniglia, frecce, Invio).
+export function useSensoriValori() {
+  return useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+}

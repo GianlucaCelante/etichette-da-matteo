@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useIngredienti, useProdotti } from "../../api/hooks";
-import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta, type ValoriPer100 } from "../../api/tipi";
-import { IconaCestino } from "../Icone";
+import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta } from "../../api/tipi";
+import { IconaAvviso, IconaCestino, IconaSpunta } from "../Icone";
+import { TitoloSezione } from "../ingredienti/SezioniScheda";
+import { LinkRicetta } from "./CampiDallaRicetta";
+import FinestraSchedaIngrediente from "./FinestraSchedaIngrediente";
 import { numeroDaTesto, numeroLeggibile, testoDaNumero } from "./numeri";
 
 // I grammi di una riga: kg e litri per mille, i millilitri come grammi
@@ -60,7 +63,7 @@ function CampoNumero({
         aria-label={etichetta}
         aria-invalid={sbagliato}
         className={
-          "flex-1 min-w-0 h-8 border rounded-md bg-white text-right px-2 text-[13px] font-bold max-[860px]:h-10 max-[860px]:text-[16px]" +
+          "flex-1 min-w-0 h-9 border rounded-md bg-white text-right px-2.5 text-[13.5px] font-bold max-[860px]:h-10 max-[860px]:text-[16px]" +
           (sbagliato ? " border-[var(--rosso)]" : " border-[var(--bordocampo)]")
         }
       />
@@ -69,6 +72,30 @@ function CampoNumero({
   );
 }
 
+// Il chip «Scheda» di una riga: apre la scheda tecnica dell'ingrediente in una
+// finestra (FinestraSchedaIngrediente), senza lasciare la ricetta. Completa e'
+// neutro con la spunta; incompleta e' ambra con il punto esclamativo e la
+// scritta «Da completare» (".chipScheda" in index.css).
+function BottoneScheda({ id, nome, incompleta, onApri }: { id: number; nome: string; incompleta: boolean; onApri: (id: number, nome: string) => void }) {
+  const apri = useCallback(() => onApri(id, nome), [onApri, id, nome]);
+  return (
+    <button
+      type="button"
+      onClick={apri}
+      aria-label={`Scheda tecnica di ${nome}` + (incompleta ? ", da completare" : "")}
+      title={`Scheda tecnica di ${nome}` + (incompleta ? ": mancano dei valori" : "")}
+      className={"chipScheda" + (incompleta ? " manca" : "")}
+    >
+      {incompleta ? <IconaAvviso larghezza={14} spessoreTratto={2.2} /> : <IconaSpunta larghezza={13} spessoreTratto={2.6} />}
+      <span>{incompleta ? "Da completare" : "Scheda"}</span>
+    </button>
+  );
+}
+
+// Una riga della ricetta, in griglia (".rigaIngr"): nome con la percentuale
+// piccola sotto, stato della scheda, quantita', unita', cestino. Le colonne
+// stanno allineate fra le righe; sul telefono la riga si fa su due livelli
+// (nome e scheda sopra, quantita', unita' e cestino sotto).
 function RigaIngrediente({
   riga,
   indice,
@@ -77,6 +104,7 @@ function RigaIngrediente({
   onQuantita,
   onUnita,
   onTogli,
+  onScheda,
 }: {
   riga: RigaRicetta;
   indice: number;
@@ -85,27 +113,34 @@ function RigaIngrediente({
   onQuantita: (indice: number, quantita: number | null) => void;
   onUnita: (indice: number, unita: UnitaRicetta) => void;
   onTogli: (indice: number) => void;
+  onScheda: (id: number, nome: string) => void;
 }) {
   const quantita = useCallback((n: number | null) => onQuantita(indice, n), [onQuantita, indice]);
   const unita = useCallback((e: ChangeEvent<HTMLSelectElement>) => onUnita(indice, e.target.value as UnitaRicetta), [onUnita, indice]);
   const togli = useCallback(() => onTogli(indice), [onTogli, indice]);
   const nome = riga.nome ?? "(eliminato)";
+  const sotto = [riga.tipo === "prodotto" ? "preparazione" : null, percentuale !== null ? `${numeroLeggibile(percentuale, 1)}%` : null].filter(Boolean).join(" · ");
   return (
-    <div className="flex items-center gap-2 min-h-[42px] px-1.5 py-1 border-b border-[var(--riga)] last:border-b-0 text-[13px]">
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold truncate">{nome}</div>
-        <div className="text-[11.5px] leading-tight text-[var(--tenue)]">
-          {riga.tipo === "prodotto" ? "preparazione" : "ingrediente"}
-          {percentuale !== null && ` · ${numeroLeggibile(percentuale, 1)}%`}
-          {senzaScheda && <span className="text-[var(--rosso)]"> · scheda incompleta</span>}
+    <div className="rigaIngr">
+      <div className="cNome">
+        <div className="nomeIng" title={nome}>
+          {nome}
+        </div>
+        <div className="sotto">
+          {sotto || " "}
+          {senzaScheda && riga.tipo === "prodotto" && <span className="text-[var(--rosso)]"> · scheda incompleta</span>}
         </div>
       </div>
-      <CampoNumero valore={riga.quantita} onCambia={quantita} etichetta={`Quantità di ${nome}`} stretto />
+      {/* Un'altra preparazione non ha una scheda sua: la sua scheda e' la sua ricetta. */}
+      <div className="cScheda">{riga.tipo === "ingrediente" && riga.nome && <BottoneScheda id={riga.id} nome={riga.nome} incompleta={senzaScheda} onApri={onScheda} />}</div>
+      <div className="cQta">
+        <CampoNumero valore={riga.quantita} onCambia={quantita} etichetta={`Quantità di ${nome}`} />
+      </div>
       <select
         value={riga.unita}
         onChange={unita}
         aria-label={`Unità di ${nome}`}
-        className="h-8 border border-[var(--bordocampo)] rounded-md bg-white px-1 text-[13px] max-[860px]:h-10 max-[860px]:text-[16px]"
+        className="cUnita h-9 border border-[var(--bordocampo)] rounded-md bg-white px-1 text-[13px] max-[860px]:h-10 max-[860px]:text-[16px]"
       >
         {UNITA_RICETTA.map((u) => (
           <option key={u} value={u}>
@@ -113,83 +148,124 @@ function RigaIngrediente({
           </option>
         ))}
       </select>
-      <button type="button" className="cestino" onClick={togli} title={`Togli ${nome} dalla ricetta`} aria-label={`Togli ${nome} dalla ricetta`}>
+      <button type="button" className="cestino cCest" onClick={togli} title={`Togli ${nome} dalla ricetta`} aria-label={`Togli ${nome} dalla ricetta`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
     </div>
   );
 }
 
-// Le righe del riepilogo: per 100 g (gia' scritte come in etichetta dal
-// servizio) e per porzione (numeri, qui arrotondati alla buona).
-const CHIAVI_PORZIONE: Record<string, keyof ValoriPer100> = {
-  Grassi: "grassi",
-  "di cui acidi grassi saturi": "saturi",
-  Carboidrati: "carboidrati",
-  "di cui zuccheri": "zuccheri",
-  Fibre: "fibre",
-  Proteine: "proteine",
-  Sale: "sale",
-};
-
-function perPorzione(voce: string, v: ValoriPer100 | null): string {
-  if (!v) return "";
-  if (voce === "Energia") {
-    return v.energiaKj !== null && v.energiaKcal !== null ? `${Math.round(v.energiaKj)} kJ / ${Math.round(v.energiaKcal)} kcal` : "";
-  }
-  const chiave = CHIAVI_PORZIONE[voce];
-  const n = chiave ? v[chiave] : null;
-  return n === null || n === undefined ? "" : `${numeroLeggibile(n, voce === "Sale" ? 2 : 1)} g`;
+// Il nome di un ingrediente con la scheda incompleta, nell'avviso: un link che
+// apre la sua scheda nella finestra.
+function NomeSenzaScheda({ id, nome, onApri }: { id: number; nome: string; onApri: (id: number, nome: string) => void }) {
+  const apri = useCallback(() => onApri(id, nome), [onApri, id, nome]);
+  return <LinkRicetta testo={nome} onClic={apri} />;
 }
 
-function Riepilogo({ calcolo, ricetta }: { calcolo: CalcoloRicetta; ricetta: Ricetta }) {
-  const conPorzione = calcolo.perPorzione !== null;
+// I nomi degli ingredienti separati da virgole, ognuno un link che apre la sua
+// scheda: i nomi arrivano dal servizio, per aprirla serve l'id, che si prende
+// dalla riga dell'ingrediente nella ricetta.
+function NomiIngredienti({ nomi, ricetta, onScheda }: { nomi: string[]; ricetta: Ricetta; onScheda: (id: number, nome: string) => void }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[13px] leading-relaxed">
-        Peso degli ingredienti <b>{numeroLeggibile(calcolo.pesoIngredienti)} g</b>
-        {calcolo.pesoPorzione !== null && ricetta.porzioni !== null && (
-          <>
-            {" "}
-            · {ricetta.porzioni} porzioni da circa <b>{numeroLeggibile(calcolo.pesoPorzione)} g</b>
-          </>
-        )}
-      </div>
-      <div className="scheda overflow-hidden text-[12.5px]">
-        <div className="flex gap-2 px-2 py-1 border-b border-[var(--riga)] text-[11.5px] text-[var(--tenue)]">
-          <span className="flex-1">Calcolato</span>
-          <span className="w-[120px] text-right">per 100 g</span>
-          {conPorzione && <span className="w-[120px] text-right max-[520px]:hidden">per porzione</span>}
-        </div>
-        {calcolo.valori.map((v) => (
-          <div key={v.voce} className="flex gap-2 px-2 py-1 border-b border-[var(--riga)] last:border-b-0">
-            <span className={"flex-1 min-w-0" + (v.voce.startsWith("di cui") ? " pl-3" : "")}>{v.voce}</span>
-            <span className="w-[120px] text-right font-bold">{v.valore || "—"}</span>
-            {conPorzione && <span className="w-[120px] text-right max-[520px]:hidden">{perPorzione(v.voce, calcolo.perPorzione) || "—"}</span>}
-          </div>
-        ))}
-      </div>
-      <div className="text-[13px] leading-relaxed">
-        <div>
-          Elenco ingredienti: <span className="font-semibold">{calcolo.ingredienti || "—"}</span>
-        </div>
-        <div>
-          Contiene: <b>{calcolo.allergeni.length ? calcolo.allergeni.join(", ") : "nessun allergene"}</b>
-        </div>
-        <div>
-          Può contenere: <b>{calcolo.tracce.length ? calcolo.tracce.join(", ") : "niente"}</b>
-        </div>
-      </div>
+    <>
+      {nomi.map((nome, i) => {
+        const riga = ricetta.righe.find((r) => r.tipo === "ingrediente" && r.nome === nome);
+        return (
+          <Fragment key={nome}>
+            {i > 0 && ", "}
+            {riga ? <NomeSenzaScheda id={riga.id} nome={nome} onApri={onScheda} /> : nome}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+// Il riepilogo mostra le voci come arrivano dal servizio (calcolo.voci): gia'
+// scritte per l'etichetta, con virgola italiana e unita'. Gli avvisi stanno in
+// riquadri ambra (rossi quelli del servizio) sopra la tabella; allergeni e
+// tracce sono chip, l'elenco ingredienti un riquadro a parte.
+function Riepilogo({ calcolo, ricetta, onScheda }: { calcolo: CalcoloRicetta; ricetta: Ricetta; onScheda: (id: number, nome: string) => void }) {
+  const conPorzione = calcolo.voci.some((v) => v.perPorzione !== null);
+  return (
+    <div className="flex flex-col gap-3">
       {calcolo.senzaValori.length > 0 && (
-        <div className="text-[12.5px] leading-snug text-[var(--rosso)]">
-          Mancano dei valori nella scheda tecnica di: {calcolo.senzaValori.join(", ")}. Completala, altrimenti quelle righe non si calcolano.
+        <div className="callout">
+          <IconaAvviso larghezza={16} spessoreTratto={2} />
+          <span>
+            Mancano dei valori nella scheda tecnica di: <NomiIngredienti nomi={calcolo.senzaValori} ricetta={ricetta} onScheda={onScheda} />. Completala, altrimenti quelle righe non si calcolano.
+          </span>
+        </div>
+      )}
+      {calcolo.nonCalcolabili.length > 0 && (
+        <div className="callout">
+          <IconaAvviso larghezza={16} spessoreTratto={2} />
+          <span>
+            Non calcolabili:{" "}
+            {calcolo.nonCalcolabili.map((n, i) => (
+              <Fragment key={n.voce}>
+                {i > 0 && ", "}
+                {n.voce} (manca in <NomiIngredienti nomi={n.mancaIn} ricetta={ricetta} onScheda={onScheda} />)
+              </Fragment>
+            ))}
+            .
+          </span>
         </div>
       )}
       {calcolo.avvisi.map((a) => (
-        <div key={a} className="text-[12.5px] leading-snug text-[var(--rosso)]">
-          {a}
+        <div key={a} className="callout rosso">
+          <IconaAvviso larghezza={16} spessoreTratto={2} />
+          <span>{a}</span>
         </div>
       ))}
+      <div className={"scheda tabValori" + (conPorzione ? "" : " senzaPorzione")}>
+        <div className="rv testa">
+          <span>Valori nutrizionali</span>
+          <span>per 100 g</span>
+          {conPorzione && <span>per porzione</span>}
+        </div>
+        {calcolo.voci.map((v) => (
+          <div key={v.voce} className={"rv" + (v.voce.startsWith("di cui") ? " dicui" : "")}>
+            <span>{v.voce}</span>
+            <span>{v.per100 || "—"}</span>
+            {conPorzione && <span>{v.perPorzione || "—"}</span>}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="rigaAll">
+          <span className="etLabel">Contiene</span>
+          <span className="flex flex-wrap gap-1.5">
+            {calcolo.allergeni.length ? (
+              calcolo.allergeni.map((a) => (
+                <span key={a} className="chipAll">
+                  {a}
+                </span>
+              ))
+            ) : (
+              <span className="nessuno">nessun allergene</span>
+            )}
+          </span>
+        </div>
+        <div className="rigaAll">
+          <span className="etLabel">Può contenere</span>
+          <span className="flex flex-wrap gap-1.5">
+            {calcolo.tracce.length ? (
+              calcolo.tracce.map((a) => (
+                <span key={a} className="chipAll traccia">
+                  {a}
+                </span>
+              ))
+            ) : (
+              <span className="nessuno">niente</span>
+            )}
+          </span>
+        </div>
+      </div>
+      <div className="elencoIngr">
+        <div className="etLabel">Elenco ingredienti</div>
+        <div className="font-semibold">{calcolo.ingredienti || "—"}</div>
+      </div>
     </div>
   );
 }
@@ -240,6 +316,11 @@ export default function CampoRicetta({
     [ricetta, onCambia, tracciati],
   );
   const cambiaPorzioni = useCallback((n: number | null) => onCambia({ ...ricetta, porzioni: n }), [ricetta, onCambia]);
+  // La scheda tecnica di un ingrediente si completa qui, in una finestra: la
+  // ricetta (con la bozza non salvata) resta dov'e', dietro.
+  const [schedaAperta, setSchedaAperta] = useState<{ id: number; nome: string } | null>(null);
+  const apriScheda = useCallback((id: number, nome: string) => setSchedaAperta({ id, nome }), []);
+  const chiudiScheda = useCallback(() => setSchedaAperta(null), []);
 
   const presente = (tipo: string, id: number) => ricetta.righe.some((r) => r.tipo === tipo && r.id === id);
   const ingredientiLiberi = (ingredientiTutti ?? []).filter((i) => !presente("ingrediente", i.id));
@@ -248,69 +329,104 @@ export default function CampoRicetta({
   const senzaScheda = new Set(calcolo?.senzaValori ?? []);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="text-[12px] leading-snug text-[var(--tenue)]">
-        Scrivi le quantità che usi: valori nutrizionali, allergeni ed elenco ingredienti dell&apos;etichetta si calcolano dalle schede tecniche degli ingredienti.
-      </div>
-      <div className="campo">
-        <div className="etichettina">Ingredienti della ricetta</div>
-        {ricetta.righe.length > 0 && (
-          <div className="scheda overflow-hidden">
-            {ricetta.righe.map((r, i) => (
-              <RigaIngrediente
-                key={`${r.tipo}:${r.id}`}
-                riga={r}
-                indice={i}
-                percentuale={totale > 0 && grammiDi(r) > 0 ? (grammiDi(r) / totale) * 100 : null}
-                senzaScheda={!!r.nome && senzaScheda.has(r.nome)}
-                onQuantita={cambiaQuantita}
-                onUnita={cambiaUnita}
-                onTogli={togli}
-              />
-            ))}
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3" aria-label="Ingredienti">
+        <TitoloSezione testo="Ingredienti" conta={ricetta.righe.length} />
+        <div className="text-[12px] leading-snug text-[var(--tenue)]">Scrivi le quantità che usi di ogni ingrediente e quante porzioni ne ottieni.</div>
+        <div className="campo">
+          {ricetta.righe.length > 0 && (
+            <div className="scheda overflow-hidden">
+              <div className="testaIngredienti" aria-hidden="true">
+                <span className="cNome">Ingrediente</span>
+                <span className="cScheda">Scheda</span>
+                <span className="cQta">Quantità</span>
+                <span className="cUnita">Unità</span>
+                <span className="cCest" />
+              </div>
+              {ricetta.righe.map((r, i) => (
+                <RigaIngrediente
+                  key={`${r.tipo}:${r.id}`}
+                  riga={r}
+                  indice={i}
+                  percentuale={totale > 0 && grammiDi(r) > 0 ? (grammiDi(r) / totale) * 100 : null}
+                  senzaScheda={!!r.nome && senzaScheda.has(r.nome)}
+                  onQuantita={cambiaQuantita}
+                  onUnita={cambiaUnita}
+                  onTogli={togli}
+                  onScheda={apriScheda}
+                />
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="casella p-0 flex-1 min-w-[200px]">
+              <select value="" onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
+                <option value="">+ Aggiungi un ingrediente…</option>
+                {ingredientiLiberi.length > 0 && (
+                  <optgroup label="Ingredienti">
+                    {ingredientiLiberi.map((i) => (
+                      <option key={i.id} value={`ingrediente:${i.id}`}>
+                        {i.nome}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {prodottiLiberi.length > 0 && (
+                  <optgroup label="Le tue preparazioni">
+                    {prodottiLiberi.map((p) => (
+                      <option key={p.id} value={`prodotto:${p.id}`}>
+                        {p.nome}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            {ricetta.righe.length === 0 && tracciati.length > 0 && (
+              <button type="button" className="btn piccoloTel" onClick={daTracciati}>
+                Parti dagli ingredienti da tracciare
+              </button>
+            )}
           </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="casella p-0 flex-1 min-w-[200px]">
-            <select value="" onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
-              <option value="">+ Aggiungi un ingrediente…</option>
-              {ingredientiLiberi.length > 0 && (
-                <optgroup label="Ingredienti">
-                  {ingredientiLiberi.map((i) => (
-                    <option key={i.id} value={`ingrediente:${i.id}`}>
-                      {i.nome}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {prodottiLiberi.length > 0 && (
-                <optgroup label="Le tue preparazioni">
-                  {prodottiLiberi.map((p) => (
-                    <option key={p.id} value={`prodotto:${p.id}`}>
-                      {p.nome}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+        </div>
+
+        {/* Porzioni e peso in una striscia sola: il campo a sinistra, il riepilogo accanto. */}
+        <div className="stripPorzioni">
+          <div className="campoPorz" title="Quante porzioni hai fatto con queste quantità.">
+            <span className="etichettina">Porzioni ottenute</span>
+            <div className="w-[92px]">
+              <CampoNumero valore={ricetta.porzioni} onCambia={cambiaPorzioni} etichetta="Porzioni ottenute con queste quantità" interi />
+            </div>
           </div>
-          {ricetta.righe.length === 0 && tracciati.length > 0 && (
-            <button type="button" className="btn piccoloTel" onClick={daTracciati}>
-              Parti dagli ingredienti da tracciare
-            </button>
+          {calcolo && ricetta.righe.length > 0 && (
+            <div className="riepilogoPeso">
+              Peso degli ingredienti <b>{numeroLeggibile(calcolo.pesoIngredienti)} g</b>
+              {calcolo.pesoPorzione !== null && ricetta.porzioni !== null && (
+                <>
+                  {" "}
+                  · {ricetta.porzioni} porzioni da circa <b>{numeroLeggibile(calcolo.pesoPorzione)} g</b>
+                </>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="campo">
-        <div className="etichettina">Porzioni ottenute</div>
-        <div className="w-[180px]">
-          <CampoNumero valore={ricetta.porzioni} onCambia={cambiaPorzioni} etichetta="Porzioni ottenute con queste quantità" interi />
-        </div>
-        <div className="text-[12px] leading-snug text-[var(--tenue)]">Quante porzioni hai fatto con queste quantità.</div>
-      </div>
+      {/* La scheda tecnica della ricetta e' di sola lettura: la calcola il
+          servizio dalle schede tecniche degli ingredienti (RicetteService). */}
+      <section className="flex flex-col gap-2" aria-label="Scheda tecnica">
+        <TitoloSezione testo="Scheda tecnica" />
+        <div className="text-[12px] leading-snug text-[var(--tenue)]">Calcolata dalle schede tecniche degli ingredienti.</div>
+        {ricetta.righe.length === 0 ? (
+          <div className="text-[13px] leading-snug text-[var(--tenue)]">Aggiungi gli ingredienti: valori nutrizionali, allergeni ed elenco ingredienti compaiono qui.</div>
+        ) : calcolo ? (
+          <Riepilogo calcolo={calcolo} ricetta={ricetta} onScheda={apriScheda} />
+        ) : (
+          <div className="text-[13px] leading-snug text-[var(--tenue)]">Calcolo in corso…</div>
+        )}
+      </section>
 
-      {ricetta.righe.length > 0 && calcolo && <Riepilogo calcolo={calcolo} ricetta={ricetta} />}
+      {schedaAperta && <FinestraSchedaIngrediente id={schedaAperta.id} nome={schedaAperta.nome} onChiudi={chiudiScheda} />}
     </div>
   );
 }

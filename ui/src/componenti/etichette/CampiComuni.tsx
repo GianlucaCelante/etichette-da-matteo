@@ -11,17 +11,19 @@ interface ProprietaCampoTesto<C extends string> {
   grassetto?: boolean;
   unita?: string;
   mono?: boolean;
+  // L'etichetta c'e' gia' nel titolo del gruppo: resta solo come aria-label.
+  senzaEtichetta?: boolean;
 }
 
 // Un campo testo su una riga, come ".campo"/".casella" del prototipo: ogni
 // campo passa solo la propria chiave (campo) alla stessa funzione stabile
 // del genitore, cosi' l'handler resta un riferimento fisso in JSX
 // (react-perf/jsx-no-new-function-as-prop).
-export function CampoTesto<C extends string>({ etichetta, valore, campo, onCambia, placeholder, grassetto, unita, mono }: ProprietaCampoTesto<C>) {
+export function CampoTesto<C extends string>({ etichetta, valore, campo, onCambia, placeholder, grassetto, unita, mono, senzaEtichetta }: ProprietaCampoTesto<C>) {
   const cambia = useCallback((evento: ChangeEvent<HTMLInputElement>) => onCambia(campo, evento.target.value), [onCambia, campo]);
   return (
     <div className="campo">
-      <div className="etichettina">{etichetta}</div>
+      {!senzaEtichetta && <div className="etichettina">{etichetta}</div>}
       <div className={"casella" + (mono ? " mono" : "")}>
         <input value={valore} onChange={cambia} placeholder={placeholder} aria-label={etichetta} className={grassetto ? "font-bold" : ""} />
         {unita && <span className="unita">{unita}</span>}
@@ -36,6 +38,8 @@ interface ProprietaCampoArea<C extends string> {
   campo: C;
   onCambia: (campo: C, valore: string) => void;
   placeholder?: string;
+  // Il titolo sta gia' sopra (blocco Ingredienti): l'etichetta resta solo come aria-label.
+  senzaEtichetta?: boolean;
 }
 
 // "field-sizing: content" (index.css, "textarea.scorre") fa crescere la
@@ -59,7 +63,7 @@ function adattaAltezza(area: HTMLTextAreaElement) {
   if (contenitore) contenitore.scrollTop = scorrimento;
 }
 
-export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia, placeholder }: ProprietaCampoArea<C>) {
+export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia, placeholder, senzaEtichetta }: ProprietaCampoArea<C>) {
   const cambia = useCallback((evento: ChangeEvent<HTMLTextAreaElement>) => onCambia(campo, evento.target.value), [onCambia, campo]);
   const areaRif = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => {
@@ -81,7 +85,7 @@ export function CampoArea<C extends string>({ etichetta, valore, campo, onCambia
   }, []);
   return (
     <div className="campo">
-      <div className="etichettina">{etichetta}</div>
+      {!senzaEtichetta && <div className="etichettina">{etichetta}</div>}
       <textarea
         ref={areaRif}
         value={valore}
@@ -107,15 +111,17 @@ interface ProprietaCampoSelezione<C extends string> {
   campo: C;
   opzioni: readonly string[];
   onCambia: (campo: C, valore: string) => void;
+  // Etichetta breve da vedere, se il nome per chi usa il lettore di schermo e' piu' lungo.
+  nomeAccessibile?: string;
 }
 
-export function CampoSelezione<C extends string>({ etichetta, valore, campo, opzioni, onCambia }: ProprietaCampoSelezione<C>) {
+export function CampoSelezione<C extends string>({ etichetta, valore, campo, opzioni, onCambia, nomeAccessibile }: ProprietaCampoSelezione<C>) {
   const cambia = useCallback((evento: ChangeEvent<HTMLSelectElement>) => onCambia(campo, evento.target.value), [onCambia, campo]);
   return (
     <div className="campo">
       <div className="etichettina">{etichetta}</div>
       <div className="casella p-0">
-        <select value={valore} onChange={cambia} aria-label={etichetta} className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
+        <select value={valore} onChange={cambia} aria-label={nomeAccessibile ?? etichetta} className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
           {opzioni.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -147,7 +153,7 @@ function ChipAllergene({ nome, attivo, onClic }: { nome: string; attivo: boolean
 
 // A gettoni fra i quattordici allergeni di legge (docs/api.md, "Prodotto"):
 // quelli scelti sempre visibili, gli altri dietro "+ Altri".
-export function CampoAllergeni({ allergeni, onCambia }: { allergeni: string[]; onCambia: (nuovi: string[]) => void }) {
+export function CampoAllergeni({ allergeni, onCambia, senzaEtichetta }: { allergeni: string[]; onCambia: (nuovi: string[]) => void; senzaEtichetta?: boolean }) {
   const [altriAperti, setAltriAperti] = useState(false);
   const altri = ALLERGENI.filter((a) => !allergeni.includes(a));
   const apriAltri = useCallback(() => setAltriAperti(true), []);
@@ -157,7 +163,7 @@ export function CampoAllergeni({ allergeni, onCambia }: { allergeni: string[]; o
 
   return (
     <div className="campo">
-      <div className="etichettina">Può contenere</div>
+      {!senzaEtichetta && <div className="etichettina">Può contenere</div>}
       <div className="flex flex-wrap gap-1">
         {allergeni.map((a) => (
           <ChipAllergene key={a} nome={a} attivo onClic={togli} />
@@ -239,7 +245,8 @@ export function Gruppo({
       <button type="button" className="capoGruppo w-full" onClick={clic} aria-expanded={aperto}>
         <div className="testi">
           <div className="h nomeGruppo">{titolo}</div>
-          {sotto && <div className="sottoGruppo">{sotto}</div>}
+          {/* Il riassunto del contenuto si vede solo a gruppo chiuso: da aperto il campo e' li' sotto (9 ottobre 2026). */}
+          {sotto && !aperto && <div className="sottoGruppo">{sotto}</div>}
         </div>
         <span className="puntaGruppo">
           <IconaGiu larghezza={20} spessoreTratto={2} />

@@ -285,6 +285,72 @@ class FlussoStampaTest {
     }
 
     // ---------------------------------------------------------------------------------------
+    // Il Peso c'e' solo se il blocco «quantita» dell'etichetta e' acceso (9/10/2026)
+    // ---------------------------------------------------------------------------------------
+
+    private static String corpoProdotto(String nome, boolean pesoAcceso) {
+        return "{\"nome\":\"" + nome + "\",\"quantita\":\"400 g\",\"etichetta\":{\"blocchi\":["
+                + "{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":14,\"colonna\":\"piena\"},"
+                + "{\"tipo\":\"quantita\",\"acceso\":" + pesoAcceso + ",\"corpo\":10,\"colonna\":\"piena\"}]}}";
+    }
+
+    @Test
+    void conIlBloccoPesoAccesoIlPesoSiRegistraComeSempre() throws Exception {
+        long id = postJson("/api/prodotti", corpoProdotto("Con peso (prova peso)", true)).get("id").asLong();
+
+        RispostaStampa richiesto = stampe.stampa(id, 1, "250 g", null, null, null, null, "PC", "dispositivo-peso-1");
+        RispostaStampa predefinito = stampe.stampa(id, 1, null, null, null, null, null, "PC", "dispositivo-peso-2");
+
+        assertThat(righeDelLavoro(richiesto.lavoroId()).get(0).getQuantita()).isEqualTo("250 g");
+        assertThat(righeDelLavoro(predefinito.lavoroId()).get(0).getQuantita()).isEqualTo("400 g");
+    }
+
+    @Test
+    void conIlBloccoPesoSpentoOAssenteNonSiRegistraNessunPesoNeDelClientNeDelProdotto() throws Exception {
+        long spento = postJson("/api/prodotti", corpoProdotto("Peso spento (prova peso)", false)).get("id").asLong();
+        long assente = postJson("/api/prodotti", "{\"nome\":\"Peso assente (prova peso)\",\"quantita\":\"400 g\","
+                + "\"etichetta\":{\"blocchi\":[{\"tipo\":\"titolo\",\"acceso\":true,\"corpo\":14,\"colonna\":\"piena\"}]}}").get("id").asLong();
+
+        for (long id : List.of(spento, assente)) {
+            RispostaStampa mandato = stampe.stampa(id, 1, "999 g", null, null, null, null, "PC", "dispositivo-peso-spento-" + id + "a");
+            RispostaStampa daProdotto = stampe.stampa(id, 1, null, null, null, null, null, "PC", "dispositivo-peso-spento-" + id + "b");
+            assertThat(righeDelLavoro(mandato.lavoroId()).get(0).getQuantita()).isNull();
+            assertThat(righeDelLavoro(daProdotto.lavoroId()).get(0).getQuantita()).isNull();
+        }
+        // Anche l'API dello Storico lo dice: nessun peso.
+        RispostaStampa una = stampe.stampa(spento, 1, "999 g", null, null, null, null, "PC", "dispositivo-peso-api");
+        assertThat(getJson("/api/storico?lavoroId=" + una.lavoroId()).get(0).get("quantita").isNull()).isTrue();
+    }
+
+    @Test
+    void laRistampaDiUnaRigaSenzaPesoRestaSenzaPeso() throws Exception {
+        long id = postJson("/api/prodotti", corpoProdotto("Ristampa senza peso (prova peso)", false)).get("id").asLong();
+        RispostaStampa originale = stampe.stampa(id, 1, "999 g", null, null, null, null, "PC", "dispositivo-peso-ristampa");
+        StoricoStampa riga = righeDelLavoro(originale.lavoroId()).get(0);
+        assertThat(riga.getQuantita()).isNull();
+
+        RispostaStampa ristampa = stampe.ristampa(riga.getId(), 1, "PC");
+        assertThat(righeDelLavoro(ristampa.lavoroId()).get(0).getQuantita()).isNull();
+        RispostaStampa ultima = stampe.ristampaUltima(1, "PC");
+        assertThat(righeDelLavoro(ultima.lavoroId()).get(0).getQuantita()).isNull();
+    }
+
+    @Test
+    void laProvaProdottoNonPortaIlPesoSeIlBloccoESpento() throws Exception {
+        for (boolean acceso : List.of(true, false)) {
+            String corpo = "{\"prodotto\":" + corpoProdotto("Prova peso " + acceso, acceso) + "}";
+            String lavoroId = postJson("/api/stampe/prova-prodotto", corpo).get("lavoroId").asText();
+            JsonNode attivi = getJson("/api/stampe/attive");
+            JsonNode voce = attivi.get(posizione(attivi, lavoroId));
+            if (acceso) {
+                assertThat(voce.get("quantita").asText()).isEqualTo("400 g");
+            } else {
+                assertThat(voce.get("quantita") == null || voce.get("quantita").isNull()).isTrue();
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
 
     private List<StoricoStampa> righeDelLavoro(String lavoroId) {
         List<StoricoStampa> righe = new ArrayList<>();

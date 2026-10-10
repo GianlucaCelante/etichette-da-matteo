@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { CampoInline } from "./CampiComuni";
 
 // Le tre diciture fisse del prototipo: restano. Oltre a queste, «Testo libero»
 // (2 ottobre 2026, prove con utenti simulati: «0-4 °C» non si poteva scrivere e
@@ -41,30 +40,26 @@ export default function CampoConservazione({ valore, onCambia }: { valore: strin
   const cambiaTesto = useCallback((evento: ChangeEvent<HTMLInputElement>) => onCambia(evento.target.value), [onCambia]);
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <CampoInline etichetta="Conservazione">
-        <div className="casella p-0">
-          <select
-            value={libero ? LIBERO : valore}
-            onChange={cambiaScelta}
-            aria-label="Conservazione"
-            className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer"
-          >
-            {OPZIONI_FISSE.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-            <option value={LIBERO}>Testo libero…</option>
-          </select>
-        </div>
-      </CampoInline>
+    <div className="flex flex-col gap-2">
+      <div className="casella p-0">
+        <select
+          value={libero ? LIBERO : valore}
+          onChange={cambiaScelta}
+          aria-label="Conservazione"
+          className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer"
+        >
+          {OPZIONI_FISSE.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+          <option value={LIBERO}>Testo libero…</option>
+        </select>
+      </div>
       {libero && (
-        <CampoInline etichetta="Scrivilo tu">
-          <div className="casella">
-            <input ref={rifTesto} value={valore} onChange={cambiaTesto} placeholder="es. In frigo a 0-4 °C" aria-label="Conservazione: testo libero" />
-          </div>
-        </CampoInline>
+        <div className="casella">
+          <input ref={rifTesto} value={valore} onChange={cambiaTesto} placeholder="Scrivilo tu, es. In frigo a 0-4 °C" aria-label="Conservazione: testo libero" />
+        </div>
       )}
     </div>
   );

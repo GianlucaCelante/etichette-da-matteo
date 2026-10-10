@@ -411,6 +411,23 @@ html[data-tastiera] .app { bottom: auto; top: var(--vv-top, 0px); height: var(--
 }
 .gettone.on { background: var(--testo); color: #fff; border-color: var(--testo); }
 .etichettina { font-size: 12px; font-weight: 700; color: var(--tenue); letter-spacing: .04em; text-transform: uppercase; }
+/* La carta di un'etichetta nell'elenco di Etichette (VoceProdotto): a destra, sulla
+   stessa riga del peso, la pillola «Ricetta» (verde: «N ingredienti» con
+   l'icona della ricetta; ambra: «Crea la ricetta» col +). E' sopra la carta,
+   fratello del suo bottone, non dentro: il suo clic non la seleziona. L'area
+   di tocco (::after) e' alta 36px anche se la pillola ne misura 24. */
+.voceProdotto { position: relative; width: 100%; flex-shrink: 0; }
+.elencoEtichette .voceProdotto .prodotto .d { max-width: calc(100% - 120px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.linkRicetta {
+  position: absolute; right: 12px; bottom: 9px; z-index: 1; display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 10px 0 8px; border-radius: 12px; border: 1px solid var(--verdebordo); background: var(--verdechiaro);
+  color: var(--verdescuro); font-size: 12px; font-weight: 700; white-space: nowrap; text-decoration: none; max-width: calc(100% - 24px);
+}
+.linkRicetta > span { overflow: hidden; text-overflow: ellipsis; }
+.linkRicetta::after { content: ""; position: absolute; inset: -6px -4px; }
+.linkRicetta.crea { border-color: var(--ambrabordo); background: var(--ambrachiaro); color: var(--ambra); }
+.linkRicetta:hover { border-color: var(--verde); }
+.linkRicetta.crea:hover { border-color: var(--ambra); }
 .campo { display: flex; flex-direction: column; gap: 6px; }
 .casella {
   min-height: 52px; border: 1px solid var(--bordocampo); border-radius: 12px; background: var(--carta);
@@ -1205,7 +1222,7 @@ div.cornice.compatta { min-height: 80px; }
 .barraAvanzamento > span { display: block; height: 100%; background: var(--ambra); transition: width .25s; }
 
 /* ---------- storico ---------- */
-.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 88px 104px 104px 104px 28px; }
+.grigliaStorico { grid-template-columns: 64px minmax(0, 1fr) 150px 104px 104px 104px 28px; }
 .tabella { display: grid; gap: 10px; padding: 0 12px 6px; border-bottom: 1px solid var(--riga); }
 .vocestorico { display: grid; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--riga); }
 .giornoStorico { padding: 14px 12px 6px; }
@@ -1362,7 +1379,6 @@ div.cornice.compatta { min-height: 80px; }
      prototipo): sotto i 16px iOS ingrandisce la pagina (regola qui sopra),
      e a quel corpo il numero intero non sta in meta' della griglia 2x2.
      Gli si da' tutta la riga, Copie passa sotto. */
-  .campoLottoStampa { grid-column: 1 / -1; }
   /* Copie (ContatoreCopie, Stampa.tsx) restava sola in meta' riga sotto
      Lotto (l'altra meta' vuota, perche' Lotto occupa gia' tutta la riga
      sopra): i suoi tre tasti (52+52px piu' il numero in mezzo, ~150px)
@@ -1370,7 +1386,6 @@ div.cornice.compatta { min-height: 80px; }
      trovato dal cliente, 25 settembre 2026, dopo aver stretto il gutter a
      10px). Tutta la riga anche per lei: stesso trucco di Lotto, e la meta'
      vuota qui sotto viene usata invece di sprecarsi. */
-  .campoCopieStampa { grid-column: 1 / -1; }
   .riga { padding: var(--d-pad) 2px; }
   .riga.scelta { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; }
   .riga.scelta > .v { grid-column: 2; margin-left: 0; font-size: 13px; }
@@ -2064,3 +2079,236 @@ div.cornice.compatta { min-height: 80px; }
 }
 
 } /* fine @layer components */
+
+/* ---------- rifinitura grafica di Ricette, scheda tecnica e campo Ingredienti (9 ottobre 2026) ----------
+   Quattro schermate nate in questi giorni, riordinate senza toccare il
+   funzionamento: righe della ricetta in griglia, striscia porzioni, tabella e chip
+   della scheda calcolata, finestra della scheda dell'ingrediente, riquadro «Dalla
+   ricetta» sotto il campo Ingredienti, carte dell'elenco Ricette. ---------- */
+
+/* Pezzi comuni: etichetta piccola, chip degli allergeni di sola lettura (Contiene
+   in evidenza, Può contenere piu' tenue e tratteggiato), riquadri di avviso. */
+.etLabel { font-size: 12px; font-weight: 700; color: var(--tenue); line-height: 26px; }
+.chipAll {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 13px;
+  border: 1px solid var(--testo); background: var(--testo); color: #fff; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+}
+.chipAll.traccia { border: 1px dashed var(--tratteggio); background: var(--carta); color: var(--tenue); font-weight: 600; }
+.nessuno { font-size: 12.5px; line-height: 26px; color: var(--tenue); }
+.rigaAll { display: grid; grid-template-columns: 104px minmax(0, 1fr); column-gap: 8px; align-items: start; }
+.callout {
+  display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--ambrabordo);
+  background: var(--ambrachiaro); color: var(--ambra); font-size: 12.5px; line-height: 1.45;
+}
+.callout > svg { flex-shrink: 0; margin-top: 1px; }
+.callout button { display: inline; color: inherit; text-decoration: underline; text-underline-offset: 2px; font-weight: 700; }
+.callout.rosso { border-color: var(--rossobordo); background: var(--rossochiaro); color: var(--rosso); }
+
+/* A. Le righe ingrediente della ricetta: nome (con la percentuale sotto), stato
+   della scheda, quantita', unita', cestino. */
+.testaIngredienti, .rigaIngr {
+  display: grid; grid-template-columns: minmax(0, 1fr) 114px 82px 58px 28px; column-gap: 8px; align-items: center; padding: 6px 12px;
+}
+.testaIngredienti { padding-top: 7px; padding-bottom: 7px; background: var(--sabbia); border-bottom: 1px solid var(--riga); font-size: 11.5px; font-weight: 700; color: var(--tenue); }
+.testaIngredienti .cQta { text-align: right; }
+.rigaIngr { min-height: 56px; border-bottom: 1px solid var(--riga); font-size: 13px; }
+.rigaIngr:last-child { border-bottom: 0; }
+.rigaIngr .cNome { min-width: 0; }
+.rigaIngr .nomeIng {
+  font-size: 13.5px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.rigaIngr .sotto { font-size: 11.5px; line-height: 1.3; color: var(--tenue); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rigaIngr .cUnita, .rigaIngr .cQta { min-width: 0; }
+.chipScheda {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 7px; border-radius: 13px; border: 1px solid var(--bordo);
+  background: var(--carta); color: var(--verdescuro); font-size: 11.5px; font-weight: 700; white-space: nowrap;
+}
+.chipScheda:hover { border-color: var(--verde); background: var(--verdechiaro); }
+.chipScheda.manca { border-color: var(--ambrabordo); background: var(--ambrachiaro); color: var(--ambra); }
+.chipScheda.manca:hover { border-color: var(--ambra); }
+
+/* A. Porzioni e peso in una striscia sola. */
+.stripPorzioni {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--riga); background: var(--sabbia);
+}
+.stripPorzioni .campoPorz { display: flex; align-items: center; gap: 10px; }
+.stripPorzioni .riepilogoPeso { flex: 1 1 180px; font-size: 13px; line-height: 1.45; }
+
+/* A. La tabella dei valori calcolati: intestazione, righe «di cui» rientrate, numeri a
+   destra, la colonna «per 100 g» in evidenza. */
+.tabValori { overflow: hidden; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tabValori .rv { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; column-gap: 14px; align-items: baseline; padding: 6px 12px; border-bottom: 1px solid var(--riga); }
+.tabValori { display: grid; grid-template-columns: minmax(0, 1fr) max-content max-content; }
+.tabValori.senzaPorzione { grid-template-columns: minmax(0, 1fr) max-content; }
+.tabValori .rv:last-child { border-bottom: 0; }
+.tabValori .rv > :nth-child(2) { text-align: right; font-weight: 700; margin: -6px -6px; padding: 6px 6px; background: rgba(227, 234, 209, .5); }
+.tabValori .rv > :nth-child(3) { text-align: right; color: var(--tenue); }
+.tabValori .rv > :nth-child(2), .tabValori .rv > :nth-child(3) { white-space: nowrap; }
+.tabValori .rv.testa { padding-top: 7px; padding-bottom: 7px; background: var(--sabbia); font-size: 11.5px; font-weight: 700; color: var(--tenue); }
+.tabValori .rv.testa > :nth-child(2) { margin: 0; padding: 0; background: none; color: var(--verdescuro); }
+.tabValori .rv.dicui { font-size: 12.5px; color: var(--tenue); }
+.tabValori .rv.dicui > :first-child { padding-left: 16px; }
+.tabValori .rv.dicui > :nth-child(2) { font-weight: 600; color: var(--testo); }
+.elencoIngr {
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--riga); background: var(--sabbia); font-size: 13px; line-height: 1.5;
+  box-shadow: inset 0 1px 3px rgba(88, 68, 60, .08);
+}
+.elencoIngr .etLabel { line-height: 1.6; }
+
+/* B. La scheda tecnica dell'ingrediente: finestra piu' larga, area che scorre e
+   barra azioni fissa in fondo. */
+.finestra.piccola.media:has(.schedaFinestra) { width: min(780px, 100%); }
+.barraScheda {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; flex-shrink: 0; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--riga);
+}
+.barraScheda .nonSalvate { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ambra); }
+.barraScheda .nonSalvate::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ambra); }
+.testaVoci, .rigaVoce { display: grid; grid-template-columns: 18px minmax(0, 1fr) 112px 80px 30px; column-gap: 10px; align-items: center; padding: 4px 12px 4px 8px; }
+.testaVoci { padding-top: 7px; padding-bottom: 7px; background: var(--sabbia); border-bottom: 1px solid var(--riga); font-size: 11.5px; font-weight: 700; color: var(--tenue); }
+.testaVoci .cNome { grid-column: 2; }
+.testaVoci .cValore { text-align: right; }
+.rigaVoce { min-height: 42px; border-bottom: 1px solid var(--riga); font-size: 13.5px; background: var(--carta); }
+.rigaVoce:last-child { border-bottom: 0; }
+.rigaVoce .maniglia { width: 18px; }
+.codaAggiungi {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 40px; border-radius: 12px; border: 1px dashed var(--tratteggio);
+  color: var(--tenue); font-size: 13px; font-weight: 700;
+}
+.codaAggiungi:hover { border-color: var(--verde); background: var(--verdechiaro); color: var(--verdescuro); }
+.allergeniScheda { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gruppoAllergeni { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; border: 1px solid var(--riga); background: var(--sabbia); }
+@media (min-width: 861px) {
+  .allergeniScheda .allergene { height: 30px; padding: 0 9px; font-size: 12.5px; }
+}
+
+/* C. Il tasto «Importa» e la conferma: una riga a destra, sotto la casella. Il
+   riquadro «Dalla ricetta» raggruppa quello che arriva dalla ricetta. */
+.barraImporta { display: flex; justify-content: flex-end; }
+.confermaDiscreta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; }
+.confermaDiscreta .domanda { font-size: 13px; color: var(--tenue); }
+.confermaDiscreta .bottoni { display: inline-flex; gap: 8px; }
+.dallaRicetta { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 12px; border: 1px solid var(--riga); background: var(--sabbia); }
+.dallaRicetta .capo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dallaRicetta .titolo { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--testo); }
+.dallaRicetta .nota { font-size: 12px; line-height: 1.4; color: var(--tenue); }
+
+/* D. Le carte dell'elenco Ricette: titolo al massimo su 2 righe, riepilogo in una
+   pillola tenue, anteprima degli ingredienti su una riga con i puntini. */
+@media (min-width: 1180px) { .colonna.scheda.pannelloRicette { width: 600px; } }
+@media (min-width: 861px) and (max-width: 1179px) { .colonna.scheda.pannelloRicette { width: 490px; } .cartaRicetta .riepilogo { white-space: normal; border-radius: 10px; } }
+.griglia.grigliaRicette { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.prodotto.cartaRicetta { min-height: 128px; gap: 8px; align-items: flex-start; }
+.cartaRicetta .n { -webkit-line-clamp: 2; min-height: 2.3em; align-self: stretch; }
+.cartaRicetta .riepilogo {
+  display: inline-block; max-width: 100%; padding: 2px 9px; border-radius: 11px; border: 1px solid var(--riga); background: var(--sabbia);
+  font-size: 12px; font-weight: 700; line-height: 1.5; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cartaRicetta .anteprimaIngr { align-self: stretch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prodotto.cartaRicetta.on { background: #F8FAF1; }
+.cartaRicetta.on .riepilogo { border-color: var(--verdebordo); background: var(--verdechiaro); color: var(--verdescuro); }
+
+@media (max-width: 860px) {
+  /* A. Su telefono la riga e' su due livelli: nome e stato scheda, poi quantita', unita', cestino. */
+  .testaIngredienti, .testaVoci { display: none; }
+  .rigaIngr { grid-template-columns: minmax(0, 1fr) 88px 40px; grid-template-areas: "nome scheda scheda" "qta unita cest"; row-gap: 8px; padding: 10px 12px; min-height: 0; }
+  .rigaIngr .cNome { grid-area: nome; }
+  .rigaIngr .cScheda { grid-area: scheda; justify-self: end; }
+  .rigaIngr .cQta { grid-area: qta; }
+  .rigaIngr .cUnita { grid-area: unita; }
+  .rigaIngr .cCest { grid-area: cest; justify-self: end; width: var(--d-tap); height: var(--d-tap); }
+  .rigaVoce .cestino { width: var(--d-tap); height: var(--d-tap); }
+  .chipScheda { height: var(--d-tap); padding: 0 11px 0 9px; font-size: 12.5px; border-radius: 18px; }
+  .tabValori { font-size: 12px; grid-template-columns: minmax(0, 1fr) 84px 84px; }
+  .tabValori.senzaPorzione { grid-template-columns: minmax(0, 1fr) 96px; }
+  .tabValori .rv { column-gap: 8px; padding: 6px 10px; }
+  .tabValori .rv.testa { font-size: 11px; }
+  .tabValori .rv.dicui { font-size: 11.5px; }
+  .tabValori .rv > :nth-child(2), .tabValori .rv > :nth-child(3) { white-space: normal; text-wrap: balance; margin-left: 0; }
+  .tabValori .rv > :nth-child(2) { margin: -6px -4px; padding: 6px 4px; }
+  .tabValori .rv.testa > :nth-child(2) { margin: 0; padding: 0; }
+  .tabValori .rv.dicui > :first-child { padding-left: 12px; }
+  .rigaAll { grid-template-columns: 92px minmax(0, 1fr); }
+  .chipAll { height: 28px; }
+  /* B. Voce su due livelli: maniglia, nome e cestino sopra; valore e unita' sotto. */
+  .rigaVoce { grid-template-columns: 16px minmax(0, 1fr) 62px 64px var(--d-tap); column-gap: 4px; padding: 4px 4px 4px 6px; min-height: 48px; }
+  .rigaVoce .maniglia { width: 16px; }
+  .rigaVoce .cValore { padding: 0 6px; }
+  .rigaVoce .cUnita { padding: 0 2px; }
+  .codaAggiungi { height: 44px; }
+  .allergeniScheda { grid-template-columns: 1fr; }
+  .allergeniScheda .allergene { height: 36px; padding: 0 11px; font-size: 13px; }
+  .gruppoAllergeni { padding: 10px; }
+  .barraScheda { margin-top: 10px; padding-top: 10px; }
+  /* C. */
+  .barraImporta { justify-content: stretch; }
+  .confermaDiscreta { justify-content: space-between; }
+  .confermaDiscreta .domanda { flex: 1 1 100%; }
+  .confermaDiscreta .bottoni { margin-left: auto; }
+  /* D. Carta della ricetta: sul telefono e' una riga con la freccia a destra. */
+  .prodotto.cartaRicetta { min-height: 0; align-items: start; }
+  .cartaRicetta .n { min-height: 0; }
+  .cartaRicetta .riepilogo, .cartaRicetta .anteprimaIngr { grid-column: 1; }
+  .cartaRicetta .riepilogo { justify-self: start; }
+  .vistaStampa:not(.dettaglio) .prodotto.cartaRicetta.on { background: var(--carta); }
+  .vistaStampa:not(.dettaglio) .cartaRicetta.on .riepilogo { border-color: var(--riga); background: var(--sabbia); color: var(--tenue); }
+  .cartaRicetta .freccia { grid-row: 1 / span 3; align-self: center; }
+}
+
+/* ---------- blocco Ingredienti dell'editor: riga della ricetta e tre sezioni (9 ottobre 2026) ----------
+   Testo, Allergeni e Tracciabilita' una sotto l'altra, separate da un filetto, con
+   lo stesso titolo piccolo; Tracciabilita' si ripiega (chiusa di serie, riassunto
+   nell'intestazione) come i gruppi dell'editor. */
+.bloccoIngr { display: flex; flex-direction: column; gap: 14px; }
+.rigaRicetta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 7px 12px; border-radius: 12px; border: 1px solid var(--riga);
+  background: var(--sabbia); font-size: 13px; line-height: 1.4;
+}
+.rigaRicetta > svg { flex: none; color: var(--tenue); }
+.rigaRicetta .testo { font-weight: 600; }
+.rigaRicetta button { margin-left: auto; min-height: 32px; }
+.sezIngr { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--riga); }
+.bloccoIngr > .sezIngr:first-child { padding-top: 0; border-top: 0; }
+.capoSezIngr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 28px; }
+.capoSezIngr.fisso .barraImporta { margin-left: auto; }
+.capoSezIngr .btn.compatto { height: 32px; font-size: 13px; padding: 0 12px; }
+@media (min-width: 861px) { .capoSezIngr .confermaDiscreta .btn.compatto { height: 32px; } }
+button.capoSezIngr { width: 100%; flex-wrap: nowrap; min-height: 32px; text-align: left; }
+.titSez { font-size: 14px; font-weight: 700; color: var(--testo); }
+.riassuntoSez { margin-left: auto; min-width: 0; font-size: 12.5px; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gruppo.aperto .tracciabilita .puntaGruppo { transform: none; }
+.gruppo.aperto .tracciabilita.aperta .puntaGruppo { transform: rotate(180deg); }
+.notaSez { font-size: 12px; line-height: 1.4; color: var(--tenue); }
+.sezIngr .collegati { display: flex; flex-direction: column; gap: 8px; }
+.dueStati { display: inline-flex; align-self: flex-start; padding: 2px; gap: 2px; border-radius: 18px; border: 1px solid var(--bordo); background: var(--carta); }
+.dueStati button { height: 32px; padding: 0 12px; border-radius: 16px; font-size: 12px; font-weight: 700; color: var(--tenue); white-space: nowrap; }
+.dueStati button.on { background: var(--verdechiaro); color: var(--verdescuro); box-shadow: inset 0 0 0 1px var(--verdebordo); }
+@media (max-width: 860px) {
+  .rigaRicetta { padding: 4px 12px; }
+  .rigaRicetta button { min-height: var(--d-tap); }
+  .capoSezIngr .btn.compatto { height: var(--d-tap); }
+  .capoSezIngr.fisso .barraImporta { flex: 1 1 100%; }
+  button.capoSezIngr { min-height: var(--d-tap); }
+  .sezIngr .collegati { gap: 10px; }
+  .dueStati { border-radius: 22px; }
+  .dueStati button { height: var(--d-tap); padding: 0 14px; font-size: 13px; border-radius: 18px; }
+}
+
+/* ---------- Stampa ed Etichette: peso sulle card, Lotto/Copie allineati (9 ottobre 2026) ----------
+   Senza il blocco «Peso» la card non ha la riga del peso: la pillola «Ricetta»,
+   che sta in basso a destra, resta sotto il nome invece di sovrapporsi. */
+.voceProdotto .prodotto.senzaPeso, .voceProdotto .prodotto.senzaPeso.on { padding-bottom: 42px; }
+/* Lotto e Copie stanno sulla stessa riga della griglia, anche sul telefono: celle
+   alla stessa altezza, controlli attaccati in alto. */
+.grigliaCampiStampa { align-items: start; }
+
+/* ---------- gruppi dell'editor piu' snelli (9 ottobre 2026) ----------
+   Da aperto il gruppo mostra solo il titolo (il riassunto sta solo a gruppo
+   chiuso, vedi Gruppo in CampiComuni.tsx) e dentro e' piu' compatto: meno
+   padding e meno spazio fra i campi. I controlli restano alti come prima. */
+.gruppo.aperto > .capoGruppo { min-height: 46px; padding-top: 6px; padding-bottom: 6px; }
+.gruppo > .dentroGruppo { gap: 10px; padding: 10px 14px 12px; }
+.gruppo .dentroGruppo .campo { gap: 4px; }
+@media (max-width: 860px) {
+  .gruppo.aperto > .capoGruppo { min-height: 46px; }
+  .gruppo > .dentroGruppo { gap: 10px; padding: 8px 12px 10px; }
+}

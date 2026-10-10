@@ -431,7 +431,8 @@ export function PannelloFatta({
   prodottoNome: string;
   fatte: number;
   volute: number;
-  quantita: string;
+  // Il Peso di questa stampa: la riga compare solo se c'e' (blocco Peso acceso).
+  quantita?: string | null;
   // Le porzioni di questa stampa: la riga compare solo se ce ne sono.
   porzioni?: string;
   scadenza: string | null;
@@ -526,12 +527,14 @@ export function PannelloFatta({
           <span>Etichetta</span>
           <b>{prodottoNome}</b>
         </div>
-        <div className="kv">
-          {/* "Peso" (deciso da Gianluca, 25/09/2026): stesso nome del campo
-              nella scheda, il blocco dell'etichetta si chiama cosi' adesso. */}
-          <span>Peso</span>
-          <b>{quantita}</b>
-        </div>
+        {quantita?.trim() && (
+          <div className="kv">
+            {/* "Peso" (deciso da Gianluca, 25/09/2026): stesso nome del campo
+                nella scheda, il blocco dell'etichetta si chiama cosi' adesso. */}
+            <span>Peso</span>
+            <b>{quantita}</b>
+          </div>
+        )}
         {porzioni?.trim() && (
           <div className="kv">
             <span>Porzioni</span>

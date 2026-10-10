@@ -60,8 +60,6 @@ function rigaTabella(r: StoricoRiga): string {
     r.prodottoNome,
     r.copie,
     r.lotto,
-    r.quantita,
-    r.porzioni ?? "",
     r.scadenza ? formattaDataItaliana(r.scadenza) : "",
     r.dispositivoNome,
     TESTO_ESITO_ESPORTA[r.esito],
@@ -147,7 +145,7 @@ export default function EsportaElenco({ periodo, q, da, a, disabilitato, motivo 
           if (tutte.length === 0) return avvisa("Non c'è niente da copiare: l'elenco è vuoto.");
           // "Peso" invece di "Quantità" (deciso da Gianluca, 25/09/2026):
           // stessa colonna della tabella soloPC in Storico.tsx.
-          const intestazione = ["Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Peso", "Porzioni", "Scadenza", "Da", "Esito"].join("\t");
+          const intestazione = ["Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Scadenza", "Da", "Esito"].join("\t");
           const testo = [intestazione, ...tutte.map(rigaTabella)].join("\n");
           return copiaNegliAppunti(testo).then((copiato) =>
             avvisa(copiato ? "Elenco copiato: incollalo in un foglio di calcolo." : "Il browser non mi lascia copiare l'elenco."),

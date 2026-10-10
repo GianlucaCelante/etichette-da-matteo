@@ -15,11 +15,12 @@ import {
   IconaStorico,
 } from "./Icone";
 import RichiediNomeDispositivo from "./RichiediNomeDispositivo";
+import { vistaIngredienti } from "./ricette/vista";
 
 const VOCI = [
   { percorso: "/stampa", etichetta: "Stampa", Icona: IconaStampa },
   { percorso: "/etichette", etichetta: "Etichette", Icona: IconaEtichette },
-  { percorso: "/ingredienti", etichetta: "Ingredienti", Icona: IconaIngredienti },
+  { percorso: "/ingredienti", etichetta: "Ricette", Icona: IconaIngredienti },
   { percorso: "/storico", etichetta: "Storico", Icona: IconaStorico },
   { percorso: "/impostazioni", etichetta: "Impostazioni", Icona: IconaImpostazioni },
 ] as const;
@@ -29,7 +30,7 @@ const VOCI = [
 const TITOLI_PAGINA: Record<string, string> = {
   "/stampa": "Stampa",
   "/etichette": "Modifica etichette",
-  "/ingredienti": "Ingredienti",
+  "/ingredienti": "Ricette",
   "/ingredienti/arrivo": "Merce arrivata",
   "/storico": "Storico",
   "/impostazioni": "Impostazioni",
@@ -38,7 +39,7 @@ const TITOLI_PAGINA: Record<string, string> = {
 const TITOLI: Record<string, string> = {
   "/stampa": "Stampa etichetta",
   "/etichette": "Etichette",
-  "/ingredienti": "Ingredienti",
+  "/ingredienti": "Ricette",
   "/ingredienti/arrivo": "Merce arrivata",
   "/storico": "Storico stampe",
   "/impostazioni": "Impostazioni",
@@ -73,8 +74,11 @@ export default function Guscio() {
   const posizione = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const titolo = TITOLI[posizione.pathname] ?? "Etichette";
-  const titoloPagina = TITOLI_PAGINA[posizione.pathname] ?? "Etichette";
+  // La voce «Ricette» del menu (/ingredienti) ha due viste: il titolo segue
+  // quella aperta (?vista=ingredienti = il catalogo degli ingredienti).
+  const nelCatalogo = posizione.pathname === "/ingredienti" && vistaIngredienti(searchParams) === "ingredienti";
+  const titolo = nelCatalogo ? "Ingredienti" : (TITOLI[posizione.pathname] ?? "Etichette");
+  const titoloPagina = nelCatalogo ? "Ingredienti" : (TITOLI_PAGINA[posizione.pathname] ?? "Etichette");
   const rifPrincipale = useRef<HTMLElement | null>(null);
   const rifTestata = useRef<HTMLElement | null>(null);
   // Le barre fisse dentro l'area che scorre (anteprima in alto, Modifica/Stampa
@@ -103,7 +107,7 @@ export default function Guscio() {
   const guardiaIndietroRef = useRef<(() => boolean) | null>(null);
   const vaiIndietro = useCallback(() => {
     if (guardiaIndietroRef.current?.()) return;
-    navigate(tornaA || "/ingredienti");
+    navigate(tornaA || "/ingredienti?vista=ingredienti");
   }, [navigate, tornaA]);
 
   // I due punti d'aggancio della testata (vedi contestoTestata.ts): la vista
