@@ -107,7 +107,6 @@ export default function CampoLogoBlocco({ onCambiato }: { onCambiato: () => void
             </span>
           )}
         </div>
-        <div className="text-[12px] text-[var(--spento)]">Il logo è unico per tutte le etichette.</div>
       </div>
       {/* Il campo vero e' nascosto e lo apre il bottone «Carica un'immagine»: senza
           nome accessibile e fuori dalla tastiera, cosi' per i lettori di schermo il

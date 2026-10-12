@@ -58,6 +58,14 @@ export function valoreCalcolato(voce: string, calcolo: CalcoloRicetta | null | u
   return trovato && trovato.valore.trim() !== "" ? trovato.valore : null;
 }
 
+// Cosa dire quando il «Può contenere» calcolato e' vuoto: se le schede
+// dichiaravano delle tracce che il prodotto contiene gia' come allergeni lo si
+// scrive (non sono sparite per errore), altrimenti che non ce ne sono.
+export function spiegaNessunaTraccia(giaContenute: string[] | undefined): string {
+  if (!giaContenute || giaContenute.length === 0) return "nessuna";
+  return `${giaContenute.join(", ")}: già tra gli allergeni contenuti`;
+}
+
 // I campi dell'etichetta come escono con la ricetta applicata: stessa regola
 // di RicetteService#applica sul servizio, qui per la bozza non ancora salvata
 // (anteprima, riassunti dei gruppi, salvataggio). Senza calcolo restano come

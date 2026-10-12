@@ -548,13 +548,16 @@ function PannelloProdotto({
             </span>
           </button>
         )}
-        {/* La stampante non e' pronta, o il programma sul PC non risponde:
+        {/* Stampante scollegata: non si ripete qui, lo dice gia' la pastiglia in alto
+            a destra (12 ottobre 2026, chiesto da Gianluca). Per le altre cause
+            (coperchio, rotolo...) e per il PC non raggiungibile resta l'avviso.
+            La stampante non e' pronta, o il programma sul PC non risponde:
             lo si dice sopra «Stampa», con cosa fare, su QUALUNQUE dispositivo
             (2/10/2026: il telefono vedeva solo «Errore» e accettava una
             stampa a coperchio aperto senza dire nulla). Non si blocca: lo
             stato puo' cambiare da un momento all'altro, e la stampa aspetta
             la stampante da sola. */}
-        {(!collegato || problema) && (
+        {(!collegato || (problema && stampante?.stato !== "scollegata")) && (
           <div
             className="flex items-start gap-2 rounded-xl border border-[var(--ambrabordo)] bg-[var(--ambrachiaro)] px-3 py-2 text-[13.5px] leading-snug text-[var(--testo)]"
             role="status"
@@ -570,9 +573,7 @@ function PannelloProdotto({
               ) : problema ? (
                 <>
                   <b>{`Stampante: ${problema.breve.toLowerCase()}.`}</b>{" "}
-                  {stampante?.stato === "scollegata"
-                    ? `${problema.istruzione} Finché non risponde non si può stampare.`
-                    : `${problema.istruzione} Se premi Stampa, parte da sola appena è a posto.`}
+                  {`${problema.istruzione} Stampa parte da sola appena è a posto.`}
                 </>
               ) : null}
             </span>

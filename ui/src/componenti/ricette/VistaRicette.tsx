@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { ErroreRichiesta } from "../../api/client";
 import { useCalcoloRicetta, useProdotti, useProdotto, useSalvaRicetta } from "../../api/hooks";
 import type { Prodotto, Ricetta } from "../../api/tipi";
 import { useAvviso } from "../../hooks/useAvviso";
@@ -169,7 +170,7 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
           setDettaglio(true);
           avvisa(`Ricetta di ${aggiornato.nome} salvata: l'etichetta usa i valori calcolati.`);
         },
-        onError: () => avvisa("Non sono riuscito a salvare la ricetta."),
+        onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a salvare la ricetta."),
       },
     );
   }, [inCreazione, nuovoId, prodotto, bozza, salva, avvisa]);
@@ -235,7 +236,6 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
             {lista && senzaRicetta.length === 0 ? (
               <StatoVuoto
                 titolo={lista.length === 0 ? "Non c'è ancora nessuna etichetta" : "Ogni etichetta ha già la sua ricetta"}
-                testo="Una ricetta si collega a un'etichetta: creane una nuova in «Etichette», poi torna qui a scriverne la ricetta."
               >
                 <button type="button" className="btn piccoloTel" onClick={vaiAEtichette}>
                   Vai a Etichette
@@ -260,7 +260,6 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
                       ))}
                     </select>
                   </div>
-                  <div className="text-[12px] leading-snug text-[var(--tenue)]">Solo le etichette che non hanno ancora una ricetta.</div>
                 </div>
 
                 <CampoRicetta ricetta={bozza} onCambia={setBozza} calcolo={calcolo} prodottoId={prodotto?.id} tracciati={prodotto?.tracciati ?? NESSUN_TRACCIATO} />
@@ -274,7 +273,6 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
             <div className="flex items-center gap-2 min-w-0">
               {frecciaIndietro}
               <div className="min-w-0 flex-1">
-                <div className="text-[12px] text-[var(--tenue)]">Ricetta collegata all&apos;etichetta</div>
                 <div className="h text-[19px] font-semibold min-w-0 truncate">{prodotto.nome}</div>
               </div>
               <button type="button" className="btn piccoloTel" onClick={apriEtichetta}>

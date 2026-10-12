@@ -344,8 +344,7 @@ export default function FinestraFornitori({ onChiudi }: { onChiudi: () => void }
         ))}
         {fornitori && fornitori.length === 0 && (
           <div className="text-[var(--tenue)] p-2">
-            Non c&apos;è ancora nessun fornitore. Crealo con «Nuovo fornitore» qui sotto, oppure scrivendolo in un
-            ingrediente o in una consegna.
+            Nessun fornitore ancora.
           </div>
         )}
         {creazioneAperta ? (

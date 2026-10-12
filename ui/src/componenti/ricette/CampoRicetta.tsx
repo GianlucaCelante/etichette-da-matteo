@@ -2,10 +2,12 @@ import { Fragment, useCallback, useEffect, useState, type ChangeEvent } from "re
 import { useIngredienti, useProdotti } from "../../api/hooks";
 import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta } from "../../api/tipi";
 import { IconaAvviso, IconaCestino, IconaSpunta } from "../Icone";
+import NuovoIngredienteModale from "../ingredienti/NuovoIngredienteModale";
 import { TitoloSezione } from "../ingredienti/SezioniScheda";
 import { LinkRicetta } from "./CampiDallaRicetta";
 import FinestraSchedaIngrediente from "./FinestraSchedaIngrediente";
 import { numeroDaTesto, numeroLeggibile, testoDaNumero } from "./numeri";
+import { ricettaDi } from "./ricetta";
 
 // I grammi di una riga: kg e litri per mille, i millilitri come grammi
 // (come RigaRicettaDto#grammi sul servizio).
@@ -257,7 +259,7 @@ function Riepilogo({ calcolo, ricetta, onScheda }: { calcolo: CalcoloRicetta; ri
                 </span>
               ))
             ) : (
-              <span className="nessuno">niente</span>
+              <span className="nessuno">{calcolo.tracceGiaContenute?.length ? `niente (${calcolo.tracceGiaContenute.join(", ")} già contenuti)` : "niente"}</span>
             )}
           </span>
         </div>
@@ -304,11 +306,26 @@ export default function CampoRicetta({
     (e: ChangeEvent<HTMLSelectElement>) => {
       const [tipo, id] = e.target.value.split(":");
       if (!tipo || !id) return;
+      if (tipo === "nuovo") {
+        setNuovoAperto(true);
+        return;
+      }
       const elenco = tipo === "ingrediente" ? (ingredientiTutti ?? []) : (prodottiTutti ?? []);
       const scelto = elenco.find((x) => x.id === Number(id));
       onCambia({ ...ricetta, righe: [...ricetta.righe, { tipo: tipo as RigaRicetta["tipo"], id: Number(id), nome: scelto?.nome ?? null, quantita: null, unita: "g" }] });
     },
     [ricetta, onCambia, ingredientiTutti, prodottiTutti],
+  );
+  // «Nuovo ingrediente…» crea l'ingrediente in una finestra e lo mette subito in ricetta.
+  const [nuovoAperto, setNuovoAperto] = useState(false);
+  const chiudiNuovo = useCallback(() => setNuovoAperto(false), []);
+  const nuovoPronto = useCallback(
+    (ing: { id: number; nome: string }) => {
+      setNuovoAperto(false);
+      if (ricetta.righe.some((r) => r.tipo === "ingrediente" && r.id === ing.id)) return;
+      onCambia({ ...ricetta, righe: [...ricetta.righe, { tipo: "ingrediente", id: ing.id, nome: ing.nome, quantita: null, unita: "g" }] });
+    },
+    [ricetta, onCambia],
   );
   // Si parte dagli ingredienti gia' scelti per i lotti: restano da scrivere i grammi.
   const daTracciati = useCallback(
@@ -324,7 +341,21 @@ export default function CampoRicetta({
 
   const presente = (tipo: string, id: number) => ricetta.righe.some((r) => r.tipo === tipo && r.id === id);
   const ingredientiLiberi = (ingredientiTutti ?? []).filter((i) => !presente("ingrediente", i.id));
-  const prodottiLiberi = (prodottiTutti ?? []).filter((p) => p.id !== prodottoId && !presente("prodotto", p.id));
+  // Chi contiene gia' questa etichetta (anche attraverso altri semilavorati) non si offre: sarebbe un giro chiuso.
+  const contenentiQuesta = new Set<number>();
+  if (prodottoId !== undefined) {
+    contenentiQuesta.add(prodottoId);
+    for (let cambiato = true; cambiato; ) {
+      cambiato = false;
+      for (const p of prodottiTutti ?? []) {
+        if (!contenentiQuesta.has(p.id) && ricettaDi(p).righe.some((r) => r.tipo === "prodotto" && contenentiQuesta.has(r.id))) {
+          contenentiQuesta.add(p.id);
+          cambiato = true;
+        }
+      }
+    }
+  }
+  const prodottiLiberi = (prodottiTutti ?? []).filter((p) => !contenentiQuesta.has(p.id) && !presente("prodotto", p.id));
   const totale = ricetta.righe.reduce((s, r) => s + grammiDi(r), 0);
   const senzaScheda = new Set(calcolo?.senzaValori ?? []);
 
@@ -332,7 +363,6 @@ export default function CampoRicetta({
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-3" aria-label="Ingredienti">
         <TitoloSezione testo="Ingredienti" conta={ricetta.righe.length} />
-        <div className="text-[12px] leading-snug text-[var(--tenue)]">Scrivi le quantità che usi di ogni ingrediente e quante porzioni ne ottieni.</div>
         <div className="campo">
           {ricetta.righe.length > 0 && (
             <div className="scheda overflow-hidden">
@@ -362,6 +392,7 @@ export default function CampoRicetta({
             <div className="casella p-0 flex-1 min-w-[200px]">
               <select value="" onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
                 <option value="">+ Aggiungi un ingrediente…</option>
+                <option value="nuovo:0">+ Nuovo ingrediente…</option>
                 {ingredientiLiberi.length > 0 && (
                   <optgroup label="Ingredienti">
                     {ingredientiLiberi.map((i) => (
@@ -414,19 +445,19 @@ export default function CampoRicetta({
 
       {/* La scheda tecnica della ricetta e' di sola lettura: la calcola il
           servizio dalle schede tecniche degli ingredienti (RicetteService). */}
-      <section className="flex flex-col gap-2" aria-label="Scheda tecnica">
-        <TitoloSezione testo="Scheda tecnica" />
-        <div className="text-[12px] leading-snug text-[var(--tenue)]">Calcolata dalle schede tecniche degli ingredienti.</div>
-        {ricetta.righe.length === 0 ? (
-          <div className="text-[13px] leading-snug text-[var(--tenue)]">Aggiungi gli ingredienti: valori nutrizionali, allergeni ed elenco ingredienti compaiono qui.</div>
-        ) : calcolo ? (
-          <Riepilogo calcolo={calcolo} ricetta={ricetta} onScheda={apriScheda} />
-        ) : (
-          <div className="text-[13px] leading-snug text-[var(--tenue)]">Calcolo in corso…</div>
-        )}
-      </section>
+      {ricetta.righe.length > 0 && (
+        <section className="flex flex-col gap-2" aria-label="Scheda tecnica">
+          <TitoloSezione testo="Scheda tecnica" />
+          {calcolo ? (
+            <Riepilogo calcolo={calcolo} ricetta={ricetta} onScheda={apriScheda} />
+          ) : (
+            <div className="text-[13px] leading-snug text-[var(--tenue)]">Calcolo in corso…</div>
+          )}
+        </section>
+      )}
 
       {schedaAperta && <FinestraSchedaIngrediente id={schedaAperta.id} nome={schedaAperta.nome} onChiudi={chiudiScheda} />}
+      {nuovoAperto && <NuovoIngredienteModale onChiudi={chiudiNuovo} onPronto={nuovoPronto} avvisaCreazione={false} />}
     </div>
   );
 }

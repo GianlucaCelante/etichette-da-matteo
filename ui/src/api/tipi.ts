@@ -271,6 +271,8 @@ export interface CalcoloRicetta {
   senzaValori: string[];
   allergeni: string[];
   tracce: string[];
+  // Le tracce delle schede che non stanno in "tracce" perche' il prodotto le contiene gia'.
+  tracceGiaContenute: string[];
   ingredienti: string;
   avvisi: string[];
 }
@@ -751,6 +753,8 @@ export interface IngredienteConLotti extends Ingrediente {
   stampe: number;
   // La scheda tecnica, sempre presente (vuota se mai scritta).
   scheda: SchedaIngrediente;
+  // I nomi delle etichette che lo hanno nella propria ricetta.
+  ricette: string[];
 }
 
 // DELETE /api/ingredienti/{id}: per l'utente e' comunque "eliminato"

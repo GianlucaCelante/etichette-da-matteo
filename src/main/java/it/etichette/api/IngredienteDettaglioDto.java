@@ -23,5 +23,7 @@ public record IngredienteDettaglioDto(
         List<EtichettaCollegataDto> etichette,
         int stampe,
         /** La scheda tecnica (7 ottobre 2026, docs/api.md "Scheda tecnica e ricetta"): sempre presente, vuota se mai scritta. */
-        SchedaIngredienteDto scheda) {
+        SchedaIngredienteDto scheda,
+        /** I nomi delle etichette che lo usano nella propria ricetta (per avvisare prima di eliminarlo). */
+        List<String> ricette) {
 }

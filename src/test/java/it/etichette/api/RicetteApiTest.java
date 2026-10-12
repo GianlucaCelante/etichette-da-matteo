@@ -301,6 +301,8 @@ class RicetteApiTest {
         assertThat(calcolo.get("allergeni").toString()).isEqualTo("[\"Glutine\"]");
         // Il glutine e' contenuto: non va anche nel «può contenere».
         assertThat(calcolo.get("tracce").toString()).isEqualTo("[\"Soia\"]");
+        // ...ma resta scritto che la scheda lo dichiarava: l'interfaccia non deve dire «nessuna traccia».
+        assertThat(calcolo.get("tracceGiaContenute").toString()).isEqualTo("[\"Glutine\"]");
         // In ordine di peso, la farina (allergene) in maiuscolo.
         assertThat(calcolo.get("ingredienti").asText()).isEqualTo("FARINA DI PROVA, Acqua di prova");
         assertThat(calcolo.get("senzaValori").size()).isZero();
@@ -581,6 +583,79 @@ class RicetteApiTest {
     }
 
     @Test
+    void ilTestoDelSemilavoratoFraParentesiNonPortaIlPuntoFinale() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        long acqua = creaIngrediente("Acqua di prova");
+        scheda(farina, SCHEDA_FARINA);
+        scheda(acqua, SCHEDA_ACQUA);
+        long impasto = richiesta(post("/api/prodotti").contentType("application/json")
+                .content(prodottoConRicetta(farina, acqua).replace("\"scritto a mano\"", "\"scritto a mano.\"")),
+                status().isOk()).get("id").asLong();
+
+        String corpo = """
+                {"ricetta":{"righe":[{"tipo":"prodotto","id":%d,"quantita":300},{"tipo":"ingrediente","id":%d,"quantita":100,"unita":"g"}]},
+                 "prodottoId":null}""".formatted(impasto, acqua);
+        JsonNode c = richiesta(post("/api/ricette/calcolo").contentType("application/json").content(corpo), status().isOk());
+
+        assertThat(c.get("ingredienti").asText()).isEqualTo("Pane di prova (scritto a mano), Acqua di prova");
+    }
+
+    @Test
+    void ilDettaglioDellIngredienteDiceInQualiRicetteEUsato() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        long acqua = creaIngrediente("Acqua di prova");
+        long sale = creaIngrediente("Sale di prova");
+        richiesta(post("/api/prodotti").contentType("application/json").content(prodottoConRicetta(farina, acqua)), status().isOk());
+
+        mockMvc.perform(get("/api/ingredienti/" + farina))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ricette.length()").value(1))
+                .andExpect(jsonPath("$.ricette[0]").value("Pane di prova"));
+        mockMvc.perform(get("/api/ingredienti/" + sale))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ricette.length()").value(0));
+    }
+
+    private long creaProdotto(String nome) throws Exception {
+        return richiesta(post("/api/prodotti").contentType("application/json").content("{\"nome\":\"" + nome + "\"}"), status().isOk())
+                .get("id").asLong();
+    }
+
+    private void ricettaConProdotto(long dentro, long prodotto, org.springframework.test.web.servlet.ResultMatcher esito) throws Exception {
+        mockMvc.perform(put("/api/prodotti/" + dentro + "/ricetta").contentType("application/json")
+                .content("{\"righe\":[{\"tipo\":\"prodotto\",\"id\":" + prodotto + ",\"quantita\":100,\"unita\":\"g\"}],\"porzioni\":null}"))
+                .andExpect(esito);
+    }
+
+    @Test
+    void dueEtichetteNonPossonoContenersiAVicenda() throws Exception {
+        long a = creaProdotto("Impasto A");
+        long b = creaProdotto("Impasto B");
+        ricettaConProdotto(a, b, status().isOk());
+
+        // B dentro A c'e' gia': A non puo' stare anche dentro B.
+        mockMvc.perform(put("/api/prodotti/" + b + "/ricetta").contentType("application/json")
+                        .content("{\"righe\":[{\"tipo\":\"prodotto\",\"id\":" + a + ",\"quantita\":100,\"unita\":\"g\"}],\"porzioni\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errore").value(org.hamcrest.Matchers.containsString("Impasto A")));
+    }
+
+    @Test
+    void ilCicloIndirettoVieneRifiutato() throws Exception {
+        long a = creaProdotto("Ciclo A");
+        long b = creaProdotto("Ciclo B");
+        long c = creaProdotto("Ciclo C");
+        ricettaConProdotto(a, b, status().isOk());
+        ricettaConProdotto(b, c, status().isOk());
+
+        // C dentro B dentro A: A dentro C chiuderebbe il giro.
+        ricettaConProdotto(c, a, status().isBadRequest());
+        // Un ramo che non torna indietro resta ammesso.
+        long d = creaProdotto("Ciclo D");
+        ricettaConProdotto(d, a, status().isOk());
+    }
+
+    @Test
     void semilavoratoConLaSuaRicetta() throws Exception {
         long farina = creaIngrediente("Farina di prova");
         long acqua = creaIngrediente("Acqua di prova");
@@ -598,6 +673,7 @@ class RicetteApiTest {
         assertThat(c.get("ingredienti").asText()).isEqualTo("Pane di prova (scritto a mano), Acqua di prova");
         assertThat(c.get("allergeni").toString()).isEqualTo("[\"Glutine\"]");
         assertThat(c.get("tracce").toString()).isEqualTo("[\"Soia\"]");
+        assertThat(c.get("tracceGiaContenute").toString()).isEqualTo("[\"Glutine\"]");
         // 300 g di impasto a 7,2 g di proteine per 100 g = 21,6 g su 400 g = 5,4 g per 100 g.
         assertThat(voceCalcolata(c, "Proteine").get("per100").asText()).isEqualTo("5,4 g");
 

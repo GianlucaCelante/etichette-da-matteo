@@ -148,10 +148,13 @@ function domandaElimina(ingrediente: IngredienteConLotti, dirette: number): { ti
   const viaLotti = lotti === 0 ? "" : lotti === 1 ? "il suo lotto" : `i suoi ${lotti} lotti`;
   const viaEtichette = dirette > 0 ? `viene tolto da ${contaEtichette(dirette)}` : "";
   const seNeVa = lotti === 1 ? "Se ne va anche" : "Se ne vanno anche";
-  if (viaLotti && viaEtichette) return { titolo, dettaglio: `${seNeVa} ${viaLotti} e ${viaEtichette}.` };
-  if (viaLotti) return { titolo, dettaglio: `${seNeVa} ${viaLotti}.` };
-  if (viaEtichette) return { titolo, dettaglio: `Viene tolto da ${contaEtichette(dirette)}.` };
-  return { titolo, dettaglio: "" };
+  // Mai stampato: sparisce anche dalle ricette, e con lui i suoi valori e allergeni.
+  const inRicette = ingrediente.ricette ?? [];
+  const dallaRicetta = inRicette.length > 0 ? ` Sparisce anche ${inRicette.length === 1 ? "dalla ricetta" : "dalle ricette"} di ${inRicette.join(", ")}: valori e allergeni cambiano.` : "";
+  if (viaLotti && viaEtichette) return { titolo, dettaglio: `${seNeVa} ${viaLotti} e ${viaEtichette}.${dallaRicetta}` };
+  if (viaLotti) return { titolo, dettaglio: `${seNeVa} ${viaLotti}.${dallaRicetta}` };
+  if (viaEtichette) return { titolo, dettaglio: `Viene tolto da ${contaEtichette(dirette)}.${dallaRicetta}` };
+  return { titolo, dettaglio: dallaRicetta.trim() };
 }
 
 function GettoneFiltro({ chiave, testo, attivo, onScegli }: { chiave: FiltroIngredienti; testo: string; attivo: boolean; onScegli: (chiave: FiltroIngredienti) => void }) {
@@ -859,7 +862,7 @@ function ElencoIngredienti() {
 
             <section className="flex flex-col gap-2" aria-label="Lotti">
               <TitoloSezione testo="Lotti" />
-              <StatoVuoto titolo="Nessun lotto registrato" testo="Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto." />
+              <StatoVuoto titolo="Nessun lotto registrato" testo="Lo aggiunge «Merce arrivata»." />
             </section>
           </>
         ) : ingrediente ? (
@@ -929,7 +932,7 @@ function ElencoIngredienti() {
             <section className="flex flex-col gap-2" aria-label="Lotti">
               <TitoloSezione testo="Lotti" conta={ingrediente.lotti.length} />
               {ingrediente.lotti.length === 0 ? (
-                <StatoVuoto titolo="Nessun lotto registrato" testo="Quando arriva la merce, «Merce arrivata» lo aggiunge qui, già aperto.">
+                <StatoVuoto titolo="Nessun lotto registrato" testo="Lo aggiunge «Merce arrivata».">
                   <button type="button" className="btn piccoloTel" onClick={vaiAMerceArrivata}>
                     <IconaCamion larghezza={18} spessoreTratto={2} />
                     <span>Registra la merce arrivata</span>

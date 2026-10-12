@@ -138,7 +138,8 @@ public class IngredientiConversioni {
         List<EtichettaCollegataDto> etichette = etichetteCollegate.perIngrediente(e.getId());
         return new IngredienteDettaglioDto(e.getId(), e.getNome(), fornitoreDi(e), apertiDto,
                 chiusi.size(), statoDi(aperti), tuttiOrdinatiDto, avviso, etichette,
-                (int) storicoLotti.contaStampeCheCitanoIngrediente(e.getId()), ricette.scheda(e));
+                (int) storicoLotti.contaStampeCheCitanoIngrediente(e.getId()), ricette.scheda(e),
+                ricette.nomiProdottiConIngrediente(e.getId()));
     }
 
     public IngredienteSimileDto aSimileDto(Ingrediente e, boolean stessoNome) {

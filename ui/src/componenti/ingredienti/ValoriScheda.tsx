@@ -154,7 +154,7 @@ export default function ValoriScheda({
         <span>Aggiungi voce</span>
       </button>
       <div className="text-[11.5px] leading-snug text-[var(--tenue)]">
-        Scrivi il numero e scegli l&apos;unità (kJ, kcal, g, mg, µg). La virgola è quella italiana (4,1). Trascina la maniglia per cambiare l&apos;ordine. Le voci senza valore restano nella scheda ma le ricette non le calcolano.
+        Virgola italiana (4,1). Le voci senza valore non entrano nei calcoli delle ricette.
       </div>
     </>
   );

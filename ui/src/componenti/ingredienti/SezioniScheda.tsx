@@ -28,11 +28,11 @@ export function SottoTitolo({ testo, conta }: { testo: string; conta?: number })
 
 // Nessuna riga: una carta tratteggiata (non una riga di testo perso nel
 // vuoto) con che cosa manca e, se serve, che cosa fare.
-export function StatoVuoto({ titolo, testo, children }: { titolo: string; testo: string; children?: ReactNode }) {
+export function StatoVuoto({ titolo, testo, children }: { titolo: string; testo?: string; children?: ReactNode }) {
   return (
     <div className="statoVuoto">
       <b>{titolo}</b>
-      <span>{testo}</span>
+      {testo && <span>{testo}</span>}
       {children}
     </div>
   );

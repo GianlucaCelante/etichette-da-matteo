@@ -13,11 +13,9 @@ function RigaValore({
   segnaposto,
   senzaValore,
   calcolata,
-  calcolabile,
   onCambiaVoce,
   onCambiaValore,
   onRimuovi,
-  onCalcolata,
 }: {
   valore: ValoreBozza;
   segnaposto: string;
@@ -27,13 +25,9 @@ function RigaValore({
   // Con la ricetta (7 ottobre 2026): la riga si calcola da sola. undefined =
   // riga a mano; null = calcolata ma ora non calcolabile (resta l'ultimo valore).
   calcolata: string | null | undefined;
-  // La ricetta c'e' e sa calcolare questa voce (c'e' nel suo calcolo: le sette
-  // standard e le voci personalizzate che stanno nella scheda di tutti gli ingredienti).
-  calcolabile: boolean;
   onCambiaVoce: (chiave: string, testo: string) => void;
   onCambiaValore: (chiave: string, testo: string) => void;
   onRimuovi: (chiave: string) => void;
-  onCalcolata: (chiave: string, attiva: boolean, valoreMostrato: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: valore.chiave });
   const stile = useMemo<CSSProperties>(
@@ -45,7 +39,6 @@ function RigaValore({
   const rimuovi = useCallback(() => onRimuovi(valore.chiave), [onRimuovi, valore.chiave]);
   const dallaRicetta = calcolata !== undefined;
   const mostrato = dallaRicetta ? (calcolata ?? valore.valore) : valore.valore;
-  const alternaCalcolata = useCallback(() => onCalcolata(valore.chiave, !dallaRicetta, mostrato), [onCalcolata, valore.chiave, dallaRicetta, mostrato]);
 
   // Sul telefono il campo "Voce" a 209px (PC) crolla a 107px: una voce
   // standard come "di cui acidi grassi saturi" si tagliava senza puntini,
@@ -87,17 +80,8 @@ function RigaValore({
       <button type="button" className="cestino soloPC" onClick={rimuovi} title={`Togli ${valore.voce || "la voce"}`} aria-label={`Togli ${valore.voce || "la voce"}`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
-      {(dallaRicetta || calcolabile) && (
-        <div className="basis-full pl-[22px] flex items-baseline gap-2 text-[11.5px] leading-tight">
-          {dallaRicetta && (
-            <span className={calcolata === null ? "text-[var(--rosso)]" : "text-[var(--spento)]"}>
-              {calcolata === null ? "non calcolabile: manca nella scheda di un ingrediente" : "dalla ricetta"}
-            </span>
-          )}
-          <button type="button" className="font-bold text-[var(--verdescuro)]" onClick={alternaCalcolata}>
-            {dallaRicetta ? "Scrivi a mano" : "Calcola dalla ricetta"}
-          </button>
-        </div>
+      {dallaRicetta && calcolata === null && (
+        <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--rosso)]">non calcolabile: manca un valore</div>
       )}
       {senzaValore && !dallaRicetta && <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--spento)]">senza valore: non verrà stampata</div>}
     </div>
@@ -171,11 +155,15 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
     onCambia([...righeMostrate, { chiave: nuovaChiave(), voce: "", valore: "" }]);
   }, [righeMostrate, onCambia]);
 
-  // Una riga passa fra "dalla ricetta" e "a mano"; a mano si parte dal valore che si vedeva.
-  const cambiaCalcolata = useCallback(
-    (chiave: string, attiva: boolean, valoreMostrato: string) =>
-      onCambia(righeMostrate.map((v) => (v.chiave === chiave ? { ...v, calcolato: attiva, valore: attiva ? v.valore : valoreMostrato } : v))),
-    [righeMostrate, onCambia],
+  // Tutte a mano: le righe calcolate diventano scritte, partendo dal valore che si vedeva.
+  const tuttoAMano = useCallback(
+    () =>
+      onCambia(
+        righeMostrate.map((v) =>
+          v.calcolato && voceCalcolata(v.voce, calcolo) ? { ...v, calcolato: false, valore: valoreCalcolato(v.voce, calcolo) ?? v.valore } : v,
+        ),
+      ),
+    [righeMostrate, onCambia, calcolo],
   );
   // Tutte le voci dalla ricetta: quelle che il calcolo conosce passano a
   // calcolate, le voci standard che mancano si aggiungono in coda (le fibre
@@ -189,7 +177,9 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
       .map((c) => ({ chiave: nuovaChiave(), voce: c.voce, valore: c.valore, calcolato: true }));
     onCambia([...aggiornate, ...nuove]);
   }, [righeMostrate, onCambia, calcolo]);
-  const qualcunaAMano = conRicetta && righeMostrate.some((v) => voceCalcolata(v.voce, calcolo) && !v.calcolato);
+  // «Dalla ricetta» e' acceso solo se ogni riga che il calcolo sa fare e' calcolata; altrimenti vale «a mano».
+  const righeCalcolabili = righeMostrate.filter((v) => voceCalcolata(v.voce, calcolo));
+  const tuttoCalcolato = righeCalcolabili.length > 0 && righeCalcolabili.every((v) => v.calcolato);
 
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
@@ -213,12 +203,17 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
         </button>
       </div>
       <div className="text-[12px] leading-snug text-[var(--tenue)]">
-        Scrivi il numero, il «g» lo aggiungo io (energia: kJ e kcal). Virgola italiana (4,1). Le righe senza valore non si stampano.
+        Scrivi il numero, il «g» lo aggiungo io. Senza valore la riga non si stampa.
       </div>
-      {qualcunaAMano && (
-        <button type="button" className="self-start text-[12px] font-bold text-[var(--verdescuro)]" onClick={tuttoDallaRicetta}>
-          Calcola tutti i valori dalla ricetta
-        </button>
+      {conRicetta && !!calcolo && (
+        <span className="dueStati self-start" role="group" aria-label="Come si compilano i valori nutrizionali">
+          <button type="button" className={tuttoCalcolato ? "on" : ""} aria-pressed={tuttoCalcolato} onClick={tuttoDallaRicetta}>
+            dalla ricetta
+          </button>
+          <button type="button" className={tuttoCalcolato ? "" : "on"} aria-pressed={!tuttoCalcolato} onClick={tuttoAMano}>
+            a mano
+          </button>
+        </span>
       )}
       <div className="scheda overflow-hidden">
         <DndContext sensors={sensori} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_VALORI}>
@@ -230,11 +225,9 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
                 segnaposto={segnapostoValore(v.voce)}
                 senzaValore={qualcunoHaIlValore && v.voce.trim() !== "" && v.valore.trim() === ""}
                 calcolata={conRicetta && v.calcolato ? valoreCalcolato(v.voce, calcolo) : undefined}
-                calcolabile={conRicetta && !!voceCalcolata(v.voce, calcolo)}
                 onCambiaVoce={cambiaVoce}
                 onCambiaValore={cambiaValore}
                 onRimuovi={rimuovi}
-                onCalcolata={cambiaCalcolata}
               />
             ))}
           </SortableContext>

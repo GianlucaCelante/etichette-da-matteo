@@ -515,7 +515,7 @@ const StrisciaLotti = forwardRef<HTMLDivElement, ProprietaStrisciaLotti>(functio
           <div className="etichettina">Lotti degli ingredienti</div>
         </div>
         <div className="text-[13.5px] leading-relaxed text-[var(--tenue)] p-3.5">
-          Nessun ingrediente collegato: la stampa non registra lotti. Si collegano una volta sola in Etichette, nel gruppo Ingredienti.
+          Nessun ingrediente collegato: collegali in Etichette, gruppo Ingredienti.
         </div>
       </div>
     );

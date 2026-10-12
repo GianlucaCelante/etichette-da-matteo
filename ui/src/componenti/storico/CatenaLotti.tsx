@@ -218,7 +218,7 @@ function RigaAnelloIngrediente({
       </div>
       {correggendo && (
         <div className="correggi">
-          <div className="text-[12.5px] text-[var(--tenue)]">Tocca i lotti davvero usati per questa stampa. Resta scritto che è stato corretto a mano, con com&apos;era prima.</div>
+          <div className="text-[12.5px] text-[var(--tenue)]">Tocca i lotti davvero usati.</div>
           <div className="chips">
             {(ingrediente?.lotti ?? []).map((l) => (
               <ChipLottoCorrezione
@@ -348,7 +348,7 @@ function RigaAnelloProdotto({
       </div>
       {correggendo && (
         <div className="correggi">
-          <div className="text-[12.5px] text-[var(--tenue)]">Tocca la stampa davvero usata per questa. Resta scritto che è stato corretto a mano, con com&apos;era prima.</div>
+          <div className="text-[12.5px] text-[var(--tenue)]">Tocca la stampa davvero usata.</div>
           <div className="chips">
             <ChipStampaCorrezione storicoId={null} testo="nessuna" on={scelto === null} disabilitato={correggi.isPending} onScegli={scegli} />
             {alternative.map((r) => (
@@ -427,7 +427,7 @@ export default function CatenaLotti({ riga }: { riga: StoricoRiga }) {
       </div>
       <NotaCorrezioni correzioni={catena.correzioni ?? NESSUNA_CORREZIONE} />
       {catena.anelli.length === 0 ? (
-        <StatoVuoto titolo="Nessun ingrediente registrato per questo lotto" testo="Registra la merce arrivata per tracciare da dove viene.">
+        <StatoVuoto titolo="Nessun ingrediente registrato per questo lotto">
           <button type="button" className="btn compatto" onClick={vaiAMerceArrivata}>
             Vai a Merce arrivata
           </button>

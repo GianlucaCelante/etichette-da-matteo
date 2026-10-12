@@ -45,7 +45,7 @@ function ChipScelta({ nome, attivo, onClic }: { nome: string; attivo: boolean; o
   );
 }
 
-function SceltaAllergeni({ titolo, spiegazione, scelti, onCambia }: { titolo: string; spiegazione: string; scelti: string[]; onCambia: (nuovi: string[]) => void }) {
+function SceltaAllergeni({ titolo, scelti, onCambia }: { titolo: string; scelti: string[]; onCambia: (nuovi: string[]) => void }) {
   const alterna = useCallback(
     (nome: string) => onCambia(scelti.includes(nome) ? scelti.filter((a) => a !== nome) : ALLERGENI.filter((a) => a === nome || scelti.includes(a))),
     [scelti, onCambia],
@@ -56,7 +56,6 @@ function SceltaAllergeni({ titolo, spiegazione, scelti, onCambia }: { titolo: st
         <div className="etichettina">{titolo}</div>
         {scelti.length > 0 && <span className="text-[12px] font-bold text-[var(--tenue)]">· {scelti.length}</span>}
       </div>
-      <div className="text-[11.5px] leading-snug text-[var(--tenue)]">{spiegazione}</div>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={titolo}>
         {ALLERGENI.map((a) => (
           <ChipScelta key={a} nome={a} attivo={scelti.includes(a)} onClic={alterna} />
@@ -185,10 +184,6 @@ export default function SchedaTecnica({ ingrediente, inFinestra, onChiudi }: { i
 
   const corpo = (
     <>
-      <div className="text-[12.5px] leading-snug text-[var(--tenue)]">
-        Copia i valori dalla scheda del fornitore. Servono alle etichette con la ricetta per calcolare valori nutrizionali e allergeni.
-      </div>
-
       <div className="campo">
         <div className="etichettina">
           Valori nutrizionali <span className="font-normal normal-case tracking-normal text-[var(--spento)]">· per 100 g</span>
@@ -197,7 +192,7 @@ export default function SchedaTecnica({ ingrediente, inFinestra, onChiudi }: { i
         {mancanti.length > 0 && mancanti.length < VOCI_OBBLIGATORIE.length && (
           <div className="callout">
             <IconaAvviso larghezza={15} spessoreTratto={2} />
-            <span>Mancano: {mancanti.map((o) => o.nome).join(", ")}. Senza, le ricette non li calcolano.</span>
+            <span>Mancano: {mancanti.map((o) => o.nome).join(", ")}. Le ricette non li calcolano.</span>
           </div>
         )}
         {avvisi.map((a) => (
@@ -211,13 +206,11 @@ export default function SchedaTecnica({ ingrediente, inFinestra, onChiudi }: { i
       <div className="allergeniScheda">
         <SceltaAllergeni
           titolo="Contiene"
-          spiegazione="Gli allergeni che sono nell'ingrediente: nell'elenco ingredienti escono in grassetto."
           scelti={bozza.allergeni}
           onCambia={cambiaAllergeni}
         />
         <SceltaAllergeni
-          titolo="Può contenere tracce di"
-          spiegazione="Quelli che il fornitore dichiara come possibili tracce: finiscono in «Può contenere»."
+          titolo="Può contenere"
           scelti={bozza.tracce}
           onCambia={cambiaTracce}
         />

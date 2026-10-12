@@ -145,7 +145,7 @@ export default function RiquadroAnteprima({ src, caricando, titolo, rotolo, misu
             // Il bordo e lo sfondo bianco come ".cornice", ma la cornice qui
             // scorre in verticale (".cornice" e' overflow:hidden). Il
             // bottone dentro e' l'etichetta stessa: toccarla la ingrandisce.
-            <div className="w-full mx-auto overflow-y-auto overflow-x-hidden bg-white border border-[#C6B7A3] rounded-[2px] max-h-[min(58vh,620px)]" style={stileLeggibile}>
+            <div className="w-full mx-auto overflow-y-auto overflow-x-hidden bg-white border border-[#C6B7A3] rounded-[2px] max-h-[min(28vh,380px)]" style={stileLeggibile}>
               <button type="button" className="block w-full cursor-zoom-in" onClick={apriLente} aria-label="Apri l'anteprima a tutto schermo">
                 <img src={src} alt={`Anteprima dell'etichetta di ${titolo}`} className="block w-full h-auto" onLoad={suImmagineCaricata} />
               </button>

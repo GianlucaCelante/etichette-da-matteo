@@ -311,7 +311,6 @@ function SezioneStampante() {
       <Riga titolo="Modello" valore={stampante?.modello ?? "…"} />
       <Riga
         titolo="Rotolo caricato"
-        sotto="Lo legge la stampante: se lo cambi, si aggiorna da solo"
         valore={
           stampante?.rotolo ? (
             <span className="text-[var(--testo)] font-bold">{stampante.rotolo} mm continuo</span>
@@ -346,12 +345,12 @@ function SezioneStampante() {
       )}
       {/* role="switch" con aria-checked: lo schermo parlante dice «acceso» o «spento» (prove con utenti
           simulati, 2 ottobre 2026: si leggeva come un bottone qualunque). */}
-      <Interruttore acceso={taglia} onCambia={cambiaTaglio} titolo="Taglia ogni etichetta" sotto="Se spento, taglia solo alla fine della serie" disabled={!impostazioni} />
+      <Interruttore acceso={taglia} onCambia={cambiaTaglio} titolo="Taglia ogni etichetta" disabled={!impostazioni} />
       <div className="riga">
         <div className="min-w-0 grow shrink basis-[84px]">
           <div className="t">Margine iniziale e finale</div>
           <div className="s" id={`${idMargine}-aiuto`}>
-            Da {MARGINE_MINIMO_MM} a {MARGINE_MASSIMO_MM} mm (il minimo è quello della stampante)
+            {MARGINE_MINIMO_MM}–{MARGINE_MASSIMO_MM} mm
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -536,14 +535,13 @@ function SezioneTelefoni() {
           className="rounded-[14px] border border-[var(--bordo)] bg-white"
         />
         {principale && <span className="mono text-[15px] font-bold text-[var(--testo)]">{principale}</span>}
-        <span className="text-[12px] text-[var(--spento)]">Stessa rete Wi-Fi del PC.</span>
       </div>
       {dispositivi && telefoni.length === 0 && (
         <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">
           <span className="flex shrink-0">
             <IconaTelefono larghezza={18} spessoreTratto={1.8} />
           </span>
-          <span>Nessun telefono collegato. Inquadra il QR qui sopra per collegarne uno.</span>
+          <span>Nessun telefono collegato.</span>
         </div>
       )}
       {visibili.map((d) => (
@@ -666,11 +664,10 @@ function SezioneProgramma() {
     ultima && ultima.esito === "fallita" && ultimaRiuscita && ultima.quando > ultimaRiuscita.quando ? ultima : null;
 
   return (
-    <Sezione titolo="Programma" destra={<span className="text-[13px] text-[var(--tenue)]">Servizio «Etichette» su questo PC</span>} larga>
-      <Riga titolo="Versione" sotto="Per aggiornare si installa il nuovo programma di installazione" valore={programma?.versione ?? "…"} />
+    <Sezione titolo="Programma" larga>
+      <Riga titolo="Versione" valore={programma?.versione ?? "…"} />
       <Riga
         titolo="Cartella dei dati e delle foto"
-        sotto="Etichette, ingredienti, lotti, storico e le foto di fatture ed etichette"
         titoloValore={programma?.cartellaDati}
         valore={
           programma && (
@@ -692,7 +689,7 @@ function SezioneProgramma() {
       />
       <Riga
           titolo="Copia di sicurezza"
-          sotto="Ogni notte alle 3, su un'altra cartella o una chiavetta. Si tengono le ultime 10 copie, le più vecchie si cancellano da sole."
+         
           titoloValore={programma?.backup.cartella ?? undefined}
           valore={
             programma && (
@@ -717,7 +714,7 @@ function SezioneProgramma() {
             )
           }
       />
-      <Riga titolo="Ultima copia" valore={testoUltima} titoloValore={ultimaRiuscita ? riuscitaCompleta : undefined} />
+      {!senzaCartella && <Riga titolo="Ultima copia" valore={testoUltima} titoloValore={ultimaRiuscita ? riuscitaCompleta : undefined} />}
       {tentativoFallitoDopo && (
         <div className="flex items-center gap-2.5 rounded-2xl border border-[var(--ambrabordo)] bg-[var(--ambrachiaro)] px-4 py-2.5 text-[13px] text-[var(--ambra)] mt-1">
           <span className="flex shrink-0">
@@ -731,16 +728,12 @@ function SezioneProgramma() {
       )}
       {/* "Backup automatico" invece di "Prossima copia" (deciso da Gianluca,
           25/09/2026). */}
-      <Riga
-        titolo="Backup automatico"
-        valore={
-          programma?.backup.prossima
-            ? formattaProssima(programma.backup.prossima)
-            : programma && !programma.backup.cartella
-              ? "Spento: scegli prima una cartella"
-              : "Non ancora programmato"
-        }
-      />
+      {!senzaCartella && (
+        <Riga
+          titolo="Backup automatico"
+          valore={programma?.backup.prossima ? formattaProssima(programma.backup.prossima) : "Non ancora programmato"}
+        />
+      )}
       <div className="flex flex-wrap gap-2.5 pt-3 azioniSezione">
         <button
           type="button"
@@ -755,7 +748,7 @@ function SezioneProgramma() {
         {/* Il bottone spento dice perche' (2/10/2026, prove con utenti: un disabilitato muto). */}
         {senzaCartella && (
           <p id={idMotivoCopia} className="basis-full m-0 text-[13px] text-[var(--spento)]">
-            Per fare una copia scegli prima la cartella dove metterla («Scegli…» qui sopra).
+            Scegli prima la cartella delle copie.
           </p>
         )}
       </div>

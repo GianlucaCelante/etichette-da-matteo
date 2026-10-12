@@ -66,7 +66,7 @@ export default function UsatoNelleEtichette({ etichette, nomeIngrediente, onApri
     <section className="flex flex-col gap-2" aria-label="Usato nelle seguenti etichette">
       <TitoloSezione testo="Usato nelle seguenti etichette" conta={etichette.length} />
       {etichette.length === 0 ? (
-        <StatoVuoto titolo="Non è ancora usato in nessuna etichetta" testo="Si collega dalla scheda dell'etichetta, in «Ingredienti collegati, per i lotti»." />
+        <StatoVuoto titolo="Non è ancora usato in nessuna etichetta" testo="Collegalo dall'etichetta, tra gli ingredienti dei lotti." />
       ) : (
         <>
           {dirette.length > 0 && (

@@ -36,7 +36,7 @@ export default function RichiediNomeDispositivo() {
   if (!data || !data.nuovo || data.tipo === "pc") return null;
 
   return (
-    <Finestra titolo="Come si chiama questo telefono?" sottotitolo="Serve per riconoscerlo nello storico e nelle impostazioni. Si può cambiare più avanti.">
+    <Finestra titolo="Come si chiama questo telefono?">
       <form className="flex flex-col gap-3" onSubmit={invia}>
         <div className="casella">
           <input

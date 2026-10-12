@@ -210,6 +210,14 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
    viewport cresce, e per un istante (o su iOS, in overscroll) si vede cio'
    che sta dietro l'app - non deve mai essere nero. */
 html { background: var(--fondo); color-scheme: light; height: 100%; overflow: hidden; overscroll-behavior: none; }
+/* PC con schermo piccolo o scala di Windows al 125-150% (prova da Matteo,
+   12 ottobre 2026: tasti tagliati e senza spazi): lo spazio utile in px CSS
+   e' poco (1366x768 al 125% sono circa 1093x614). Invece di rifare ogni
+   misura, tutta l'interfaccia del PC si rimpicciolisce a scalini; sul
+   telefono (<= 860 px) non si tocca. Chrome/Edge supportano "zoom". */
+@media (min-width: 861px) and (max-width: 1366px), (min-width: 861px) and (max-height: 760px) { html { zoom: 0.92; } }
+@media (min-width: 861px) and (max-width: 1180px), (min-width: 861px) and (max-height: 680px) { html { zoom: 0.84; } }
+@media (min-width: 861px) and (max-width: 1000px), (min-width: 861px) and (max-height: 600px) { html { zoom: 0.76; } }
 body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 #root { height: 100%; }
 body {
@@ -781,13 +789,21 @@ input.nomeSelettore { padding: 0 14px; outline: none; }
    riquadro ma senza, solo per far vedere dove sta la zona. */
 .zonaGruppo { display: flex; flex-direction: column; gap: 6px; background: var(--verdechiaro); border: 1px solid var(--verdebordo); border-radius: 12px; padding: 6px; }
 .zonaTesta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px 2px; }
-.zonaDestra { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
-.quote { display: flex; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
-.quote button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.zonaDestra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.quote { display: flex; flex-wrap: wrap; max-width: 100%; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
+.quote button { height: 22px; padding: 0 7px; white-space: nowrap; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
 .quote button.on { background: var(--verde); color: #fff; }
 .tavolozza { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); font-size: 13.5px; font-weight: 700; white-space: nowrap; width: 100%; }
 .tavolozza.usato { background: var(--sabbia); color: var(--spento); border-style: dashed; }
 .tavolozza .piu { margin-left: auto; color: var(--verde); font-size: 18px; }
+/* Etichette su PC: colonna destra ferma (anteprima in alto, sempre visibile),
+   sotto scorre solo l'elenco dei blocchi; «Aggiungi una voce» resta in fondo
+   all'area che scorre, sempre raggiungibile. */
+.colonnaAnteprima { overflow: hidden; }
+.blocchiScorrevoli { padding-right: 2px; overflow-x: hidden; }
+.blocchiScorrevoli > .vassoio { max-width: 820px; width: 100%; }
+.aggiungiVoce { position: sticky; bottom: 0; z-index: 2; background: var(--sabbia); padding: 6px 0 2px; margin-top: auto; }
+.tavolozzaApribile { max-height: min(45vh, 320px); overflow-y: auto; margin-bottom: 6px; overscroll-behavior: contain; }
 .piedeRotolo { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--riga); margin-top: 4px; flex-wrap: wrap; }
 .strumentiEt { display: flex; align-items: center; gap: 8px; }
 .strumentiEt .btn { height: 44px; padding: 0 14px; font-size: 14px; gap: 7px; }

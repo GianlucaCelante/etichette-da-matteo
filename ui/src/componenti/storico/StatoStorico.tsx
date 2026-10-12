@@ -6,14 +6,14 @@ import { IconaAllarme, IconaCercaDiNuovo, IconaCerca, IconaStampa, IconaStorico 
 // con una tonda con l'icona, un titolo breve e una riga che spiega che cosa
 // fare. Il testo dice le cose semplici, senza parole tecniche.
 
-function CartaStato({ icona, titolo, testo, ruolo, children }: { icona: ReactNode; titolo: string; testo: string; ruolo?: "status" | "alert"; children?: ReactNode }) {
+function CartaStato({ icona, titolo, testo, ruolo, children }: { icona: ReactNode; titolo: string; testo?: string; ruolo?: "status" | "alert"; children?: ReactNode }) {
   return (
     <div className="statoVuoto centrato" role={ruolo}>
       <span className="iconaStato" aria-hidden="true">
         {icona}
       </span>
       <b>{titolo}</b>
-      <span className="testoStato">{testo}</span>
+      {testo && <span className="testoStato">{testo}</span>}
       {children}
     </div>
   );
@@ -22,7 +22,7 @@ function CartaStato({ icona, titolo, testo, ruolo, children }: { icona: ReactNod
 // Installazione nuova: nessuna stampa in assoluto, in nessun periodo.
 export function StoricoAncoraVuoto({ onVaiAStampa }: { onVaiAStampa: () => void }) {
   return (
-    <CartaStato icona={<IconaStorico larghezza={24} spessoreTratto={1.8} />} titolo="Ancora nessuna stampa" testo="Quando stampi un'etichetta la trovi qui, con lotto, scadenza e ciò che è stato usato.">
+    <CartaStato icona={<IconaStorico larghezza={24} spessoreTratto={1.8} />} titolo="Ancora nessuna stampa">
       <button type="button" className="btn primario" onClick={onVaiAStampa}>
         <IconaStampa larghezza={18} spessoreTratto={2} />
         <span>Vai a Stampa</span>
@@ -36,7 +36,7 @@ export function StoricoAncoraVuoto({ onVaiAStampa }: { onVaiAStampa: () => void 
 // periodo a restringere.
 export function StoricoNessunRisultato({ conRicerca, onTogli }: { conRicerca: boolean; onTogli: () => void }) {
   return (
-    <CartaStato icona={<IconaCerca larghezza={24} spessoreTratto={1.8} />} titolo="Nessuna stampa trovata" testo="Prova a cambiare il periodo o a togliere i filtri." ruolo="status">
+    <CartaStato icona={<IconaCerca larghezza={24} spessoreTratto={1.8} />} titolo="Nessuna stampa trovata" ruolo="status">
       <button type="button" className="btn" onClick={onTogli}>
         <span>{conRicerca ? "Togli i filtri" : "Mostra tutto"}</span>
       </button>
@@ -47,7 +47,7 @@ export function StoricoNessunRisultato({ conRicerca, onTogli }: { conRicerca: bo
 // Il servizio non risponde: mai una pagina vuota o un'attesa senza fine.
 export function StoricoErrore({ onRiprova, occupato, titolo = "Non riesco a leggere lo storico" }: { onRiprova: () => void; occupato: boolean; titolo?: string }) {
   return (
-    <CartaStato icona={<IconaAllarme larghezza={24} spessoreTratto={1.8} />} titolo={titolo} testo="Controlla che il servizio sia acceso." ruolo="alert">
+    <CartaStato icona={<IconaAllarme larghezza={24} spessoreTratto={1.8} />} titolo={titolo} ruolo="alert">
       <button type="button" className="btn" onClick={onRiprova} disabled={occupato}>
         <IconaCercaDiNuovo larghezza={17} spessoreTratto={2} />
         <span>{occupato ? "Riprovo…" : "Riprova"}</span>

@@ -160,9 +160,6 @@ export function PannelloInCorso({
                 </div>
               ))}
           </div>
-          <div className="text-[13px] text-[var(--tenue)] leading-normal">
-            Le copie partono una alla volta: fermando la serie, quella in corso finisce e le altre non vengono stampate.
-          </div>
         </>
       )}
       <div className="flex-1" />
@@ -278,9 +275,7 @@ export function PannelloErrore({
               ) : ristampaAlle ? (
                 <ContoAllaRistampa alle={ristampaAlle} />
               ) : (
-                <div className="text-[12.5px] text-[var(--tenue)] text-center leading-snug">
-                  Se nessuno risponde entro un minuto da quando la stampante è di nuovo pronta, la ristampo.
-                </div>
+                <div className="text-[12.5px] text-[var(--tenue)] text-center leading-snug">Ristampo da sola entro un minuto.</div>
               )}
             </>
           )}
@@ -325,9 +320,6 @@ export function PannelloErrore({
         <div className="scheda px-4 py-3 bg-[var(--ambrachiaro)]" role="status">
           <div className="text-[16px] font-bold text-[var(--ambra)]">Riprendo la stampa</div>
           <div className="text-[13.5px] leading-snug mt-1">{messaggio || "La stampante è di nuovo a posto: riparto da solo fra pochi secondi."}</div>
-          {/* La ripresa vera arriva anche dopo una decina di secondi (la stampante si
-              ascolta a intervalli, MonitorStampante): lo si dice, cosi' nessuno la ferma. */}
-          <div className="text-[13.5px] leading-snug mt-1">Aspetta qualche secondo: non serve toccare niente.</div>
           {copiaCorrente && copieTotali ? (
             <div className="text-[13px] text-[var(--tenue)] mt-1">{`Copia ${copiaCorrente} di ${copieTotali}.`}</div>
           ) : null}

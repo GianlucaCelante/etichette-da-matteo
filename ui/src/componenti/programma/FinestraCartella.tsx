@@ -102,7 +102,6 @@ export default function FinestraCartella({ inizio, puoiSpegnere, salvataggio, on
   return (
     <Finestra
       titolo="Scegli la cartella"
-      sottotitolo="Dove si mettono le copie di sicurezza."
       onChiudi={onChiudi}
       piede={
         <>
@@ -162,7 +161,7 @@ export default function FinestraCartella({ inizio, puoiSpegnere, salvataggio, on
             data.radici.map((u) => <RigaUnita key={u.percorso} unita={u} onApri={salta} />)
           )
         ) : data.cartelle.length === 0 ? (
-          <div className="p-3 text-[var(--tenue)] leading-relaxed">Qui dentro non ci sono altre cartelle. Puoi usare questa.</div>
+          <div className="p-3 text-[var(--tenue)] leading-relaxed">Nessuna sottocartella.</div>
         ) : (
           data.cartelle.map((c) => <RigaCartella key={c.percorso} voce={c} onApri={salta} />)
         )}

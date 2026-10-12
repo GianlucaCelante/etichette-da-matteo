@@ -19,7 +19,9 @@ import java.util.List;
  * obbligatorie.</li>
  * <li>{@code nonCalcolabili}: le voci che alcuni ingredienti hanno e altri no, con i nomi di chi manca.</li>
  * <li>{@code allergeni}: quelli contenuti; {@code tracce}: il «può contenere» (le tracce degli
- * ingredienti, senza quelli gia' contenuti).</li>
+ * ingredienti, senza quelli gia' contenuti); {@code tracceGiaContenute}: le tracce dichiarate dalle
+ * schede che non stanno in {@code tracce} perche' il prodotto le contiene gia' (serve a dirlo
+ * a chi legge, invece di «nessuna traccia»).</li>
  * <li>{@code ingredienti}: l'elenco ingredienti in ordine di peso decrescente, allergeni in
  * maiuscolo.</li>
  * <li>{@code avvisi}: frasi da mostrare (un semilavorato senza ricetta, un ingrediente sparito).</li>
@@ -34,6 +36,7 @@ public record CalcoloRicettaDto(
         List<VoceNonCalcolabileDto> nonCalcolabili,
         List<String> allergeni,
         List<String> tracce,
+        List<String> tracceGiaContenute,
         String ingredienti,
         List<String> avvisi) {
 }

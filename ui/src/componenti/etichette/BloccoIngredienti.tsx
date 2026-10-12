@@ -5,6 +5,7 @@ import type { CalcoloRicetta, Tracciato } from "../../api/tipi";
 import { IconaGiu, IconaIngredienti, IconaPiu, IconaStampa, IconaStellina, IconaVia } from "../Icone";
 import NuovoIngredienteModale from "../ingredienti/NuovoIngredienteModale";
 import { ImportaIngredientiDallaRicetta, LinkRicetta } from "../ricette/CampiDallaRicetta";
+import { spiegaNessunaTraccia } from "../ricette/ricetta";
 import { CampoAllergeni, CampoArea } from "./CampiComuni";
 
 // Il blocco «Ingredienti» dell'editor delle etichette (9 ottobre 2026, riordino):
@@ -189,7 +190,6 @@ function SezioneTracciabilita({
       </button>
       {sezioneAperta && (
         <div className="collegati">
-          <div className="notaSez">Scegli di quali vuoi sapere il sacco: lo Storico ricorda il lotto usato a ogni stampa.</div>
           <div className="chips">
             {tracciati.map((t) => {
               const senzaLotto = t.tipo === "ingrediente" && (ingredientiTutti ?? []).find((i) => i.id === t.id)?.stato === "manca";
@@ -213,7 +213,6 @@ function SezioneTracciabilita({
               <span>{aggiungi ? "Chiudi" : "Aggiungi"}</span>
             </button>
           </div>
-          {proposte.length > 0 && <div className="notaSez">Quelli chiari sono nel testo: toccali per aggiungerli.</div>}
           {aggiungi && (
             <>
               <div className="chips">
@@ -224,7 +223,7 @@ function SezioneTracciabilita({
                   + Ingrediente nuovo…
                 </button>
               </div>
-              <div className="etichettina mt-0.5">Le tue preparazioni (da usare come ingrediente)</div>
+              <div className="etichettina mt-0.5">Preparazioni</div>
               <div className="chips">
                 {prodottiLiberi.map((p) => (
                   <ChipProduzioneLibera key={p.id} id={p.id} nome={p.nome} onAggiungi={aggiungiProduzione} />
@@ -357,7 +356,6 @@ export default function BloccoIngredienti({
                     ) : (
                       <span className="nessuno">nessuno</span>
                     )}
-                    <span className="notaSez">Dalla ricetta: nel testo vanno in MAIUSCOLO.</span>
                   </>
                 )}
               </span>
@@ -378,7 +376,7 @@ export default function BloccoIngredienti({
                       ))}
                     </span>
                   ) : (
-                    <span className="notaSez">Nessuna traccia nelle schede degli ingredienti: il blocco non si stampa.</span>
+                    <span className="notaSez">{spiegaNessunaTraccia(calcolo?.tracceGiaContenute)}</span>
                   )
                 ) : (
                   <CampoAllergeni allergeni={allergeni} onCambia={onCambiaAllergeni} senzaEtichetta />

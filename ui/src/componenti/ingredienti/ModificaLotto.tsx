@@ -152,11 +152,6 @@ export default function ModificaLotto({ lotto, nomeIngrediente, onSalva, onAnnul
           <input type="date" value={data} onChange={cambiaData} aria-label="Data di arrivo" className="font-bold" />
         </div>
       </div>
-      {lotto.arrivo && (
-        <div className="text-[12.5px] leading-snug text-[var(--tenue)]">
-          Se la consegna ha altri lotti, fornitore e data cambiano solo per questo: gli altri restano com&apos;erano.
-        </div>
-      )}
       {errore && (
         <div role="alert" className="text-[13px] text-[var(--rosso)]">
           {errore}

@@ -169,6 +169,10 @@ public class RicetteService {
                 if (!prodotti.existsById(riga.id())) {
                     throw new ErroreApi(HttpStatus.BAD_REQUEST, "ricetta.righe: prodotto inesistente: " + riga.id());
                 }
+                if (prodottoId != null && contieGia(riga.id(), prodottoId, new HashSet<>())) {
+                    throw new ErroreApi(HttpStatus.BAD_REQUEST, "«" + nomeProdotto(riga.id()) + "» usa già «" + nomeProdotto(prodottoId)
+                            + "» nella sua ricetta: non può stare anche nella ricetta di «" + nomeProdotto(prodottoId) + "».");
+                }
             } else {
                 throw new ErroreApi(HttpStatus.BAD_REQUEST, "ricetta.righe: tipo non ammesso: " + riga.tipo());
             }
@@ -180,6 +184,28 @@ public class RicetteService {
         if (r.porzioni() != null && r.porzioni() < 1) {
             throw new ErroreApi(HttpStatus.BAD_REQUEST, "ricetta.porzioni: almeno 1");
         }
+    }
+
+    /** Vero se la ricetta salvata di {@code dentro} usa, direttamente o attraverso altri semilavorati, {@code cercato}. */
+    private boolean contieGia(Long dentro, Long cercato, Set<Long> visitati) {
+        if (!visitati.add(dentro)) {
+            return false;
+        }
+        Prodotto p = prodotti.findById(dentro).orElse(null);
+        if (p == null) {
+            return false;
+        }
+        for (RigaRicettaDto riga : ricettaSalvata(p).righe()) {
+            if (TracciatoDto.PRODOTTO.equals(riga.tipo()) && riga.id() != null
+                    && (riga.id().equals(cercato) || contieGia(riga.id(), cercato, visitati))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String nomeProdotto(Long id) {
+        return prodotti.findById(id).map(Prodotto::getNome).orElse("?");
     }
 
     /**
@@ -246,6 +272,16 @@ public class RicetteService {
                 .map(riga -> new RigaRicettaDto(riga.tipo(), riga.id(), null, riga.quantita(), riga.unita() != null ? riga.unita() : "g"))
                 .toList();
         return json.scrivi(new RicettaDto(righe, r.porzioni(), r.allergeniCalcolati()));
+    }
+
+    /** I nomi dei prodotti che hanno l'ingrediente nella propria ricetta, in ordine alfabetico. */
+    public List<String> nomiProdottiConIngrediente(Long ingredienteId) {
+        return prodotti.findByRicettaIsNotNull().stream()
+                .filter(p -> ricettaSalvata(p).righe().stream()
+                        .anyMatch(r -> TracciatoDto.INGREDIENTE.equals(r.tipo()) && ingredienteId.equals(r.id())))
+                .map(Prodotto::getNome)
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 
     /** Toglie un ingrediente eliminato davvero dalle ricette che lo usavano (un archiviato resta: la sua scheda c'e' ancora). */
@@ -456,6 +492,8 @@ public class RicetteService {
             scritti.add(new ValoreNutrizionaleDto(nome, testo, true));
         }
 
+        Set<String> tracceGiaContenute = new HashSet<>(tracce);
+        tracceGiaContenute.retainAll(allergeni);
         tracce.removeAll(allergeni);
         // Elenco in ordine di peso decrescente (Reg. UE 1169/2011, art. 18); a parita' l'ordine della ricetta.
         String testoIngredienti = elenco.stream()
@@ -465,7 +503,7 @@ public class RicetteService {
                 .collect(Collectors.joining(", "));
 
         CalcoloRicettaDto calcolo = new CalcoloRicettaDto(pesoIngredienti, pesoPorzione, voci, scritti, List.copyOf(senzaValori),
-                nonCalcolabili, inOrdine(allergeni), inOrdine(tracce), testoIngredienti, avvisi);
+                nonCalcolabili, inOrdine(allergeni), inOrdine(tracce), inOrdine(tracceGiaContenute), testoIngredienti, avvisi);
         return new Esito(calcolo, per100);
     }
 
@@ -504,6 +542,11 @@ public class RicetteService {
             // Fra parentesi l'elenco scritto sulla sua etichetta; se non ne ha uno, quello calcolato dalla sua ricetta.
             String interno = p.getIngredienti() != null && !p.getIngredienti().isBlank() ? p.getIngredienti() : c.ingredienti();
             Set<String> tracceSue = new HashSet<>(sua.allergeniCalcolati() ? c.tracce() : suoiPuoContenere);
+            if (sua.allergeniCalcolati()) {
+                // Quelle che il semilavorato contiene gia' sono allergeni anche di chi lo usa: restano
+                // fra le tracce dichiarate cosi' si sa dirle «gia' contenute» (non finiscono in «tracce»).
+                tracceSue.addAll(c.tracceGiaContenute());
+            }
             c.avvisi().forEach(a -> {
                 if (!avvisi.contains(a)) {
                     avvisi.add(a);
@@ -523,7 +566,9 @@ public class RicetteService {
 
     /** «Base pizza (farina, acqua, LIEVITO)»: il nome del semilavorato e, fra parentesi, i suoi ingredienti. */
     private static String conInterno(String nome, String interno) {
-        return interno != null && !interno.isBlank() ? nome + " (" + interno.trim() + ")" : nome;
+        // Il punto finale di una frase scritta a mano non va dentro la parentesi: «(…, farina di mais.)».
+        String pulito = interno == null ? "" : interno.trim().replaceAll("[\\s.;,]+$", "");
+        return !pulito.isEmpty() ? nome + " (" + pulito + ")" : nome;
     }
 
     /** La ricetta coi nomi delle righe letti ora (un ingrediente rinominato si vede subito). */

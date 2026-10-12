@@ -248,11 +248,17 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
           {nodi}
         </SortableContext>
       </DndContext>
-      <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
-        <IconaPiu larghezza={20} spessoreTratto={2.2} />
-        <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi una voce all'etichetta"}</span>
-      </button>
-      {tavolozzaAperta && <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />}
+      <div className="aggiungiVoce">
+        {tavolozzaAperta && (
+          <div className="tavolozzaApribile">
+            <PannelloTavolozza blocchi={blocchi} onAggiungi={aggiungiBlocco} />
+          </div>
+        )}
+        <button type="button" className="btn w-full justify-center bg-transparent border-dashed border-[var(--tratteggio)] text-[#6B5A4E]" onClick={apriChiudiTavolozza}>
+          <IconaPiu larghezza={20} spessoreTratto={2.2} />
+          <span>{tavolozzaAperta ? "Chiudi" : "Aggiungi una voce"}</span>
+        </button>
+      </div>
     </div>
   );
 }

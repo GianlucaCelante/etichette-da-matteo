@@ -378,7 +378,7 @@ function CampoLottoRapido({
         >
           {schemi.map((s) => (
             <option key={s.codice} value={s.codice}>
-              {s.nome} · {s.esempio}
+              {s.nome}
             </option>
           ))}
           {schemaManoNonOfferto && <option value="mano">A mano (non più disponibile)</option>}
@@ -1317,7 +1317,6 @@ export default function Etichette() {
   const campoNome = bozzaProdotto ? (
     <div className="flex flex-col gap-1.5">
       <CampoTesto etichetta="Nome" valore={bozzaProdotto.nome} campo="nome" onCambia={aggiornaNome} grassetto />
-      <div className="text-[12px] text-[var(--spento)]">Come lo trovi nell&apos;elenco.</div>
     </div>
   ) : null;
 
@@ -1342,7 +1341,6 @@ export default function Etichette() {
   const usaPorzioni = ce("porzioni");
   const usaValori = ce("valori");
   const usaProduttore = ce("produttore");
-  const usaDataProduzione = ce("dataProduzione");
 
   // La posizione (indice nel pannello dei blocchi) del PRIMO blocco di ogni
   // gruppo: e' quella che il gruppo eredita nella colonna centrale.
@@ -1468,7 +1466,7 @@ export default function Etichette() {
             ordine: ordineSezione("scadenzaEtichetta"),
             campi: [
               usaScadenza && (
-                <div key="due" className="grid grid-cols-2 gap-2.5">
+                <div key="due" className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2.5">
                   <CampoSelezione etichetta="Dicitura" nomeAccessibile="Dicitura scadenza" valore={bozzaProdotto.dicituraScadenza} campo="dicituraScadenza" opzioni={OPZIONI_DICITURA_SCADENZA} onCambia={aggiornaCondiviso} />
                   <CampoSelezione etichetta="Formato data" valore={bozzaProdotto.formatoData} campo="formatoData" opzioni={FORMATI_DATA} onCambia={aggiornaCondiviso} />
                 </div>
@@ -1536,13 +1534,7 @@ export default function Etichette() {
             chiave: "dataProduzione",
             titolo: NOMIBLOCCO.dataProduzione,
             ordine: ordineSezione("dataProduzione"),
-            campi: [
-              usaDataProduzione && (
-                <div key="info" className="text-[13px] text-[var(--tenue)]">
-                  Esce la data di stampa di oggi: non si scrive.
-                </div>
-              ),
-            ],
+            campi: [],
           },
           // Niente piu' un gruppo "Sigla di chi l'ha fatta" (deciso da
           // Gianluca, 25/09/2026): il blocco non si offre piu' (BLOCCHI_DATI,
@@ -1863,9 +1855,6 @@ export default function Etichette() {
               <div className="h text-[18px] font-semibold">
                 {nessunaEtichettaInElenco ? "Non c'è ancora nessuna etichetta." : "Nessuna etichetta scelta"}
               </div>
-              {!nessunaEtichettaInElenco && (
-                <div className="text-[14px] text-[var(--tenue)] max-w-[280px]">Scegline una dall&apos;elenco, oppure creane una nuova.</div>
-              )}
               <button type="button" className="btn primario mt-2" onClick={clicNuovoProdotto}>
                 <IconaPiu larghezza={17} spessoreTratto={2.2} />
                 <span>Nuova etichetta</span>
@@ -1890,7 +1879,7 @@ export default function Etichette() {
           // dell'elenco qui sopra: sotto quella soglia e' la colonna
           // centrale (.schedaEtichette, che ha piu' margine) a stringersi
           // per prima.
-          <div className="colonna scorre flex-1 min-w-[300px] gap-3 soloPC">
+          <div className={"colonna flex-1 min-w-[300px] gap-3 soloPC" + (provaLavoroId ? " scorre" : " colonnaAnteprima")}>
             {(provaLavoroId ? (
             eventoProva?.stato === "errore" ? (
               <PannelloErrore messaggio={eventoProva.messaggio} onFerma={fermaProva} />
@@ -1919,7 +1908,7 @@ export default function Etichette() {
             )
           ) : (
             <>
-              <div ref={rifAnteprimaPC} className="min-w-0">
+              <div ref={rifAnteprimaPC} className="min-w-0 shrink-0">
                 <RiquadroAnteprima
                   src={srcAnteprima}
                   srcPiena={srcPiena}
@@ -1934,21 +1923,14 @@ export default function Etichette() {
               </div>
               {bozzaBlocchi && bozzaProdotto && (
                 <>
-                  <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-[var(--riga)]">
-                    <div className="text-[14px] font-bold">Cosa c&apos;è sull&apos;etichetta</div>
-                    <div className="text-[12px] text-[var(--tenue)]">trascina le righe, o usa le frecce, per cambiare l&apos;ordine</div>
-                  </div>
-                  <BlocchiEditor
-                    blocchi={bozzaBlocchi}
-                    onCambiaBlocchi={cambiaBlocchi}
-                    larghezzaDestra={bozzaProdotto.zona.larghezzaDestra}
-                    onCambiaLarghezzaDestra={aggiornaLarghezzaDestra}
-                  />
-                  <div className="piedeRotolo">
-                    <span className="etichettina">Rotolo</span>
-                    <span className="font-bold text-[14px]">{rotolo} mm</span>
-                    <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
-                    <span className="ml-auto text-[13px] text-[var(--tenue)]">Lunghezza: automatica</span>
+                  <div className="shrink-0 pt-2 border-t border-[var(--riga)] text-[14px] font-bold">Cosa c&apos;è sull&apos;etichetta</div>
+                  <div className="scorre blocchiScorrevoli flex-1 min-h-0 flex flex-col gap-3">
+                    <BlocchiEditor
+                      blocchi={bozzaBlocchi}
+                      onCambiaBlocchi={cambiaBlocchi}
+                      larghezzaDestra={bozzaProdotto.zona.larghezzaDestra}
+                      onCambiaLarghezzaDestra={aggiornaLarghezzaDestra}
+                    />
                   </div>
                 </>
               )}
