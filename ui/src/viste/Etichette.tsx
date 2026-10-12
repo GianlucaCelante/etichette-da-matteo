@@ -1834,14 +1834,7 @@ export default function Etichette() {
                           </>
                   ) : (
                     bozzaBlocchi && (
-                      <>
-                        <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={cambiaBlocchi} rifVassoio={rifVassoioTel} chiaveNuova={chiaveNuovaTel} />
-                        <div className="piedeRotolo">
-                          <span className="etichettina">Rotolo</span>
-                          <span className="font-bold text-[14px]">{rotolo} mm</span>
-                          <span className="text-[13px] text-[var(--tenue)]">letto dalla stampante</span>
-                        </div>
-                      </>
+                      <BlocchiTelefono blocchi={bozzaBlocchi} onCambiaBlocchi={cambiaBlocchi} rifVassoio={rifVassoioTel} chiaveNuova={chiaveNuovaTel} />
                     )
                   )}
                 </div>
