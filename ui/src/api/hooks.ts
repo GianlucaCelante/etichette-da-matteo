@@ -157,6 +157,16 @@ export function useCartelle(percorso: string | null) {
   });
 }
 
+// "Nuova cartella" dell'esploratore: dopo averla creata le liste di cartelle
+// gia' lette sono vecchie, si rileggono alla prossima apertura.
+export function useNuovaCartella() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ percorso, nome }: { percorso: string; nome: string }) => api.nuovaCartella(percorso, nome),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["cartelle"] }),
+  });
+}
+
 // "Fai una copia adesso": aggiorna solo "backup.ultima" nella cache, senza
 // rileggere tutto (il servizio torna solo l'esito, non l'oggetto intero).
 export function useEseguiBackupOra() {

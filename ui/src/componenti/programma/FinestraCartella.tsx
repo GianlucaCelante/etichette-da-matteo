@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCartelle } from "../../api/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { ErroreRichiesta } from "../../api/client";
+import { useCartelle, useNuovaCartella } from "../../api/hooks";
 import type { RadiceCartelle, VoceCartella } from "../../api/tipi";
-import { IconaCartella, IconaDestra, IconaDisco, IconaSu } from "../Icone";
+import { IconaCartella, IconaDestra, IconaDisco, IconaPiu, IconaSu } from "../Icone";
 import Finestra from "../Finestra";
 
 interface Briciola {
@@ -99,6 +100,65 @@ export default function FinestraCartella({ inizio, puoiSpegnere, salvataggio, on
 
   const nelleUnita = !isError && data !== undefined && data.percorso === null;
 
+  // "Nuova cartella": un campo per il nome, la cartella nasce dentro quella aperta
+  // e ci si entra subito. Non si offre fra le unita' (non c'e' dove crearla).
+  const [creando, setCreando] = useState(false);
+  const [nome, setNome] = useState("");
+  const campoNome = useRef<HTMLInputElement>(null);
+  const nuovaCartella = useNuovaCartella();
+  const apriCreazione = useCallback(() => {
+    nuovaCartella.reset();
+    setNome("");
+    setCreando(true);
+  }, [nuovaCartella]);
+  const chiudiCreazione = useCallback(() => {
+    nuovaCartella.reset();
+    setCreando(false);
+  }, [nuovaCartella]);
+  const cambiaNome = useCallback(
+    (evento: ChangeEvent<HTMLInputElement>) => {
+      nuovaCartella.reset();
+      setNome(evento.target.value);
+    },
+    [nuovaCartella],
+  );
+  const crea = useCallback(() => {
+    if (!data?.percorso || !nome.trim() || nuovaCartella.isPending) return;
+    nuovaCartella.mutate(
+      { percorso: data.percorso, nome },
+      {
+        onSuccess: (nuova) => {
+          setCreando(false);
+          setPercorso(nuova.percorso);
+        },
+      },
+    );
+  }, [data?.percorso, nome, nuovaCartella]);
+  const tastoNome = useCallback(
+    (evento: KeyboardEvent<HTMLInputElement>) => {
+      if (evento.key === "Enter") {
+        evento.preventDefault();
+        crea();
+      } else if (evento.key === "Escape") {
+        evento.stopPropagation();
+        chiudiCreazione();
+      }
+    },
+    [crea, chiudiCreazione],
+  );
+  useEffect(() => {
+    if (creando) campoNome.current?.focus();
+  }, [creando]);
+  // Cambiando cartella o tornando alle unita' il campo si chiude.
+  useEffect(() => {
+    setCreando(false);
+  }, [data?.percorso]);
+  const erroreCreazione = nuovaCartella.isError
+    ? nuovaCartella.error instanceof ErroreRichiesta
+      ? nuovaCartella.error.message
+      : "Non riesco a creare la cartella"
+    : null;
+
   return (
     <Finestra
       titolo="Scegli la cartella"
@@ -139,6 +199,39 @@ export default function FinestraCartella({ inizio, puoiSpegnere, salvataggio, on
           ))}
         </div>
       </div>
+
+      {!nelleUnita && !isError && data?.percorso && (
+        <div className="flex flex-col gap-1.5">
+          {creando ? (
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <div className="casella flex-1 min-w-[160px]">
+                <input
+                  ref={campoNome}
+                  value={nome}
+                  onChange={cambiaNome}
+                  onKeyDown={tastoNome}
+                  placeholder="Nome della nuova cartella"
+                  aria-label="Nome della nuova cartella"
+                  maxLength={100}
+                  disabled={nuovaCartella.isPending}
+                />
+              </div>
+              <button type="button" className="btn compatto" onClick={chiudiCreazione} disabled={nuovaCartella.isPending}>
+                Annulla
+              </button>
+              <button type="button" className="btn primario compatto" onClick={crea} disabled={!nome.trim() || nuovaCartella.isPending}>
+                Crea
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="btn compatto self-start" onClick={apriCreazione}>
+              <IconaPiu larghezza={17} spessoreTratto={2.2} />
+              <span>Nuova cartella</span>
+            </button>
+          )}
+          {erroreCreazione && <div className="text-[13px] text-[var(--rosso)]" role="alert">{erroreCreazione}</div>}
+        </div>
+      )}
 
       <div
         ref={lista}

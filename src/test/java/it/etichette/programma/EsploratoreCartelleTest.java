@@ -154,4 +154,42 @@ class EsploratoreCartelleTest {
         ErroreApi nulPiuMalformato = assertThrows(ErroreApi.class, () -> esploratore.elenca("C:\\a\u0000b"));
         assertEquals(HttpStatus.BAD_REQUEST, nulPiuMalformato.getStato());
     }
+
+    @Test
+    void creaLaSottocartellaERispondeConLaCartellaNuova() {
+        CartelleDto risposta = esploratore.creaCartella(radice.toString(), "  Copie di sicurezza ");
+
+        assertTrue(Files.isDirectory(radice.resolve("Copie di sicurezza")));
+        assertEquals(radice.resolve("Copie di sicurezza").toString(), risposta.percorso());
+        assertEquals(radice.toString(), risposta.genitore());
+        assertTrue(risposta.cartelle().isEmpty());
+    }
+
+    @Test
+    void unNomeCheEsisteGiaDaConflitto() throws IOException {
+        Files.createDirectory(radice.resolve("copie"));
+
+        ErroreApi e = assertThrows(ErroreApi.class, () -> esploratore.creaCartella(radice.toString(), "copie"));
+
+        assertEquals(HttpStatus.CONFLICT, e.getStato());
+    }
+
+    @Test
+    void nonCreaCartelleConNomiCheUscirebberoDalPercorso() {
+        for (String nome : new String[] {"", "   ", null, "..", ".", "a/b", "a\\b", "../fuori", "C:x", ".nascosta", "finisce.", "a*b", "a?b", "a\"b", "a|b"}) {
+            ErroreApi e = assertThrows(ErroreApi.class, () -> esploratore.creaCartella(radice.toString(), nome), "nome: " + nome);
+            assertEquals(HttpStatus.BAD_REQUEST, e.getStato(), "nome: " + nome);
+        }
+        assertEquals(0, nomi(esploratore.elenca(radice.toString())).size());
+    }
+
+    @Test
+    void nonCreaDoveLaCartellaNonEsisteOManca() {
+        assertEquals(HttpStatus.BAD_REQUEST,
+                assertThrows(ErroreApi.class, () -> esploratore.creaCartella(radice.resolve("non-c-e").toString(), "x")).getStato());
+        assertEquals(HttpStatus.BAD_REQUEST,
+                assertThrows(ErroreApi.class, () -> esploratore.creaCartella(null, "x")).getStato());
+        assertEquals(HttpStatus.BAD_REQUEST,
+                assertThrows(ErroreApi.class, () -> esploratore.creaCartella("relativo/percorso", "x")).getStato());
+    }
 }

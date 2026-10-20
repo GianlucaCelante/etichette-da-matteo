@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -52,6 +54,60 @@ public class EsploratoreCartelle {
                 genitore == null ? null : genitore.toString(),
                 sottocartelle(cartella),
                 radici);
+    }
+
+    /**
+     * Crea la sottocartella {@code nome} dentro {@code percorso} (il tasto "Nuova cartella"
+     * dell'esploratore) e risponde con l'elenco della cartella nuova, cosi' l'interfaccia ci entra.
+     * Una sola cartella, mai una catena ({@code Files.createDirectory}): il nome e' un nome semplice,
+     * senza separatori, senza {@code ..} e senza punto iniziale (le cartelle nascoste l'esploratore
+     * non le mostra, quindi non la ritroverebbe).
+     */
+    public CartelleDto creaCartella(String percorso, String nome) {
+        if (percorso == null || percorso.isBlank()) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Apri prima una cartella o un'unità");
+        }
+        Path genitore = risolvi(percorso);
+        if (!Files.isDirectory(genitore)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "La cartella non esiste");
+        }
+        String pulito = nomeValido(nome);
+        Path nuova = genitore.resolve(pulito);
+        if (!nuova.normalize().getParent().equals(genitore)) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il nome non è valido");
+        }
+        try {
+            Files.createDirectory(nuova);
+        } catch (FileAlreadyExistsException e) {
+            throw new ErroreApi(HttpStatus.CONFLICT, "Esiste già qualcosa con questo nome");
+        } catch (AccessDeniedException e) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Qui non posso creare cartelle");
+        } catch (IOException | RuntimeException e) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Non riesco a creare la cartella");
+        }
+        return elenca(nuova.toString());
+    }
+
+    private static final int NOME_MASSIMO = 100;
+    private static final String CARATTERI_VIETATI = "\\/:*?\"<>|";
+
+    private static String nomeValido(String nome) {
+        String n = nome == null ? "" : nome.trim();
+        if (n.isEmpty()) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Scrivi il nome della cartella");
+        }
+        if (n.length() > NOME_MASSIMO) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il nome è troppo lungo");
+        }
+        if (n.startsWith(".") || n.endsWith(".")) {
+            throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il nome non può cominciare o finire con un punto");
+        }
+        for (char c : n.toCharArray()) {
+            if (c < 32 || CARATTERI_VIETATI.indexOf(c) >= 0) {
+                throw new ErroreApi(HttpStatus.BAD_REQUEST, "Il nome non può contenere \\ / : * ? \" < > |");
+            }
+        }
+        return n;
     }
 
     private static Path risolvi(String percorso) {

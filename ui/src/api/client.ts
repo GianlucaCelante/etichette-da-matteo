@@ -130,6 +130,11 @@ export const api = {
   // Le sottocartelle di un percorso assoluto, o le unita' se manca (per
   // l'esploratore di cartelle); 400 se il percorso non c'e' o non e' assoluto.
   cartelle: (percorso: string | null) => richiedi<Cartelle>(`/programma/cartelle${stringaQuery({ percorso: percorso ?? undefined })}`),
+  // Crea la sottocartella "nome" dentro "percorso" e risponde con l'elenco
+  // della cartella nuova; 400 se il nome o il percorso non vanno bene o non si
+  // puo' scrivere, 409 se il nome esiste gia'.
+  nuovaCartella: (percorso: string, nome: string) =>
+    richiedi<Cartelle>("/programma/cartelle", { method: "POST", body: JSON.stringify({ percorso, nome }) }),
   // Esegue subito una copia e risponde con l'esito appena scritto (lo stesso
   // oggetto "ultima" di GET /api/programma); 409 senza cartella configurata
   // o con una copia gia' in corso.

@@ -48,6 +48,16 @@ public class ProgrammaController {
         return esploratore.elenca(percorso);
     }
 
+    /**
+     * Crea la sottocartella {@code nome} dentro {@code percorso} e risponde con l'elenco della
+     * cartella nuova (tasto "Nuova cartella" dell'esploratore). {@code 400} se il nome o il percorso
+     * non vanno bene o non si puo' scrivere, {@code 409} se il nome esiste gia'.
+     */
+    @PostMapping("/cartelle")
+    public CartelleDto nuovaCartella(@RequestBody NuovaCartellaDto corpo) {
+        return esploratore.creaCartella(corpo.percorso(), corpo.nome());
+    }
+
     /** Copia subito. {@code 409} se manca la cartella o una copia e' gia' in corso. */
     @PostMapping("/backup")
     public BackupEsitoDto eseguiBackupOra() {
