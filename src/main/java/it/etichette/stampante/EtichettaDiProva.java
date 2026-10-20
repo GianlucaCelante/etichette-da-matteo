@@ -54,13 +54,13 @@ public class EtichettaDiProva {
         g.drawRect(2, 2, larghezzaPx - 5, altezzaPx - 5);
         g.setStroke(new BasicStroke(1));
 
-        Font titolo = caratteri.grassetto(28f);
+        Font titolo = caratteri.grassetto(8f);
         g.setFont(titolo);
         String testoTitolo = "ETICHETTE — STAMPA DI PROVA";
         FontMetrics fm = g.getFontMetrics();
         g.drawString(testoTitolo, (larghezzaPx - fm.stringWidth(testoTitolo)) / 2, 70);
 
-        Font sottotitolo = caratteri.regolare(14f);
+        Font sottotitolo = caratteri.regolare(5f);
         g.setFont(sottotitolo);
         String testoSotto = rotoloMm + " mm continuo · 300 dpi · Brother QL-1100c";
         fm = g.getFontMetrics();
@@ -69,7 +69,7 @@ public class EtichettaDiProva {
         String misure = String.format(Locale.ITALY,
                 "area stampabile: %d punti = %.1f mm · lunghezza: %.0f mm",
                 spec[1], spec[1] / ProtocolloQl.PUNTI_PER_MM, lunghezzaMm);
-        Font misureFont = caratteri.regolare(11f);
+        Font misureFont = caratteri.regolare(4f);
         g.setFont(misureFont);
         fm = g.getFontMetrics();
         g.drawString(misure, (larghezzaPx - fm.stringWidth(misure)) / 2, 170);

@@ -70,4 +70,28 @@ class ProtocolloQlTest {
         assertThat(esito.errori1()).isEmpty();
         assertThat(esito.errori2()).isEmpty();
     }
+
+    /** ESC i K: il bit 0x08 e' "taglia a fine lavoro", che taglia l'ultima pagina anche con il taglio automatico spento. */
+    @ParameterizedTest(name = "taglio automatico {0}, a fine lavoro {1} -> ESC i M {2}, ESC i K {3}")
+    @CsvSource({
+            "true, true, 64, 8",
+            "false, false, 0, 0",
+            "false, true, 0, 8"
+    })
+    void iBitDiTaglioSeguonoLeDueImpostazioni(boolean automatico, boolean fineJob, int variousMode, int expandedMode) {
+        byte[] pc = ProtocolloQl.controlloPagina(62, 100, true, 35, automatico, fineJob);
+
+        assertThat(byteDopo(pc, 'M')).isEqualTo(variousMode);
+        assertThat(byteDopo(pc, 'K')).isEqualTo(expandedMode);
+    }
+
+    /** Il byte che segue la sequenza {@code ESC i <comando>}. */
+    private static int byteDopo(byte[] dati, char comando) {
+        for (int i = 0; i + 3 < dati.length; i++) {
+            if (dati[i] == 0x1B && dati[i + 1] == 'i' && dati[i + 2] == comando) {
+                return dati[i + 3] & 0xFF;
+            }
+        }
+        throw new AssertionError("ESC i " + comando + " non trovato");
+    }
 }

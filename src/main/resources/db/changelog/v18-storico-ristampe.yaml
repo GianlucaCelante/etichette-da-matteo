@@ -1,0 +1,16 @@
+databaseChangeLog:
+
+  # 20 ottobre 2026: le ristampe (Storico > Ristampa, POST /api/storico/{id}/ristampa e
+  # /api/stampe/ultima) scrivono una riga nuova come una stampa qualunque; ora la riga dice che e'
+  # una ristampa, cosi' lo Storico le distingue dalle stampe originali.
+
+  - changeSet:
+      id: 180-storico-ristampa
+      author: etichette
+      comment: >
+        Colonna ristampa su storico_stampe: 1 = la riga e' una ristampa di un'altra, 0 = stampa
+        originale (anche per tutte le righe gia' presenti). Con SQL diretto: storico_stampe e' citata
+        da storico_lotti (vedi changeset 160 di v17-schede-e-ricette.yaml).
+      changes:
+        - sql:
+            sql: ALTER TABLE storico_stampe ADD COLUMN ristampa INTEGER NOT NULL DEFAULT 0

@@ -4,6 +4,7 @@ import { ErroreRichiesta } from "../../api/client";
 import { useCalcoloRicetta, useProdotti, useProdotto, useSalvaRicetta } from "../../api/hooks";
 import type { Prodotto, Ricetta } from "../../api/tipi";
 import { useAvviso } from "../../hooks/useAvviso";
+import { usePortaleAzioni } from "../../hooks/useTestata";
 import { IconaCamion, IconaCerca, IconaDestra, IconaPiu, IconaSalva, IconaSinistra } from "../Icone";
 import { StatoVuoto } from "../ingredienti/SezioniScheda";
 import CampoRicetta from "./CampoRicetta";
@@ -178,6 +179,33 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
   const vaiAEtichette = useCallback(() => navigate("/etichette"), [navigate]);
   const vaiAMerceArrivata = useCallback(() => navigate("/ingredienti/arrivo"), [navigate]);
 
+  // Stessa disposizione di Ingredienti: i tasti stanno nella testata condivisa, accanto al
+  // titolo, con «Merce arrivata» in verde per ultima; sul telefono sono le versioni corte e nel
+  // dettaglio spariscono (".soloElencoTel"), su PC elenco e dettaglio stanno affiancati e restano.
+  const soloElenco = dettaglio ? " soloElencoTel" : "";
+  const portaleAzioni = usePortaleAzioni(
+    <>
+      <button type="button" className={"btn soloPC" + soloElenco} onClick={nuova}>
+        <IconaPiu larghezza={18} spessoreTratto={2.2} />
+        <span>Nuova ricetta</span>
+      </button>
+      <button
+        type="button"
+        className={"btn piccoloTel soloTel max-[359px]:px-2 max-[359px]:[&>svg]:hidden" + soloElenco}
+        onClick={nuova}
+        title="Nuova ricetta"
+        aria-label="Nuova ricetta"
+      >
+        <IconaPiu larghezza={20} spessoreTratto={2.2} />
+        <span>Nuova</span>
+      </button>
+      <button type="button" className={"btn primario piccoloTel azioneMerceArrivata max-[359px]:px-2 max-[359px]:[&>svg]:hidden" + soloElenco} onClick={vaiAMerceArrivata}>
+        <IconaCamion larghezza={18} spessoreTratto={2} />
+        <span>Merce arrivata</span>
+      </button>
+    </>,
+  );
+
   const filtrate = ricette.filter((p) => !cerca.trim() || p.nome.toLowerCase().includes(cerca.trim().toLowerCase()));
 
   // Il pezzo che l'editor ha in comune: la freccia del telefono e, sotto, Annulla / Salva.
@@ -200,20 +228,9 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
 
   return (
     <div className={"schermo vistaStampa" + (dettaglio ? " dettaglio" : "")}>
+      {portaleAzioni}
       <div className="colonnaElenco flex-1 min-w-0 gap-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <SceltaVistaIngredienti vista="ricette" />
-          <span className="flex items-center gap-2">
-            <button type="button" className="btn primario piccoloTel" onClick={vaiAMerceArrivata}>
-              <IconaCamion larghezza={17} spessoreTratto={2} />
-              <span>Registra merce</span>
-            </button>
-            <button type="button" className="btn piccoloTel" onClick={nuova}>
-              <IconaPiu larghezza={17} spessoreTratto={2.2} />
-              <span>Nuova ricetta</span>
-            </button>
-          </span>
-        </div>
+        <SceltaVistaIngredienti vista="ricette" />
         <div className="cerca">
           <IconaCerca larghezza={20} spessoreTratto={2} />
           <input value={cerca} onChange={cambiaCerca} placeholder="Cerca ricetta…" aria-label="Cerca ricetta" />

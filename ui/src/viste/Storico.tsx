@@ -201,6 +201,7 @@ function RigaStoricoPC({
         <div className="text-[12.5px] text-[var(--tenue)] truncate">
           {inStampa ? "In stampa" : plurale(riga.copie, "copia", "copie")}
           <CodaEsito esito={riga.esito} />
+          {riga.ristampa && <b className="text-[var(--verdescuro)]"> · ristampa</b>}
           <LinkScartate riga={riga} onApri={onApriScartate} />
         </div>
         {riga.esito === "interrotta" && <div className="text-[12.5px] text-[var(--ambra)] leading-snug">{NOTA_INTERROTTA}</div>}
@@ -304,6 +305,7 @@ function RigaStoricoTel({
       <div className="d">
         {dettaglio}
         <CodaEsito esito={riga.esito} />
+          {riga.ristampa && <b className="text-[var(--verdescuro)]"> · ristampa</b>}
         <LinkScartate riga={riga} onApri={onApriScartate} />
       </div>
       {riga.esito === "interrotta" && <div className="d leading-snug text-[var(--ambra)]">{NOTA_INTERROTTA}</div>}

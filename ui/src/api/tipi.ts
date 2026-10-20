@@ -556,6 +556,8 @@ export interface StoricoRiga {
   // Le porzioni di questa produzione buttate dopo (sigillate male...),
   // segnate a posteriori: 0 = nessuna.
   scartate: number;
+  // Vera se la riga e' una ristampa di un'altra stampa, falsa per una stampa originale.
+  ristampa: boolean;
 }
 
 // I filtri di GET /api/storico (docs/api.md, "Storico"): tutti facoltativi e

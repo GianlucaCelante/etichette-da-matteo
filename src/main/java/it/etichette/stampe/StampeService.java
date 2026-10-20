@@ -269,7 +269,7 @@ public class StampeService {
         // si consuma il progressivo; se e' diverso, e' un lotto scritto a mano e non si consuma nulla.
         // Deciso DENTRO la transazione che apre la riga di storico (StoricoLavori#apri): numero
         // consumato e riga esistono insieme, o nessuno dei due.
-        return avvia(p, copie, quantita, porzioni, scadenza, () -> risolviLotto(lottoRichiesto, schema), dispositivoNome, false,
+        return avvia(p, copie, quantita, porzioni, scadenza, () -> risolviLotto(lottoRichiesto, schema), dispositivoNome, false, false,
                 righeLotti, rotolo);
     }
 
@@ -304,7 +304,7 @@ public class StampeService {
         // Solo la proposta (prossimoConSchema): una prova non consuma il progressivo. Una prova non
         // registra lotti (come gia' non aggiorna usi, docs/api.md): nessuna risoluzione da fare.
         return avvia(prodottoRicevuto, 1, pesoAcceso(prodottoRicevuto) ? prodottoRicevuto.quantita() : null, prodottoRicevuto.porzioni(), scadenza, () -> lotti.prossimoConSchema(schema),
-                dispositivoNome, true, List.of(), rotolo);
+                dispositivoNome, true, false, List.of(), rotolo);
     }
 
     /**
@@ -342,7 +342,7 @@ public class StampeService {
         String lotto = riga.getLotto();
         // Il peso della riga, ma solo se l'etichetta (corrente) ha ancora il blocco Peso acceso.
         String quantita = pesoAcceso(p) ? riga.getQuantita() : null;
-        return avvia(p, copie, quantita, riga.getPorzioni(), scadenza, () -> lotto, dispositivoNome, false, righeLotti, rotolo);
+        return avvia(p, copie, quantita, riga.getPorzioni(), scadenza, () -> lotto, dispositivoNome, false, true, righeLotti, rotolo);
     }
 
     /**
@@ -395,12 +395,12 @@ public class StampeService {
      * l'eccezione risale come prima.
      */
     private RispostaStampa avvia(ProdottoDto prodotto, int copie, String quantita, String porzioni, LocalDate scadenza,
-                                 Supplier<String> lottoDaUsare, String dispositivoNome, boolean prova,
+                                 Supplier<String> lottoDaUsare, String dispositivoNome, boolean prova, boolean ristampa,
                                  List<LottoDaRegistrare> righeLotti, int rotolo) {
         String lavoroId = UUID.randomUUID().toString();
         String scadenzaStr = scadenza != null ? scadenza.format(DateTimeFormatter.ISO_LOCAL_DATE) : null;
         RigaAperta riga = storicoLavori.apri(new NuovaRiga(lavoroId, prodotto.id(), prodotto.nome(), quantita, porzioni,
-                scadenzaStr, dispositivoNome, prova, righeLotti), lottoDaUsare);
+                scadenzaStr, dispositivoNome, prova, ristampa, righeLotti), lottoDaUsare);
         String lotto = riga.lotto();
         // Il contesto PRIMA di accodare: il monitor puo' pubblicare il primo evento del lavoro
         // appena e' in coda, e quell'evento deve gia' trovare la sua riga.
@@ -592,11 +592,13 @@ public class StampeService {
         return s != null && !s.isBlank();
     }
 
-    private double margineMm() {
+    /** Margine di stampa in mm dall'impostazione {@code margine_mm} (anche per la stampa di prova della stampante). */
+    public double margineMm() {
         return leggiImpostazioneNumerica("margine_mm", 3.0);
     }
 
-    private boolean taglioOgniEtichetta() {
+    /** Impostazione {@code taglio_ogni_etichetta} (anche per la stampa di prova della stampante). */
+    public boolean taglioOgniEtichetta() {
         return Boolean.parseBoolean(impostazioni.findById("taglio_ogni_etichetta").map(Impostazione::getValore).orElse("true"));
     }
 

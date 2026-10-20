@@ -84,6 +84,10 @@ public class StoricoStampa {
     @Column(name = "lavoro_id")
     private String lavoroId;
 
+    /** {@code true} se la riga e' una ristampa di un'altra (20 ottobre 2026), {@code false} per una stampa originale. */
+    @Column(name = "ristampa", nullable = false)
+    private boolean ristampa;
+
     protected StoricoStampa() {
         // per JPA
     }
@@ -185,6 +189,14 @@ public class StoricoStampa {
 
     public void setCorrettoIl(LocalDateTime correttoIl) {
         this.correttoIl = correttoIl;
+    }
+
+    public boolean isRistampa() {
+        return ristampa;
+    }
+
+    public void setRistampa(boolean ristampa) {
+        this.ristampa = ristampa;
     }
 
     public Integer getPorzioniScartate() {

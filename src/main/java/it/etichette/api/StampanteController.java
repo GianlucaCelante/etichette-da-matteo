@@ -3,7 +3,9 @@ package it.etichette.api;
 import it.etichette.stampante.CodaDiStampa;
 import it.etichette.stampante.EtichettaDiProva;
 import it.etichette.stampante.MonitorStampante;
+import it.etichette.stampante.ProtocolloQl;
 import it.etichette.stampante.StatoStampante;
+import it.etichette.stampe.StampeService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,11 +26,14 @@ public class StampanteController {
     private final MonitorStampante monitor;
     private final EtichettaDiProva etichettaDiProva;
     private final CodaDiStampa coda;
+    private final StampeService stampe;
 
-    public StampanteController(MonitorStampante monitor, EtichettaDiProva etichettaDiProva, CodaDiStampa coda) {
+    public StampanteController(MonitorStampante monitor, EtichettaDiProva etichettaDiProva, CodaDiStampa coda,
+                               StampeService stampe) {
         this.monitor = monitor;
         this.etichettaDiProva = etichettaDiProva;
         this.coda = coda;
+        this.stampe = stampe;
     }
 
     @GetMapping
@@ -50,7 +55,9 @@ public class StampanteController {
         }
         int rotolo = stato.rotolo() != null ? stato.rotolo() : ROTOLO_DI_DEFAULT_MM;
         BufferedImage immagine = etichettaDiProva.rendi(rotolo, LUNGHEZZA_PROVA_MM);
-        String lavoroId = coda.accoda(immagine, rotolo, 1, true); // prova: nessun prodotto, nessuna statistica da aggiornare
+        // Margine e taglio dalle impostazioni, come le etichette normali (StampeService).
+        String lavoroId = coda.accoda(immagine, rotolo, 1, ProtocolloQl.mmInDot(stampe.margineMm()),
+                stampe.taglioOgniEtichetta(), true); // prova: nessun prodotto, nessuna statistica da aggiornare
         return Map.of("lavoroId", lavoroId);
     }
 }

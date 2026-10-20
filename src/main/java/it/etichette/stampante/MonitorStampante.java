@@ -443,7 +443,11 @@ public class MonitorStampante {
         // ogni giro sarebbe lavoro ripetuto per lo stesso risultato.
         boolean[][] nero = ProtocolloQl.toBilevel(lavoro.immagine);
         byte[] job = ProtocolloQl.costruisciLavoro(nero, lavoro.immagine.getHeight(), lavoro.immagine.getWidth(),
-                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico);
+                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico, lavoro.taglioAutomatico);
+        // Ogni copia e' un job a se' e il bit "taglia a fine lavoro" taglia comunque: con il taglio
+        // ad ogni etichetta spento lo tengono acceso solo l'ultima copia, le altre restano attaccate.
+        byte[] jobUltimaCopia = lavoro.taglioAutomatico ? job : ProtocolloQl.costruisciLavoro(nero,
+                lavoro.immagine.getHeight(), lavoro.immagine.getWidth(), lavoro.rotoloMm, lavoro.margineDot, false, true);
         log.info("Lavoro {}: {} copie, rotolo {} mm, job {} byte.", lavoro.id, lavoro.copieTotali, lavoro.rotoloMm, job.length);
 
         while (lavoro.copiaCorrente < lavoro.copieTotali) {
@@ -460,9 +464,10 @@ public class MonitorStampante {
                 return;
             }
             long inizioCopiaNanos = System.nanoTime();
-            log.info("Invio copia {} di {} ({} byte).", lavoro.copiaCorrente + 1, lavoro.copieTotali, job.length);
+            byte[] jobDaInviare = lavoro.copiaCorrente + 1 == lavoro.copieTotali ? jobUltimaCopia : job;
+            log.info("Invio copia {} di {} ({} byte).", lavoro.copiaCorrente + 1, lavoro.copieTotali, jobDaInviare.length);
             try {
-                inviaJob(job);
+                inviaJob(jobDaInviare);
             } catch (IOException e) {
                 log.info("Copia {} di {}: errore, stampante scollegata durante l'invio.", lavoro.copiaCorrente + 1, lavoro.copieTotali);
                 pubblicaProgresso(lavoro, EventoStampa.ERRORE, "Stampante scollegata durante l'invio");
@@ -1078,7 +1083,7 @@ public class MonitorStampante {
         int righeEspulsione = Math.max(lavoro.immagine.getHeight(), RIGHE_ESPULSIONE_MINIMO);
         boolean[][] biancoTutto = new boolean[righeEspulsione][colonne];
         byte[] jobEspulsione = ProtocolloQl.costruisciLavoro(biancoTutto, righeEspulsione, colonne,
-                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico);
+                lavoro.rotoloMm, lavoro.margineDot, lavoro.taglioAutomatico, true);
         double lunghezzaMm = righeEspulsione / ProtocolloQl.PUNTI_PER_MM;
         log.info("Espello il pezzo stampato a meta': pagina vuota da {} mm con taglio ({} byte).",
                 String.format("%.1f", lunghezzaMm), jobEspulsione.length);

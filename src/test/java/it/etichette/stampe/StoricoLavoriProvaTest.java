@@ -31,7 +31,7 @@ class StoricoLavoriProvaTest {
                 new long[0]);
 
         NuovaRiga dati = new NuovaRiga("lavoro-1", 1L, "Impasto di prova", "1 kg", null, "2026-10-01",
-                "Telefono della cucina", true, List.of());
+                "Telefono della cucina", true, false, List.of());
         RigaAperta riga = storicoLavori.apri(dati, () -> "L 20260924-001");
 
         assertThat(riga.storicoId()).as("una prova non ha riga: storicoId nullo").isNull();

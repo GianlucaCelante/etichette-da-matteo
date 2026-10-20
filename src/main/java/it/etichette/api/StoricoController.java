@@ -424,6 +424,8 @@ public class StoricoController {
         out.put("lavoroId", r.getLavoroId());
         // Le porzioni buttate dopo (7 ottobre 2026): 0 se non ne sono state segnate.
         out.put("scartate", r.getPorzioniScartate() != null ? r.getPorzioniScartate() : 0);
+        // Vera se la riga e' una ristampa di un'altra stampa (20 ottobre 2026).
+        out.put("ristampa", r.isRistampa());
         return out;
     }
 }

@@ -50,3 +50,6 @@ databaseChangeLog:
   - include:
       file: v17-schede-e-ricette.yaml
       relativeToChangelogFile: true
+  - include:
+      file: v18-storico-ristampe.yaml
+      relativeToChangelogFile: true
