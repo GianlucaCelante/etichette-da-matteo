@@ -11,6 +11,8 @@ import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.ptr.IntByReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import it.etichette.sistema.SoloWindows;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +30,7 @@ import java.util.List;
  */
 @Component
 @Profile("!test")
+@Conditional(SoloWindows.class)
 public class RicercaPortaUsb implements RicercaPorta {
 
     private static final Logger log = LoggerFactory.getLogger(RicercaPortaUsb.class);

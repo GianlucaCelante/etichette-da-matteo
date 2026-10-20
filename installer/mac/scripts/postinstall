@@ -1,0 +1,43 @@
+#!/bin/bash
+# Dopo la copia dei file: cartella dati, firewall, avvio del servizio e apertura della finestra.
+# Il corrispondente di install_service.ps1 su Windows. Tocca solo roba di Etichette.
+
+DATI="/Library/Application Support/Etichette"
+APP="/Applications/Etichette.app"
+JAVA="$APP/Contents/Resources/runtime/bin/java"
+DAEMON="/Library/LaunchDaemons/it.etichette.service.plist"
+AGENTE="/Library/LaunchAgents/it.etichette.avvio.plist"
+
+# Cartella dati: i dati restano sempre (disinstallare non li cancella).
+/bin/mkdir -p "$DATI/log" "$DATI/backup"
+/usr/sbin/chown -R root:wheel "$DATI"
+/bin/chmod 755 "$DATI"
+
+/usr/sbin/chown root:wheel "$DAEMON" "$AGENTE"
+/bin/chmod 644 "$DAEMON" "$AGENTE"
+/bin/chmod 755 "$APP/Contents/MacOS/Etichette" "$APP/Contents/Resources/uninstall.sh"
+
+# Sul Mac il firewall di sistema e' spento di serie; se e' acceso, senza questo chiederebbe a ogni
+# avvio se far entrare le connessioni di java (e i telefoni non si collegherebbero).
+SFW=/usr/libexec/ApplicationFirewall/socketfilterfw
+if [ -x "$SFW" ] && "$SFW" --getglobalstate 2>/dev/null | /usr/bin/grep -qi "enabled"; then
+    "$SFW" --add "$JAVA" >/dev/null 2>&1
+    "$SFW" --unblockapp "$JAVA" >/dev/null 2>&1
+fi
+
+# Installazione su un volume diverso dall'avvio: niente servizio da far partire.
+if [ "$3" != "/" ]; then
+    exit 0
+fi
+
+/bin/launchctl bootout system/it.etichette.service >/dev/null 2>&1
+/bin/launchctl bootstrap system "$DAEMON"
+
+# Apre la finestra per l'utente che sta installando (se c'e' una sessione grafica).
+UTENTE="$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)"
+if [ -n "$UTENTE" ] && [ "$UTENTE" != "root" ]; then
+    UID_UTENTE="$(/usr/bin/id -u "$UTENTE")"
+    /bin/launchctl asuser "$UID_UTENTE" /usr/bin/open -a "$APP" >/dev/null 2>&1 &
+fi
+
+exit 0

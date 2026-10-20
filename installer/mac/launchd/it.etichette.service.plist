@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Servizio "Etichette" su macOS: il corrispondente di Etichette.xml (WinSW) su Windows.
+    LaunchDaemon di sistema: parte all'avvio del Mac, prima di qualunque login, e launchd lo
+    riavvia se cade. Gira come root come LocalSystem su Windows: deve aprire il dispositivo USB
+    della stampante e scrivere in /Library/Application Support/Etichette.
+
+    java.awt.headless=true: il servizio non ha sessione grafica (rendering Java 2D dell'etichetta).
+    jna.library.path: cartella con libusb-1.0.dylib, incorporata nel pacchetto.
+    Niente -Detichette.sorveglia-padre: il padre e' launchd, che non sparisce.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>it.etichette.service</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Etichette.app/Contents/Resources/runtime/bin/java</string>
+        <string>-Djava.awt.headless=true</string>
+        <string>-Djna.library.path=/Applications/Etichette.app/Contents/Resources/lib</string>
+        <string>-Xmx256m</string>
+        <string>-jar</string>
+        <string>/Applications/Etichette.app/Contents/Resources/app/etichette.jar</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ETICHETTE_DATA_DIR</key>
+        <string>/Library/Application Support/Etichette</string>
+        <key>TZ</key>
+        <string>Europe/Rome</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Library/Application Support/Etichette</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log di bootstrap (prima che Spring Boot inizializzi il proprio logging). -->
+    <key>StandardOutPath</key>
+    <string>/Library/Application Support/Etichette/log/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Application Support/Etichette/log/launchd.log</string>
+</dict>
+</plist>

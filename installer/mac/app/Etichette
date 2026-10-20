@@ -1,0 +1,28 @@
+#!/bin/bash
+# Lanciatore di Etichette.app: apre l'interfaccia del servizio in una finestra senza barra degli
+# indirizzi (Chrome o Edge in modalita' app, come la scorciatoia di Windows), oppure nel browser
+# di serie se non c'e' ne' l'uno ne' l'altro. Il servizio gira per conto suo (LaunchDaemon
+# it.etichette.service): qui si aspetta solo che risponda.
+
+URL="http://localhost:8765/"
+
+# Fino a 90 s: all'accensione del Mac la JVM puo' metterci un minuto a essere pronta.
+for _ in $(seq 1 90); do
+    if /usr/bin/curl -s -o /dev/null --max-time 2 "$URL"; then
+        break
+    fi
+    sleep 1
+done
+
+if ! /usr/bin/curl -s -o /dev/null --max-time 2 "$URL"; then
+    /usr/bin/osascript -e 'display dialog "Il servizio Etichette non risponde. Riavvia il Mac; se il problema resta, chiama l'"'"'assistenza." buttons {"OK"} default button 1 with icon caution with title "Etichette"' >/dev/null 2>&1
+    exit 1
+fi
+
+for app in "Google Chrome" "Microsoft Edge"; do
+    if [ -d "/Applications/$app.app" ]; then
+        exec /usr/bin/open -na "$app" --args "--app=$URL"
+    fi
+done
+
+exec /usr/bin/open "$URL"

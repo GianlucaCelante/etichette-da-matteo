@@ -12,6 +12,8 @@ import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
 import com.sun.jna.win32.W32APIOptions;
+import it.etichette.sistema.SoloWindows;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -39,6 +41,7 @@ import java.io.IOException;
  */
 @Component
 @Profile("!test")
+@Conditional(SoloWindows.class)
 public class PortaUsb implements Porta {
 
     private interface Kernel32Ext extends StdCallLibrary {

@@ -28,6 +28,7 @@ artefatti-claude/  copie scaricate degli artefatti online (prototipo «Banco eti
 pom.xml, src/      il servizio (Java 17, Spring Boot): stampante via JNA, resa, dati, API, mDNS
 ui/       l'interfaccia (React 19, Vite, TypeScript), incorporata nel jar dalla build Maven
 installer/  MSI con JRE inclusa e servizio Windows (jpackage, WinSW, script PowerShell)
+installer/mac/  pacchetto .pkg per macOS (jlink, LaunchDaemon, libusb): vedi installer/mac/README.md
 ```
 
 ## L'applicazione: come si costruisce e si prova

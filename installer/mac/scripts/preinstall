@@ -1,0 +1,26 @@
+#!/bin/bash
+# Prima di copiare i file (installazione nuova o aggiornamento "installa sopra"):
+#  - ferma il servizio, cosi' i file della versione vecchia non sono in uso;
+#  - copia il database in backup/pre-aggiornamento-<data-ora>, rete di sicurezza indipendente da
+#    quella notturna del servizio (come update.ps1 su Windows);
+#  - toglie la vecchia Etichette.app, per non lasciare file di una versione precedente.
+# Non deve mai far fallire l'installazione: ogni passo e' "se c'e'".
+
+DATI="/Library/Application Support/Etichette"
+PLIST="/Library/LaunchDaemons/it.etichette.service.plist"
+
+/bin/launchctl bootout system/it.etichette.service >/dev/null 2>&1
+
+# Se la JVM e' rimasta orfana (launchd l'ha lasciata andare) si chiude a mano.
+/usr/bin/pkill -f "/Applications/Etichette.app/Contents/Resources/app/etichette.jar" >/dev/null 2>&1
+
+if [ -d "$DATI" ] && ls "$DATI"/*.db >/dev/null 2>&1; then
+    DEST="$DATI/backup/pre-aggiornamento-$(date +%Y%m%d-%H%M%S)"
+    /bin/mkdir -p "$DEST"
+    /bin/cp -p "$DATI"/*.db "$DATI"/*.db-wal "$DATI"/*.db-shm "$DEST"/ 2>/dev/null
+fi
+
+/bin/rm -rf /Applications/Etichette.app
+[ -f "$PLIST" ] && /bin/rm -f "$PLIST"
+
+exit 0

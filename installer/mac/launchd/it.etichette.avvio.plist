@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Apre la finestra di Etichette a ogni accesso di un utente: il corrispondente della scorciatoia
+    in "Esecuzione automatica" su Windows. Il servizio e' gia' partito (LaunchDaemon); l'app
+    aspetta che risponda prima di aprire la finestra.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>it.etichette.avvio</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-a</string>
+        <string>/Applications/Etichette.app</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>
