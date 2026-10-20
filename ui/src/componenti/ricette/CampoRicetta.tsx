@@ -177,6 +177,12 @@ function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
           <span>per 100 g</span>
           {conPorzione && <span>per porzione</span>}
         </div>
+        {calcolo.voci.length === 0 && (
+          <div className="col-[1/-1] px-3 py-3 text-[12.5px] leading-snug text-[var(--tenue)]">
+            Nessun valore: le schede tecniche degli ingredienti sono vuote
+            {calcolo.senzaValori.length > 0 ? ` (${calcolo.senzaValori.join(", ")})` : ""}.
+          </div>
+        )}
         {calcolo.voci.map((v) => (
           <div key={v.voce} className={"rv" + (v.voce.startsWith("di cui") ? " dicui" : "")}>
             <span title={v.mancaIn.length ? `Parziale: manca in ${v.mancaIn.join(", ")}` : undefined}>
