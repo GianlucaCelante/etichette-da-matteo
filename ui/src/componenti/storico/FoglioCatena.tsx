@@ -82,6 +82,8 @@ interface ProprietaFoglioCatena {
   // prodotto senza giorniScadenza e senza scadenza scelta a mano - da quella
   // data la proposta e' sempre oggi + 7 giorni, quindi non succede piu'.
   scadenza: string | null;
+  // Le porzioni di questa produzione buttate dopo (Storico): 0 = nessuna.
+  scartate: number;
   produttore: string;
   onChiudi: () => void;
 }
@@ -90,7 +92,7 @@ interface ProprietaFoglioCatena {
 // prototipo): un portale diretto in document.body, cosi' in stampa basta
 // nascondere #root (regola in index.css) senza dipendere da dove sta questo
 // componente nell'albero di React.
-export default function FoglioCatena({ catena, scadenza, produttore, onChiudi }: ProprietaFoglioCatena) {
+export default function FoglioCatena({ catena, scadenza, scartate, produttore, onChiudi }: ProprietaFoglioCatena) {
   const stampa = useCallback(() => window.print(), []);
 
   // Una vera finestra modale (2 ottobre 2026): il fuoco entra e gira dentro,
@@ -108,6 +110,7 @@ export default function FoglioCatena({ catena, scadenza, produttore, onChiudi }:
           <div>
             {catena.prodottoNome} · {plurale(catena.copie, "etichetta stampata", "etichette stampate")} il {formattaDataItaliana(catena.stampatoIl.slice(0, 10))} alle {formattaOra(catena.stampatoIl)}
             {scadenza ? ` · scadenza ${formattaDataItaliana(scadenza)}` : ""}
+            {scartate > 0 ? ` · ${plurale(scartate, "porzione scartata", "porzioni scartate")}` : ""}
           </div>
           <div className="text-[12.5px] text-[#666]">{`${produttore} · foglio generato il ${formattaDataItaliana(dataOggiIso())}`}</div>
           {/* Se la catena e' stata corretta a mano, il foglio lo dice e riporta

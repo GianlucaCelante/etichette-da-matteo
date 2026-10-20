@@ -457,7 +457,7 @@ export default function CatenaLotti({ riga }: { riga: StoricoRiga }) {
           )}
         </div>
       )}
-      {foglioAperto && <FoglioCatena catena={catena} scadenza={riga.scadenza} produttore={prodotto?.etichetta.produttore.ragioneSociale ?? "Michi s.n.c."} onChiudi={chiudiFoglio} />}
+      {foglioAperto && <FoglioCatena catena={catena} scadenza={riga.scadenza} scartate={riga.scartate} produttore={prodotto?.etichetta.produttore.ragioneSociale ?? "Michi s.n.c."} onChiudi={chiudiFoglio} />}
     </div>
   );
 }

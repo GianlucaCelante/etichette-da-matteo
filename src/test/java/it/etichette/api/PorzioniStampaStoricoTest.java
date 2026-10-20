@@ -109,7 +109,7 @@ class PorzioniStampaStoricoTest {
         String[] righe = csv.split("\r\n");
         assertThat(righe[0]).startsWith("Storico stampe · ");
         assertThat(righe[1]).startsWith("generato il ");
-        assertThat(righe[2]).startsWith("Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito").doesNotContain("Porzioni");
+        assertThat(righe[2]).startsWith("Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito;Porzioni scartate;Ingredienti e lotti del fornitore;Fornitori");
         String rigaCsvA = righeCsvConLotto(righe, lavoroRiga(rigaA));
         assertThat(rigaCsvA).doesNotContain("2148 g"); // niente Peso nel file
     }

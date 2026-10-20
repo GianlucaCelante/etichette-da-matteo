@@ -11,7 +11,6 @@ import { eVoceStandard, voceCalcolata, valoreCalcolato } from "../ricette/ricett
 function RigaValore({
   valore,
   segnaposto,
-  senzaValore,
   calcolata,
   onCambiaVoce,
   onCambiaValore,
@@ -19,9 +18,6 @@ function RigaValore({
 }: {
   valore: ValoreBozza;
   segnaposto: string;
-  // La voce c'e' ma il valore no, mentre altre righe ce l'hanno: sull'etichetta
-  // questa riga non uscira' (RenditoreEtichetta la omette), e lo si dice sotto.
-  senzaValore: boolean;
   // Con la ricetta (7 ottobre 2026): la riga si calcola da sola. undefined =
   // riga a mano; null = calcolata ma ora non calcolabile (resta l'ultimo valore).
   calcolata: string | null | undefined;
@@ -80,10 +76,6 @@ function RigaValore({
       <button type="button" className="cestino soloPC" onClick={rimuovi} title={`Togli ${valore.voce || "la voce"}`} aria-label={`Togli ${valore.voce || "la voce"}`}>
         <IconaCestino larghezza={14} spessoreTratto={2} />
       </button>
-      {dallaRicetta && calcolata === null && (
-        <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--rosso)]">non calcolabile: manca un valore</div>
-      )}
-      {senzaValore && !dallaRicetta && <div className="basis-full pl-[22px] text-[11.5px] leading-tight text-[var(--spento)]">senza valore: non verrà stampata</div>}
     </div>
   );
 }
@@ -140,7 +132,6 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
     : valori;
   // Una riga con la voce e senza valore non esce sull'etichetta: lo si dice, ma solo quando
   // qualche altra riga ha un valore (a tabella tutta vuota sarebbe un avviso su ogni riga).
-  const qualcunoHaIlValore = righeMostrate.some((v) => v.valore.trim() !== "");
 
   const cambiaVoce = useCallback(
     (chiave: string, voce: string) => onCambia(righeMostrate.map((v) => (v.chiave === chiave ? { ...v, voce } : v))),
@@ -202,9 +193,6 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
           Aggiungi voce
         </button>
       </div>
-      <div className="text-[12px] leading-snug text-[var(--tenue)]">
-        Scrivi il numero, il «g» lo aggiungo io. Senza valore la riga non si stampa.
-      </div>
       {conRicetta && !!calcolo && (
         <span className="dueStati self-start" role="group" aria-label="Come si compilano i valori nutrizionali">
           <button type="button" className={tuttoCalcolato ? "on" : ""} aria-pressed={tuttoCalcolato} onClick={tuttoDallaRicetta}>
@@ -223,7 +211,6 @@ export default function ValoriNutrizionali({ valori, onCambia, conRicetta = fals
                 key={v.chiave}
                 valore={v}
                 segnaposto={segnapostoValore(v.voce)}
-                senzaValore={qualcunoHaIlValore && v.voce.trim() !== "" && v.valore.trim() === ""}
                 calcolata={conRicetta && v.calcolato ? valoreCalcolato(v.voce, calcolo) : undefined}
                 onCambiaVoce={cambiaVoce}
                 onCambiaValore={cambiaValore}

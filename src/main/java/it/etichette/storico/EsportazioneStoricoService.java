@@ -42,7 +42,7 @@ import java.util.List;
 @Component
 public class EsportazioneStoricoService {
 
-    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Scadenza", "Da", "Esito",
+    private static final String[] INTESTAZIONI = {"Data", "Ora", "Etichetta", "Copie", "Lotto interno", "Scadenza", "Da", "Esito", "Porzioni scartate",
             "Ingredienti e lotti del fornitore", "Fornitori"};
     private static final DateTimeFormatter DATA_ITALIANA = RigaEsportazione.DATA_ITALIANA;
     private static final DateTimeFormatter ORA_ITALIANA = DateTimeFormatter.ofPattern("HH:mm");
@@ -99,8 +99,9 @@ public class EsportazioneStoricoService {
             campi[5] = r.scadenza();
             campi[6] = r.da();
             campi[7] = r.esito();
-            campi[8] = r.ingredientiELotti();
-            campi[9] = r.fornitori();
+            campi[8] = r.scartate();
+            campi[9] = r.ingredientiELotti();
+            campi[10] = r.fornitori();
             scriviRigaCsv(scrittore, campi);
         }
         scrittore.flush(); // niente close(): chiuderebbe anche "out", che e' del chiamante (la risposta HTTP)
@@ -154,7 +155,7 @@ public class EsportazioneStoricoService {
             foglio.range(intestazione, 0, intestazione, INTESTAZIONI.length - 1).style().bold().fillColor("D9D9D9").set();
             foglio.freezePane(0, intestazione + 1);
             foglio.setAutoFilter(intestazione, 0, INTESTAZIONI.length - 1);
-            int[] larghezze = {12, 8, 32, 8, 16, 12, 20, 14, 70, 28};
+            int[] larghezze = {12, 8, 32, 8, 16, 12, 20, 14, 12, 70, 28};
             for (int c = 0; c < larghezze.length; c++) {
                 foglio.width(c, larghezze[c]);
             }
@@ -170,10 +171,11 @@ public class EsportazioneStoricoService {
                 foglio.inlineString(riga, 5, r.scadenza());
                 foglio.inlineString(riga, 6, r.da());
                 foglio.inlineString(riga, 7, r.esito());
-                foglio.inlineString(riga, 8, r.ingredientiELotti());
-                foglio.inlineString(riga, 9, r.fornitori());
+                foglio.inlineString(riga, 8, r.scartate());
+                foglio.inlineString(riga, 9, r.ingredientiELotti());
+                foglio.inlineString(riga, 10, r.fornitori());
                 if (!r.ingredientiELotti().isEmpty()) {
-                    foglio.style(riga, 8).wrapText(true).set();
+                    foglio.style(riga, 9).wrapText(true).set();
                 }
                 riga++;
             }
@@ -231,7 +233,7 @@ public class EsportazioneStoricoService {
      * A4 orizzontale: titolo, riga del filtro applicato (periodo o intervallo di date, piu' la
      * ricerca) e riga di riepilogo, poi la tabella (o la frase "Nessuna stampa in questo periodo."
      * se {@code righe} e' vuota - una tabella senza righe di dati sarebbe solo l'intestazione, meno
-     * chiaro di una frase). Dieci colonne in 7,5 punti: la colonna dei lotti prende un quarto della
+     * chiaro di una frase). Undici colonne in 7,5 punti: la colonna dei lotti prende un quarto della
      * larghezza e va a capo, il resto resta leggibile nella pagina senza uscirne (la tabella e' sempre
      * alla larghezza del testo). Font Liberation Sans incorporato (risorse del progetto): l'Helvetica
      * standard di PDF non ha le lettere accentate.
@@ -272,7 +274,7 @@ public class EsportazioneStoricoService {
      * supera la pagina corrente - senza calcolare noi le interruzioni di pagina.
      */
     private PdfPTable tabella(List<RigaEsportazione> righe) throws DocumentException {
-        PdfPTable tabella = new PdfPTable(new float[] {7.5f, 4.5f, 11, 4, 9, 7, 8, 6, 24, 9});
+        PdfPTable tabella = new PdfPTable(new float[] {7.5f, 4.5f, 11, 4, 9, 7, 8, 6, 6, 24, 9});
         tabella.setWidthPercentage(100);
         tabella.setHeaderRows(1);
 
@@ -298,6 +300,7 @@ public class EsportazioneStoricoService {
             aggiungiCella(tabella, r.scadenza(), testoCella, sfondo);
             aggiungiCella(tabella, r.da(), testoCella, sfondo);
             aggiungiCella(tabella, r.esito(), testoCella, sfondo);
+            aggiungiCella(tabella, r.scartate(), testoCella, sfondo);
             aggiungiCella(tabella, r.ingredientiELotti(), testoCella, sfondo);
             aggiungiCella(tabella, r.fornitori(), testoCella, sfondo);
             indice++;

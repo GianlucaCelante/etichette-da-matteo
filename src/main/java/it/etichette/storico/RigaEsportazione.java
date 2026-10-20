@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Una riga di {@code GET /api/storico/esporta} (docs/api.md, "Storico"): gli stessi campi di
  * {@link StoricoStampa}, gia' nella forma da scrivere nel file - date italiane, esito in parole,
- * campi assenti come stringa vuota. CSV, XLSX e PDF leggono tutti da qui invece che dall'entita',
+ * campi assenti come stringa vuota; {@code scartate} sono le porzioni buttate dopo (vuota se nessuna). CSV, XLSX e PDF leggono tutti da qui invece che dall'entita',
  * cosi' i tre formati restano identici fra loro per costruzione. In coda alle dieci colonne di
  * sempre, i lotti degli ingredienti con il loro fornitore e la scadenza ({@code ingredientiELotti}) e i
  * soli nomi dei fornitori ({@code fornitori}): vuoti per una stampa senza catena
@@ -18,6 +18,7 @@ import java.util.List;
  */
 public record RigaEsportazione(LocalDate data, String ora, String etichetta, int copie, String lotto,
                                 String quantita, String porzioni, String scadenza, String da, String esito,
+                                String scartate,
                                 String ingredientiELotti, String fornitori, List<RigaLotto> lotti) {
 
     static final DateTimeFormatter DATA_ITALIANA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -32,12 +33,14 @@ public record RigaEsportazione(LocalDate data, String ora, String etichetta, int
         return new RigaEsportazione(stampatoIl.toLocalDate(), stampatoIl.format(ORA_ITALIANA), r.getProdottoNome(),
                 r.getCopie(), vuotaSeNull(r.getLotto()), vuotaSeNull(r.getQuantita()),
                 vuotaSeNull(r.getPorzioni()), scadenzaTesto,
-                vuotaSeNull(r.getDispositivoNome()), esitoInParole(r.getEsito()), "", "", List.of());
+                vuotaSeNull(r.getDispositivoNome()), esitoInParole(r.getEsito()),
+                r.getPorzioniScartate() != null && r.getPorzioniScartate() > 0 ? String.valueOf(r.getPorzioniScartate()) : "",
+                "", "", List.of());
     }
 
     /** La stessa riga con le due celle della catena ({@link CatenaPerEsportazione#perRighe}). */
     public RigaEsportazione conCatena(CatenaPerEsportazione.TestoCatena catena) {
-        return new RigaEsportazione(data, ora, etichetta, copie, lotto, quantita, porzioni, scadenza, da, esito,
+        return new RigaEsportazione(data, ora, etichetta, copie, lotto, quantita, porzioni, scadenza, da, esito, scartate,
                 catena.ingredientiELotti(), catena.fornitori(), catena.dettaglio());
     }
 

@@ -1,10 +1,9 @@
-import { Fragment, useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useIngredienti, useProdotti } from "../../api/hooks";
 import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta } from "../../api/tipi";
 import { IconaAvviso, IconaCestino, IconaSpunta } from "../Icone";
 import NuovoIngredienteModale from "../ingredienti/NuovoIngredienteModale";
 import { TitoloSezione } from "../ingredienti/SezioniScheda";
-import { LinkRicetta } from "./CampiDallaRicetta";
 import FinestraSchedaIngrediente from "./FinestraSchedaIngrediente";
 import { numeroDaTesto, numeroLeggibile, testoDaNumero } from "./numeri";
 import { ricettaDi } from "./ricetta";
@@ -157,63 +156,14 @@ function RigaIngrediente({
   );
 }
 
-// Il nome di un ingrediente con la scheda incompleta, nell'avviso: un link che
-// apre la sua scheda nella finestra.
-function NomeSenzaScheda({ id, nome, onApri }: { id: number; nome: string; onApri: (id: number, nome: string) => void }) {
-  const apri = useCallback(() => onApri(id, nome), [onApri, id, nome]);
-  return <LinkRicetta testo={nome} onClic={apri} />;
-}
-
-// I nomi degli ingredienti separati da virgole, ognuno un link che apre la sua
-// scheda: i nomi arrivano dal servizio, per aprirla serve l'id, che si prende
-// dalla riga dell'ingrediente nella ricetta.
-function NomiIngredienti({ nomi, ricetta, onScheda }: { nomi: string[]; ricetta: Ricetta; onScheda: (id: number, nome: string) => void }) {
-  return (
-    <>
-      {nomi.map((nome, i) => {
-        const riga = ricetta.righe.find((r) => r.tipo === "ingrediente" && r.nome === nome);
-        return (
-          <Fragment key={nome}>
-            {i > 0 && ", "}
-            {riga ? <NomeSenzaScheda id={riga.id} nome={nome} onApri={onScheda} /> : nome}
-          </Fragment>
-        );
-      })}
-    </>
-  );
-}
-
 // Il riepilogo mostra le voci come arrivano dal servizio (calcolo.voci): gia'
 // scritte per l'etichetta, con virgola italiana e unita'. Gli avvisi stanno in
 // riquadri ambra (rossi quelli del servizio) sopra la tabella; allergeni e
 // tracce sono chip, l'elenco ingredienti un riquadro a parte.
-function Riepilogo({ calcolo, ricetta, onScheda }: { calcolo: CalcoloRicetta; ricetta: Ricetta; onScheda: (id: number, nome: string) => void }) {
+function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
   const conPorzione = calcolo.voci.some((v) => v.perPorzione !== null);
   return (
     <div className="flex flex-col gap-3">
-      {calcolo.senzaValori.length > 0 && (
-        <div className="callout">
-          <IconaAvviso larghezza={16} spessoreTratto={2} />
-          <span>
-            Mancano dei valori nella scheda tecnica di: <NomiIngredienti nomi={calcolo.senzaValori} ricetta={ricetta} onScheda={onScheda} />. Completala, altrimenti quelle righe non si calcolano.
-          </span>
-        </div>
-      )}
-      {calcolo.nonCalcolabili.length > 0 && (
-        <div className="callout">
-          <IconaAvviso larghezza={16} spessoreTratto={2} />
-          <span>
-            Non calcolabili:{" "}
-            {calcolo.nonCalcolabili.map((n, i) => (
-              <Fragment key={n.voce}>
-                {i > 0 && ", "}
-                {n.voce} (manca in <NomiIngredienti nomi={n.mancaIn} ricetta={ricetta} onScheda={onScheda} />)
-              </Fragment>
-            ))}
-            .
-          </span>
-        </div>
-      )}
       {calcolo.avvisi.map((a) => (
         <div key={a} className="callout rosso">
           <IconaAvviso larghezza={16} spessoreTratto={2} />
@@ -449,7 +399,7 @@ export default function CampoRicetta({
         <section className="flex flex-col gap-2" aria-label="Scheda tecnica">
           <TitoloSezione testo="Scheda tecnica" />
           {calcolo ? (
-            <Riepilogo calcolo={calcolo} ricetta={ricetta} onScheda={apriScheda} />
+            <Riepilogo calcolo={calcolo} />
           ) : (
             <div className="text-[13px] leading-snug text-[var(--tenue)]">Calcolo in corso…</div>
           )}

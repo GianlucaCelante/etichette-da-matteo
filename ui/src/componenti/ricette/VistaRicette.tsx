@@ -4,7 +4,7 @@ import { ErroreRichiesta } from "../../api/client";
 import { useCalcoloRicetta, useProdotti, useProdotto, useSalvaRicetta } from "../../api/hooks";
 import type { Prodotto, Ricetta } from "../../api/tipi";
 import { useAvviso } from "../../hooks/useAvviso";
-import { IconaCerca, IconaDestra, IconaPiu, IconaSalva, IconaSinistra } from "../Icone";
+import { IconaCamion, IconaCerca, IconaDestra, IconaPiu, IconaSalva, IconaSinistra } from "../Icone";
 import { StatoVuoto } from "../ingredienti/SezioniScheda";
 import CampoRicetta from "./CampoRicetta";
 import { RICETTA_VUOTA, ricettaDi } from "./ricetta";
@@ -176,6 +176,7 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
   }, [inCreazione, nuovoId, prodotto, bozza, salva, avvisa]);
   const apriEtichetta = useCallback(() => prodotto && navigate(`/etichette?prodotto=${prodotto.id}`), [prodotto, navigate]);
   const vaiAEtichette = useCallback(() => navigate("/etichette"), [navigate]);
+  const vaiAMerceArrivata = useCallback(() => navigate("/ingredienti/arrivo"), [navigate]);
 
   const filtrate = ricette.filter((p) => !cerca.trim() || p.nome.toLowerCase().includes(cerca.trim().toLowerCase()));
 
@@ -202,10 +203,16 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
       <div className="colonnaElenco flex-1 min-w-0 gap-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <SceltaVistaIngredienti vista="ricette" />
-          <button type="button" className="btn piccoloTel" onClick={nuova}>
-            <IconaPiu larghezza={17} spessoreTratto={2.2} />
-            <span>Nuova ricetta</span>
-          </button>
+          <span className="flex items-center gap-2">
+            <button type="button" className="btn primario piccoloTel" onClick={vaiAMerceArrivata}>
+              <IconaCamion larghezza={17} spessoreTratto={2} />
+              <span>Registra merce</span>
+            </button>
+            <button type="button" className="btn piccoloTel" onClick={nuova}>
+              <IconaPiu larghezza={17} spessoreTratto={2.2} />
+              <span>Nuova ricetta</span>
+            </button>
+          </span>
         </div>
         <div className="cerca">
           <IconaCerca larghezza={20} spessoreTratto={2} />

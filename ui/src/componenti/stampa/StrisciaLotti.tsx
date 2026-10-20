@@ -56,7 +56,7 @@ interface Avviso {
 // due).
 function avvisoIngrediente(ingrediente: IngredienteConLotti | undefined, scelti: LottoIngrediente[]): Avviso {
   if (!ingrediente) return { livello: null, nota: null };
-  if (!ingrediente.lottiAperti.length) return { livello: "attenzione", nota: "Si stampa lo stesso: nello storico resta «non registrato»." };
+  if (!ingrediente.lottiAperti.length) return { livello: "attenzione", nota: null };
   const sc = scelti.map((l) => statoScadenzaLotto(l.scadenza)).find(Boolean);
   if (sc?.classe === "scaduto") return { livello: "grave", nota: `L'unico lotto aperto è ${sc.testo}. Controlla il prodotto o registra la merce nuova.` };
   if (sc) return { livello: "attenzione", nota: `Il lotto aperto ${sc.testo}.` };
@@ -447,13 +447,12 @@ const StrisciaLotti = forwardRef<HTMLDivElement, ProprietaStrisciaLotti>(functio
         if (t.tipo === "prodotto") {
           // Assente o null nella risposta: nessuna stampa valida, per tutti e due.
           const valida = ultimeValide ? (ultimeValide[t.id] ?? null) : undefined;
-          const nome = t.nome ?? "";
           const riga: RigaCalcolataProdotto = {
             tipo: "prodotto",
             tracciato: t,
             valida,
             livello: valida === null ? "attenzione" : null,
-            nota: valida === null ? `Nessuna produzione recente di ${nome}: si stampa lo stesso, nello storico resta «non registrato».` : null,
+            nota: null,
           };
           return riga;
         }

@@ -153,9 +153,6 @@ export default function ValoriScheda({
         <IconaPiu larghezza={13} spessoreTratto={2.5} />
         <span>Aggiungi voce</span>
       </button>
-      <div className="text-[11.5px] leading-snug text-[var(--tenue)]">
-        Virgola italiana (4,1). Le voci senza valore non entrano nei calcoli delle ricette.
-      </div>
     </>
   );
 }

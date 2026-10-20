@@ -49,7 +49,7 @@ class StoricoEsportaApiTest {
 
     private static final DateTimeFormatter FORMATO_DB = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     /** Le otto colonne di sempre, in coda i lotti degli ingredienti e i fornitori (2 ottobre 2026). */
-    private static final String INTESTAZIONE_CSV = "Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito;Ingredienti e lotti del fornitore;Fornitori";
+    private static final String INTESTAZIONE_CSV = "Data;Ora;Etichetta;Copie;Lotto interno;Scadenza;Da;Esito;Porzioni scartate;Ingredienti e lotti del fornitore;Fornitori";
 
     private static Path cartellaDati;
 
@@ -92,6 +92,17 @@ class StoricoEsportaApiTest {
     // CSV
 
     @Test
+    void csvPortaLePorzioniScartateDopoLEsito() throws Exception {
+        LocalDateTime t = LocalDateTime.of(2026, 9, 20, 14, 35);
+        inserisciConPorzioni(t, 1L, "Pane", "L 20260920-001", "2 pz", "4", "2026-09-25", 3, "PC", "completata");
+        jdbc.update("UPDATE storico_stampe SET porzioni_scartate = 2");
+
+        String[] righe = testoSenzaBom(scarica("csv")).split("\r\n", -1);
+
+        assertThat(righe[3]).endsWith(";stampata;2;;");
+    }
+
+    @Test
     void csvHaIlBomLIntestazioneEVirgoletteSulPuntoEVirgola() throws Exception {
         LocalDateTime t = LocalDateTime.of(2026, 9, 20, 14, 35);
         inserisciConPorzioni(t, 1L, "Pane; speciale \"di prova\"", "L 20260920-001", "2 pz", "4", "2026-09-25", 3, "Telefono della cucina", "completata");
@@ -109,7 +120,7 @@ class StoricoEsportaApiTest {
         assertThat(righe[0]).isEqualTo("Storico stampe · Tutto lo storico");
         assertThat(righe[1]).startsWith("generato il ").endsWith(" · 1 stampe · 3 etichette");
         assertThat(righe[2]).isEqualTo(INTESTAZIONE_CSV);
-        assertThat(righe[3]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;25/09/2026;Telefono della cucina;stampata;;");
+        assertThat(righe[3]).isEqualTo("20/09/2026;14:35;\"Pane; speciale \"\"di prova\"\"\";3;L 20260920-001;25/09/2026;Telefono della cucina;stampata;;;");
         // Split con limite -1: l'ultimo elemento vuoto conferma che il file finisce con l'ultimo
         // CRLF e niente altro dopo.
         assertThat(righe[righe.length - 1]).isEmpty();
@@ -137,12 +148,12 @@ class StoricoEsportaApiTest {
 
         String testo = testoSenzaBom(scarica("csv"));
 
-        assertThat(testo).contains(";stampata;;\r\n");
-        assertThat(testo).contains(";serie fermata;;\r\n");
-        assertThat(testo).contains(";errore;;\r\n");
-        assertThat(testo).contains(";prova;;\r\n");
-        assertThat(testo).contains(";interrotta;;\r\n");
-        assertThat(testo).contains(";in stampa;;\r\n");
+        assertThat(testo).contains(";stampata;;;\r\n");
+        assertThat(testo).contains(";serie fermata;;;\r\n");
+        assertThat(testo).contains(";errore;;;\r\n");
+        assertThat(testo).contains(";prova;;;\r\n");
+        assertThat(testo).contains(";interrotta;;;\r\n");
+        assertThat(testo).contains(";in stampa;;;\r\n");
     }
 
     // ---------------------------------------------------------------------------------------
@@ -159,7 +170,7 @@ class StoricoEsportaApiTest {
 
         byte[] corpo = risposta.getContentAsByteArray();
         String sheet1 = leggiVoceZip(corpo, "xl/worksheets/sheet1.xml");
-        assertThat(sheet1).contains("Impasto per pizza speciale").doesNotContain("Porzioni").doesNotContain("6 porzioni");
+        assertThat(sheet1).contains("Impasto per pizza speciale").doesNotContain(">Porzioni<").doesNotContain("6 porzioni");
         assertThat(leggiVoceZip(corpo, "[Content_Types].xml")).isNotEmpty(); // e' davvero uno zip OOXML valido
     }
 
