@@ -120,7 +120,13 @@ mkdir -p "$USCITA"
 COMPONENTE="$USCITA/componente.pkg"
 FINALE="$USCITA/Etichette-$VERSIONE-$ARCH.pkg"
 chmod 755 "$QUI/scripts/preinstall" "$QUI/scripts/postinstall"
+# Senza questo l'Installer considera l'app "ricollocabile" e, se ne trova una copia altrove
+# (es. la cartella stage di questa build), aggiorna quella invece di installare in /Applications.
+COMPONENTI="$USCITA/componenti.plist"
+pkgbuild --analyze --root "$STAGE" "$COMPONENTI" >/dev/null
+/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENTI"
 pkgbuild --root "$STAGE" \
+    --component-plist "$COMPONENTI" \
     --identifier it.etichette.pkg \
     --version "$VERSIONE" \
     --install-location / \
@@ -128,7 +134,7 @@ pkgbuild --root "$STAGE" \
     --scripts "$QUI/scripts" \
     "$COMPONENTE"
 productbuild --package "$COMPONENTE" "$FINALE"
-rm -f "$COMPONENTE"
+rm -f "$COMPONENTE" "$COMPONENTI"
 
 echo ""
 echo "=============================================="

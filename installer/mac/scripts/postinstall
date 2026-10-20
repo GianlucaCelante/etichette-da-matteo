@@ -34,8 +34,17 @@ if [ "$3" != "/" ]; then
     exit 0
 fi
 
+# bootout e' asincrono: un bootstrap subito dopo fallisce e, in un aggiornamento, lascia il servizio
+# spento. Si aspetta che il vecchio servizio sia sparito (al massimo 10 s) e si riprova se serve.
 /bin/launchctl bootout system/it.etichette.service >/dev/null 2>&1
-/bin/launchctl bootstrap system "$DAEMON"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    /bin/launchctl print system/it.etichette.service >/dev/null 2>&1 || break
+    /bin/sleep 1
+done
+for _ in 1 2 3 4 5; do
+    /bin/launchctl bootstrap system "$DAEMON" >/dev/null 2>&1 && break
+    /bin/sleep 2
+done
 
 # Apre la finestra per l'utente che sta installando (se c'e' una sessione grafica).
 UTENTE="$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)"
