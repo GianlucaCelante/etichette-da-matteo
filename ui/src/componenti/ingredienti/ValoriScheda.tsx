@@ -6,7 +6,7 @@ import { UNITA_VOCI, type UnitaVoce } from "../../api/tipi";
 import { ACCESSIBILITA_VALORI, useSensoriValori } from "../etichette/sensoriRiordino";
 import { IconaCestino, IconaManiglia, IconaPiu } from "../Icone";
 import { numeroDaTesto } from "../ricette/numeri";
-import { nuovaVoceVuota, type VoceBozza } from "./schedaVoci";
+import { nuovaVoceVuota, stessoNome, VOCI_OBBLIGATORIE, type VoceBozza } from "./schedaVoci";
 
 function RigaVoce({
   voce,
@@ -111,6 +111,40 @@ export default function ValoriScheda({
     onCambia([...voci, vuota]);
   }, [voci, onCambia]);
 
+  // «Metti 0 nelle voci vuote»: le voci di legge (e le fibre) che mancano o sono vuote, e le altre voci col nome ma
+  // senza valore, ricevono 0. Non tocca quelle gia' scritte; l'energia con una sola unita' scritta si ricava dall'altra.
+  const { conZero, cambiate } = useMemo(() => {
+    const ha = (v: VoceBozza) => v.valore.trim() !== "";
+    const risultato = voci.map((v) => ({ ...v }));
+    let n = 0;
+    const standard = [...VOCI_OBBLIGATORIE, { nome: "fibre", nomi: ["fibre"], unita: ["g"] as UnitaVoce[] }];
+    for (const o of standard) {
+      const righe = risultato.filter((v) => o.unita.includes(v.unita) && o.nomi.some((x) => stessoNome(x, v.voce)));
+      if (righe.some(ha)) continue;
+      if (o.nome === "energia" && righe.length === 0) {
+        risultato.push({ ...nuovaVoceVuota(), voce: "Energia", unita: "kJ", valore: "0" }, { ...nuovaVoceVuota(), voce: "Energia", unita: "kcal", valore: "0" });
+        n += 2;
+      } else if (righe.length === 0) {
+        const nome = o.nome.startsWith("di cui") ? o.nome : o.nome[0]!.toUpperCase() + o.nome.slice(1);
+        risultato.push({ ...nuovaVoceVuota(), voce: nome, unita: o.unita[0]!, valore: "0" });
+        n++;
+      } else {
+        righe.forEach((v) => {
+          v.valore = "0";
+          n++;
+        });
+      }
+    }
+    for (const v of risultato) {
+      if (v.voce.trim() && !ha(v) && !suggerimenti[v.chiave]) {
+        v.valore = "0";
+        n++;
+      }
+    }
+    return { conZero: risultato, cambiate: n };
+  }, [voci, suggerimenti]);
+  const zeroNeiVuoti = useCallback(() => onCambia(conZero), [conZero, onCambia]);
+
   const fineTrascinamento = useCallback(
     (evento: DragEndEvent) => {
       const { active, over } = evento;
@@ -153,6 +187,14 @@ export default function ValoriScheda({
         <IconaPiu larghezza={13} spessoreTratto={2.5} />
         <span>Aggiungi voce</span>
       </button>
+      {cambiate > 0 && (
+        <div className="flex flex-col gap-1">
+          <button type="button" className="codaAggiungi" onClick={zeroNeiVuoti}>
+            <span>Metti 0 nelle voci vuote ({cambiate})</span>
+          </button>
+          <div className="text-[11.5px] leading-snug text-[var(--tenue)]">Usalo solo se quei valori sono davvero zero (acqua, sale, olio…): non tocca quelli già scritti.</div>
+        </div>
+      )}
     </>
   );
 }
