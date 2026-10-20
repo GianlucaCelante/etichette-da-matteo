@@ -162,6 +162,7 @@ function RigaIngrediente({
 // tracce sono chip, l'elenco ingredienti un riquadro a parte.
 function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
   const conPorzione = calcolo.voci.some((v) => v.perPorzione !== null);
+  const parziali = calcolo.voci.filter((v) => v.mancaIn.length > 0);
   return (
     <div className="flex flex-col gap-3">
       {calcolo.avvisi.map((a) => (
@@ -178,12 +179,20 @@ function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
         </div>
         {calcolo.voci.map((v) => (
           <div key={v.voce} className={"rv" + (v.voce.startsWith("di cui") ? " dicui" : "")}>
-            <span>{v.voce}</span>
+            <span title={v.mancaIn.length ? `Parziale: manca in ${v.mancaIn.join(", ")}` : undefined}>
+              {v.voce}
+              {v.mancaIn.length > 0 && " *"}
+            </span>
             <span>{v.per100 || "—"}</span>
             {conPorzione && <span>{v.perPorzione || "—"}</span>}
           </div>
         ))}
       </div>
+      {parziali.length > 0 && (
+        <div className="text-[11.5px] leading-snug text-[var(--tenue)]">
+          * Parziale, non va in etichetta: manca il valore in {[...new Set(parziali.flatMap((v) => v.mancaIn))].join(", ")}.
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <div className="rigaAll">
           <span className="etLabel">Contiene</span>
@@ -341,7 +350,7 @@ export default function CampoRicetta({
           <div className="flex flex-wrap items-center gap-2">
             <div className="casella p-0 flex-1 min-w-[200px]">
               <select value="" onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
-                <option value="">+ Aggiungi un ingrediente…</option>
+                <option value="" hidden>+ Aggiungi un ingrediente…</option>
                 <option value="nuovo:0">+ Nuovo ingrediente…</option>
                 {ingredientiLiberi.length > 0 && (
                   <optgroup label="Ingredienti">

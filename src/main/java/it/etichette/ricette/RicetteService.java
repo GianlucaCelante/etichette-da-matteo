@@ -452,6 +452,10 @@ public class RicetteService {
         ordinate.sort(Comparator.comparingInt(v -> v.standard() != null ? v.standard().ordinal() : VociNutrizionali.values().length));
 
         List<Valore> per100 = new ArrayList<>();
+        // Le voci complete e quelle parziali (qualche ingrediente senza il valore), nell'ordine in cui si mostrano:
+        // le parziali sono la somma di chi ce l'ha, solo da vedere (non vanno in etichetta ne' in un altro semilavorato).
+        Map<String, Valore> parziali = new HashMap<>();
+        Map<String, List<String>> mancanti = new HashMap<>();
         List<VoceNonCalcolabileDto> nonCalcolabili = new ArrayList<>();
         for (Valore m : ordinate) {
             double somma = 0;
@@ -471,7 +475,12 @@ public class RicetteService {
             if (mancaIn.isEmpty() && pesoFinale > 0) {
                 per100.add(new Valore(m.chiave(), m.nome(), m.unita(), m.standard(), somma / pesoFinale * 100,
                         m.standard() == VociNutrizionali.ENERGIA ? sommaKcal / pesoFinale * 100 : null));
-            } else if (conValore > 0 && (m.standard() == null || !VociNutrizionali.OBBLIGATORIE.contains(m.standard()))) {
+            } else if (conValore > 0 && pesoFinale > 0) {
+                parziali.put(m.chiave(), new Valore(m.chiave(), m.nome(), m.unita(), m.standard(), somma / pesoFinale * 100,
+                        m.standard() == VociNutrizionali.ENERGIA ? sommaKcal / pesoFinale * 100 : null));
+                mancanti.put(m.chiave(), List.copyOf(mancaIn));
+            }
+            if (!mancaIn.isEmpty() && conValore > 0 && (m.standard() == null || !VociNutrizionali.OBBLIGATORIE.contains(m.standard()))) {
                 // Qualcuno la ha e altri no: non si calcola, e si dice a chi manca. Le sette standard obbligatorie sono gia' dette da senzaValori;
                 // una voce che nessuno ha scritto non fa rumore.
                 nonCalcolabili.add(new VoceNonCalcolabileDto(m.nome(), List.copyOf(mancaIn)));
@@ -482,14 +491,26 @@ public class RicetteService {
         List<ValoreNutrizionaleDto> scritti = new ArrayList<>();
         // Due voci con lo stesso nome mostrato (senza maiuscole e spazi ai bordi): quella non standard si mostra con l'unita' fra parentesi.
         Map<String, Integer> perNome = new HashMap<>();
-        per100.forEach(v -> perNome.merge(v.nome().trim().toLowerCase(Locale.ITALY), 1, Integer::sum));
-        for (Valore v : per100) {
+        List<Valore> mostrate = new ArrayList<>();
+        for (Valore m : ordinate) {
+            Valore completa = per100.stream().filter(x -> x.chiave().equals(m.chiave())).findFirst().orElse(null);
+            if (completa != null) {
+                mostrate.add(completa);
+            } else if (parziali.containsKey(m.chiave())) {
+                mostrate.add(parziali.get(m.chiave()));
+            }
+        }
+        mostrate.forEach(v -> perNome.merge(v.nome().trim().toLowerCase(Locale.ITALY), 1, Integer::sum));
+        for (Valore v : mostrate) {
             String testo = v.testo();
             String testoPorzione = pesoPorzione != null ? v.per(pesoPorzione / 100).testo() : null;
             boolean omonima = v.standard() == null && perNome.get(v.nome().trim().toLowerCase(Locale.ITALY)) > 1;
             String nome = omonima ? v.nome() + " (" + v.unita() + ")" : v.nome();
-            voci.add(new VoceCalcolataDto(nome, testo, testoPorzione));
-            scritti.add(new ValoreNutrizionaleDto(nome, testo, true));
+            List<String> mancaIn = mancanti.getOrDefault(v.chiave(), List.of());
+            voci.add(new VoceCalcolataDto(nome, testo, testoPorzione, mancaIn));
+            if (mancaIn.isEmpty()) {
+                scritti.add(new ValoreNutrizionaleDto(nome, testo, true));
+            }
         }
 
         Set<String> tracceGiaContenute = new HashSet<>(tracce);

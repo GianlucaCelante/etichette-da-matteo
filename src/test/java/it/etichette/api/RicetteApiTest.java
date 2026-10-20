@@ -350,7 +350,7 @@ class RicetteApiTest {
         List<String> nomi = new ArrayList<>();
         c.get("voci").forEach(v -> nomi.add(v.get("voce").asText()));
         assertThat(nomi).containsExactly("Energia", "Grassi", "di cui acidi grassi saturi", "Carboidrati", "di cui zuccheri",
-                "Fibre", "Proteine", "Sale", "Sodio");
+                "Fibre", "Proteine", "Sale", "Sodio", "Colesterolo");
         // Farina 600 g x 2 mg / 100 = 12 mg, acqua 400 g x 12 mg / 100 = 48 mg: 60 mg su 1000 g = 6 mg per 100 g, 15 mg a porzione (250 g).
         assertThat(voceCalcolata(c, "Sodio").get("per100").asText()).isEqualTo("6 mg");
         assertThat(voceCalcolata(c, "Sodio").get("perPorzione").asText()).isEqualTo("15 mg");
@@ -379,7 +379,9 @@ class RicetteApiTest {
 
         JsonNode c = calcolaRicetta(rigaIngrediente(acqua, 400) + "," + rigaIngrediente(farina, 600), "");
 
-        assertThat(voceCalcolata(c, "Colesterolo")).isNull();
+        // Parziale: la somma di chi ce l'ha, con chi manca; non va fra i valori dell'etichetta.
+        assertThat(voceCalcolata(c, "Colesterolo").get("mancaIn").toString()).isEqualTo("[\"Acqua di prova\"]");
+        assertThat(voceCalcolata(c, "Sodio").get("mancaIn").size()).isZero();
         assertThat(c.get("valori").toString()).doesNotContain("Colesterolo");
         assertThat(c.get("nonCalcolabili").toString()).isEqualTo("[{\"voce\":\"Colesterolo\",\"mancaIn\":[\"Acqua di prova\"]}]");
         // Senza porzioni non c'e' il valore a porzione.
@@ -391,7 +393,9 @@ class RicetteApiTest {
                 voceJson("Grassi", "g", "100.0"), voceJson("Sodio", "mg", "0.0")) + "]}");
         c = calcolaRicetta(rigaIngrediente(olio, 100) + "," + rigaIngrediente(farina, 100), "");
         assertThat(c.get("senzaValori").toString()).isEqualTo("[\"Olio di prova\"]");
-        assertThat(voceCalcolata(c, "Carboidrati")).isNull();
+        // Parziale: si vede (la farina ha i carboidrati), con chi manca, ma non e' fra i valori dell'etichetta.
+        assertThat(voceCalcolata(c, "Carboidrati").get("mancaIn").toString()).isEqualTo("[\"Olio di prova\"]");
+        assertThat(c.get("valori").toString()).doesNotContain("Carboidrati");
         List<String> nonCalcolabili = new ArrayList<>();
         c.get("nonCalcolabili").forEach(v -> nonCalcolabili.add(v.get("voce").asText() + ":" + v.get("mancaIn")));
         assertThat(nonCalcolabili).containsExactlyInAnyOrder("Fibre:[\"Olio di prova\"]", "Colesterolo:[\"Olio di prova\"]");
@@ -507,7 +511,8 @@ class RicetteApiTest {
         assertThat(voceCalcolata(c, "Sodio").get("per100").asText()).isEqualTo("70 mg");
         assertThat(voceCalcolata(c, "Energia").get("per100").asText()).isEqualTo("300 kJ / 75 kcal");
         // I grassi monoinsaturi li ha solo la salsa: non si calcolano.
-        assertThat(voceCalcolata(c, "Grassi monoinsaturi")).isNull();
+        assertThat(voceCalcolata(c, "Grassi monoinsaturi").get("mancaIn").toString()).isEqualTo("[\"Sale di prova\"]");
+        assertThat(c.get("valori").toString()).doesNotContain("Grassi monoinsaturi");
         assertThat(c.get("nonCalcolabili").toString()).contains("{\"voce\":\"Grassi monoinsaturi\",\"mancaIn\":[\"Sale di prova\"]}");
         assertThat(c.get("avvisi").size()).isEqualTo(1);
     }

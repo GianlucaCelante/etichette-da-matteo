@@ -262,6 +262,8 @@ export interface VoceCalcolata {
   voce: string;
   per100: string;
   perPorzione: string | null;
+  // Gli ingredienti senza il valore di questa voce: vuota se e' completa, altrimenti il numero e' un minimo.
+  mancaIn: string[];
 }
 
 export interface VoceNonCalcolabile {
