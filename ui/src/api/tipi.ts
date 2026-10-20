@@ -68,11 +68,26 @@ export interface ProvaStampaRisposta {
 // e' diventato prodotto.etichetta.schemaLotto (vedi EtichettaProdotto sotto).
 export type Impostazioni = Record<string, string>;
 
+// Che scheda porta un indirizzo del PC: il servizio lo ricava dal nome della
+// scheda. Serve a dire su quale rete deve stare il telefono (PC su cavo e
+// telefono sul Wi-Fi sono quasi sempre due reti diverse).
+export type TipoScheda = "wifi" | "cavo" | "altro";
+
+export interface IndirizzoRete {
+  indirizzo: string;
+  tipo: TipoScheda;
+  // Il nome visualizzato della scheda («Intel(R) Wi-Fi 6 AX201»).
+  scheda: string;
+}
+
 export interface Rete {
   indirizzi: string[];
   // L'indirizzo da proporre come principale sotto il QR: in arrivo dal
   // servizio, per ora facoltativo. Se assente si usa indirizzi[0].
   principale?: string;
+  // Gli stessi indirizzi, nello stesso ordine, col tipo di scheda. Un servizio
+  // piu' vecchio non lo manda: allora tutti valgono come "altro".
+  dettagli?: IndirizzoRete[];
 }
 
 export interface Versione {

@@ -14,7 +14,6 @@
 // rallenta (per vedere lo scheletro di caricamento).
 
 import http from "node:http";
-import os from "node:os";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 
@@ -238,17 +237,17 @@ function creaFotoFintaPng(larghezza = 300, altezza = 400) {
 const FOTO_FINTA_PNG = creaFotoFintaPng();
 
 /* ============================ rete ============================ */
-function indirizziLocali() {
-  const interfacce = os.networkInterfaces();
-  const trovati = [];
-  for (const voci of Object.values(interfacce)) {
-    for (const voce of voci ?? []) {
-      if (voce.family === "IPv4" && !voce.internal) trovati.push(voce.address);
-    }
-  }
-  if (!trovati.length) return ["127.0.0.1"];
-  trovati.sort((a, b) => Number(a.startsWith("169.254.")) - Number(b.startsWith("169.254.")));
-  return trovati;
+// Come il servizio vero (docs/api.md): ogni indirizzo ha il tipo di scheda
+// (wifi, cavo, altro) e il nome della scheda; il Wi-Fi viene prima del cavo.
+// Due indirizzi fissi, come dal cliente (PC su cavo, telefono sul Wi-Fi).
+// MOCK_RETE=solo-cavo: il PC e' solo sul cavo (l'interfaccia mostra l'avviso);
+// MOCK_RETE=uno: un solo indirizzo Wi-Fi (la scheda com'era prima).
+function schedeLocali() {
+  const wifi = { indirizzo: `http://192.168.1.41:${PORTA}`, tipo: "wifi", scheda: "Intel(R) Wi-Fi 6 AX201 160MHz" };
+  const cavo = { indirizzo: `http://192.168.4.20:${PORTA}`, tipo: "cavo", scheda: "Realtek PCIe GbE Family Controller" };
+  if (process.env.MOCK_RETE === "solo-cavo") return [cavo];
+  if (process.env.MOCK_RETE === "uno") return [wifi];
+  return [wifi, cavo];
 }
 
 /* ============================ dati di partenza: prodotti (con l'etichetta dentro) ============================ */
@@ -2422,10 +2421,18 @@ const server = http.createServer(async (req, res) => {
 
     /* ---- rete ---- */
     if (percorso === "/api/rete" && req.method === "GET") {
-      const indirizzi = indirizziLocali().map((ip) => `${ip}:${PORTA}`);
-      return rispondiJson(res, 200, { indirizzi, principale: indirizzi[0] });
+      const dettagli = schedeLocali();
+      const indirizzi = dettagli.map((d) => d.indirizzo);
+      return rispondiJson(res, 200, { indirizzi, principale: indirizzi[0], dettagli });
     }
-    if (percorso === "/api/rete/qr.png" && req.method === "GET") return rispondiPng(res, QR_PNG);
+    if (percorso === "/api/rete/qr.png" && req.method === "GET") {
+      // Come il servizio: l'indirizzo scelto deve essere uno di quelli correnti, altrimenti 400.
+      const scelto = url.searchParams.get("indirizzo");
+      if (scelto && !schedeLocali().some((d) => d.indirizzo === scelto.trim())) {
+        return erroreJson(res, 400, `indirizzo non riconosciuto: ${scelto}`);
+      }
+      return rispondiPng(res, QR_PNG);
+    }
     if (percorso === "/api/versione" && req.method === "GET") return rispondiJson(res, 200, versione);
 
     /* ---- prodotti ---- */

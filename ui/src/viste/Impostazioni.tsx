@@ -15,7 +15,7 @@ import {
   useSalvaImpostazioni,
   useStampante,
 } from "../api/hooks";
-import type { Dispositivo, Stampante, TipoDispositivo } from "../api/tipi";
+import type { Dispositivo, IndirizzoRete, Rete, Stampante, TipoDispositivo, TipoScheda } from "../api/tipi";
 import { copiaNegliAppunti } from "../hooks/copiaNegliAppunti";
 import { useAvviso } from "../hooks/useAvviso";
 import { useOraRelativa } from "../hooks/useOraRelativa";
@@ -486,12 +486,65 @@ const DISPOSITIVI_VISIBILI = 5;
 // (2 ottobre 2026: compariva con il bottone «Scollega», e scollegare se stesso non ha senso).
 const ID_PC_LOCALE = "pc-locale";
 
+// Il PC puo' stare su piu' reti (11 ottobre 2026, dal cliente: PC su cavo
+// 192.168.4.x, telefono sul Wi-Fi 192.168.1.x: il QR portava alla rete
+// sbagliata). Il servizio manda tutti gli indirizzi, col tipo di scheda, e
+// mette il Wi-Fi in testa; qui si sceglie quale mostrare nel QR.
+const NOME_TIPO_SCHEDA: Record<TipoScheda, string> = { wifi: "Wi-Fi", cavo: "Cavo", altro: "Rete" };
+
+// «http://192.168.1.41:8765» -> «192.168.1»: i primi tre ottetti, la sottorete
+// di una rete di casa o di un locale. Vuoto se non e' un indirizzo IPv4.
+function sottorete(indirizzo: string): string {
+  const trovato = /(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/.exec(indirizzo);
+  return trovato?.[1] ?? "";
+}
+
+// «Wi-Fi · 192.168.1.x», «Cavo · 192.168.4.x».
+function etichettaRete(r: IndirizzoRete): string {
+  const rete = sottorete(r.indirizzo);
+  return rete ? `${NOME_TIPO_SCHEDA[r.tipo]} · ${rete}.x` : NOME_TIPO_SCHEDA[r.tipo];
+}
+
+// Gli indirizzi del PC come l'interfaccia li usa: quelli di "dettagli", o, da
+// un servizio che non li manda, "indirizzi" tutti di tipo "altro" (come prima:
+// una sola rete, "Stessa rete Wi-Fi del PC").
+function retiDelPc(rete: Rete | undefined): IndirizzoRete[] {
+  if (!rete) return [];
+  if (rete.dettagli && rete.dettagli.length > 0) return rete.dettagli;
+  return rete.indirizzi.map((indirizzo) => ({ indirizzo, tipo: "altro", scheda: "" }));
+}
+
+function GettoneRete({ rete, attivo, onScegli }: { rete: IndirizzoRete; attivo: boolean; onScegli: (indirizzo: string) => void }) {
+  const clic = useCallback(() => onScegli(rete.indirizzo), [onScegli, rete.indirizzo]);
+  return (
+    <button type="button" className={"gettone" + (attivo ? " on" : "")} onClick={clic} aria-pressed={attivo} title={rete.scheda || undefined}>
+      {etichettaRete(rete)}
+    </button>
+  );
+}
+
 function SezioneTelefoni() {
   const { data: rete } = useRete();
   const { data: dispositivi } = useDispositivi();
   const eliminaSenzaNome = useEliminaDispositiviSenzaNome();
   const avvisa = useAvviso();
-  const principale = rete?.principale ?? rete?.indirizzi[0];
+  const reti = retiDelPc(rete);
+  // Finche' non si sceglie, vale il principale del servizio (il primo: il Wi-Fi,
+  // se c'e'). Se la scelta sparisce dalla lista (la rete e' cambiata) si torna
+  // al principale.
+  const [scelta, setScelta] = useState<string | null>(null);
+  const selezionata = reti.find((r) => r.indirizzo === scelta) ?? reti.find((r) => r.indirizzo === rete?.principale) ?? reti[0];
+  const principale = selezionata?.indirizzo ?? rete?.principale ?? rete?.indirizzi[0];
+  const piuReti = reti.length > 1;
+  const sottoreti = [...new Set(reti.map((r) => sottorete(r.indirizzo)).filter(Boolean))];
+  const retiDiverse = sottoreti.length > 1;
+  // Il PC e' solo sul cavo: il telefono, di solito sul Wi-Fi, e' quasi sempre
+  // su un'altra rete e non lo raggiunge.
+  const soloCavo = reti.length > 0 && reti.some((r) => r.tipo === "cavo") && !reti.some((r) => r.tipo === "wifi");
+  const sottoretiCavo = [...new Set(reti.filter((r) => r.tipo === "cavo").map((r) => sottorete(r.indirizzo)).filter(Boolean))];
+  const testoCavo = sottoretiCavo.length > 0 ? ` (${sottoretiCavo.map((s) => `${s}.x`).join(", ")})` : "";
+  const sulCavo = selezionata?.tipo === "cavo";
+  const reteDelCavo = selezionata ? sottorete(selezionata.indirizzo) : "";
   const telefoni = (dispositivi ?? []).filter((d) => d.id !== ID_PC_LOCALE);
   const ceNeSenzaNome = telefoni.some((d) => !d.nome.trim());
   // L'elenco mostra i primi dispositivi (il PC e quelli con un nome, per primi:
@@ -527,14 +580,37 @@ function SezioneTelefoni() {
     >
       <div className="flex flex-col items-center gap-2 pt-1 pb-3 mb-1 border-b border-[var(--riga)]">
         <div className="text-[15px] font-bold">Inquadra il QR col telefono</div>
+        {piuReti && (
+          <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="Rete del PC">
+            {reti.map((r) => (
+              <GettoneRete key={r.indirizzo} rete={r} attivo={r.indirizzo === selezionata?.indirizzo} onScegli={setScelta} />
+            ))}
+          </div>
+        )}
+        {piuReti && retiDiverse && (
+          <span className="text-[12px] text-[var(--spento)] text-center">Il PC è su più reti: scegli quella a cui è collegato il telefono.</span>
+        )}
         <img
-          src={percorsoQrRete}
+          src={percorsoQrRete(piuReti ? principale : undefined)}
           alt="Codice QR con l'indirizzo dell'app: inquadralo dal telefono per aprirla"
           width={130}
           height={130}
           className="rounded-[14px] border border-[var(--bordo)] bg-white"
         />
-        {principale && <span className="mono text-[15px] font-bold text-[var(--testo)]">{principale}</span>}
+        {principale && <span className="mono text-[15px] font-bold text-[var(--testo)] break-all text-center">{principale}</span>}
+        <span className="text-[12px] text-[var(--spento)] text-center">
+          {sulCavo && reteDelCavo
+            ? `Il telefono deve stare sulla stessa rete del cavo (${reteDelCavo}.x).`
+            : "Il telefono deve stare sulla stessa rete Wi-Fi del PC."}
+        </span>
+        {soloCavo && (
+          <div className="flex items-center gap-2.5 self-stretch rounded-xl border border-[var(--ambrabordo)] bg-[var(--ambrachiaro)] px-3 py-2 text-[12.5px] leading-snug text-[var(--ambra)]">
+            <span className="flex shrink-0">
+              <IconaAllarme larghezza={16} spessoreTratto={2} />
+            </span>
+            <span>Il PC è collegato solo via cavo{testoCavo}. Se il Wi-Fi del telefono è un&apos;altra rete, collega il PC anche al Wi-Fi.</span>
+          </div>
+        )}
       </div>
       {dispositivi && telefoni.length === 0 && (
         <div className="flex items-center gap-2.5 text-[var(--tenue)] text-sm leading-[1.45] py-1">

@@ -292,7 +292,11 @@ export const api = {
 };
 
 // L'immagine del QR non passa dal client JSON: e' un src diretto per un <img>.
-export const percorsoQrRete = `${BASE}/rete/qr.png`;
+// Senza argomento e' il QR del primo indirizzo; con un indirizzo
+// («http://ip:porta», uno di quelli di GET /api/rete) e' il QR di quello.
+export function percorsoQrRete(indirizzo?: string): string {
+  return `${BASE}/rete/qr.png${stringaQuery({ indirizzo })}`;
+}
 
 export const percorsoEventi = `${BASE}/eventi`;
 

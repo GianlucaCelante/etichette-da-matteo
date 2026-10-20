@@ -501,3 +501,13 @@ Chiesto dal cliente: i valori nutrizionali degli ingredienti si configurano **co
 
 - Ogni riga di `GET /api/storico` porta `scartate`: le porzioni di quella produzione buttate dopo (sigillate male...), `0` se non ne sono state segnate.
 - `PUT /api/storico/{id}/scartate` con `{"scartate":2}` → `200` con la riga aggiornata; `0` o `null` toglie il segno. `400` fuori da 0–100000, `404` per una riga inesistente. Non tocca ricetta né valori.
+
+## Telefono su un'altra rete del PC (11 ottobre 2026)
+
+Dal cliente il PC era su Ethernet (192.168.4.x) e il telefono sul Wi-Fi (192.168.1.x): il QR portava solo il primo indirizzo trovato, quello sbagliato. Ora il servizio dice di che tipo è ogni indirizzo e il QR si può scegliere.
+
+- `GET /api/rete` → `{"indirizzi":["http://192.168.1.41:8765","http://192.168.4.20:8765"],"principale":"http://192.168.1.41:8765","dettagli":[{"indirizzo":"http://192.168.1.41:8765","tipo":"wifi","scheda":"Intel(R) Wi-Fi 6 AX201 160MHz"},{"indirizzo":"http://192.168.4.20:8765","tipo":"cavo","scheda":"Realtek PCIe GbE Family Controller"}]}`. `indirizzi` e `principale` sono quelli di prima (`principale` è `null` e `indirizzi` vuoto se non c'è rete); `dettagli` è nuovo, nello stesso ordine di `indirizzi`, e un servizio più vecchio non lo manda (l'interfaccia ripiega su `indirizzi`, tutti di tipo `altro`).
+- `tipo` si ricava dal nome e dal nome visualizzato della scheda, senza badare alle maiuscole: `wifi` se contiene «wi-fi», «wifi», «wireless», «wlan» o «802.11»; altrimenti `cavo` se contiene «ethernet», «gbe», «gigabit», «lan» o il nome inizia per «eth»; altrimenti `altro`. Il Wi-Fi vince sul cavo («Wireless LAN adapter» è Wi-Fi). `scheda` è il nome visualizzato (quello del nome se manca).
+- **Ordine**: prima le classi private 192.168/16 e 10/8, poi le altre (come prima); a parità di classe il Wi-Fi viene prima del cavo e il cavo prima di `altro` (i telefoni stanno sul Wi-Fi), a parità di tutto l'ordine delle schede del PC. `principale` è il primo.
+- `GET /api/rete/qr.png` → PNG del QR del primo indirizzo. Con `?indirizzo=http://ip:porta` è il QR di quell'indirizzo, che **deve** essere uno di quelli correnti di `GET /api/rete`: altrimenti `400 {"errore":"indirizzo non riconosciuto: …"}`, mai un QR per un testo qualsiasi. `503` se il PC non ha nessun indirizzo.
+- Interfaccia (Impostazioni, «Telefoni e tablet»): con più indirizzi un selettore «Wi-Fi · 192.168.1.x» / «Cavo · 192.168.4.x» sceglie quale mostrare (di serie il principale); il testo sotto l'indirizzo dice a quale rete deve stare il telefono, e se il PC non ha nessun Wi-Fi ma solo cavo compare un avviso.

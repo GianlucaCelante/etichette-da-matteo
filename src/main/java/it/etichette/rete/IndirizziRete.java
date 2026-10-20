@@ -34,15 +34,57 @@ public class IndirizziRete {
             "Tailscale", "WireGuard", "OpenVPN", "ZeroTier", "TAP", "TUN"
     };
 
+    /**
+     * Che tipo di scheda porta l'indirizzo: serve a dire all'utente su quale rete mettere il
+     * telefono (un PC su cavo e un telefono sul Wi-Fi sono quasi sempre due sottoreti diverse,
+     * difetto trovato dal cliente). Il nome in JSON ({@link #nome()}) e' quello di docs/api.md.
+     */
+    public enum TipoScheda {
+        WIFI("wifi"), CAVO("cavo"), ALTRO("altro");
+
+        private final String nome;
+
+        TipoScheda(String nome) {
+            this.nome = nome;
+        }
+
+        public String nome() {
+            return nome;
+        }
+    }
+
+    /** Un indirizzo della LAN con il tipo e il nome (visualizzato) della scheda che lo porta. */
+    public record IndirizzoLan(Inet4Address indirizzo, TipoScheda tipo, String scheda) {
+    }
+
+    /**
+     * Frammenti (minuscoli) che, nel nome o nel nome visualizzato dell'interfaccia, dicono che e'
+     * una scheda Wi-Fi. Java su Windows chiama le interfacce "wlan0", "eth3", "net5": il nome vero
+     * ("Intel(R) Wi-Fi 6 AX201", "Realtek PCIe GbE Family Controller") sta nel nome visualizzato.
+     */
+    private static final String[] FRAMMENTI_WIFI = {"wi-fi", "wifi", "wireless", "wlan", "802.11"};
+
+    /** Come sopra per il cavo; in piu' il prefisso "eth" del nome (Linux, e le "eth3" di Java). */
+    private static final String[] FRAMMENTI_CAVO = {"ethernet", "gbe", "gigabit", "lan"};
+
     /** Indirizzi IPv4 utilizzabili in LAN, con le classi private piu' comuni (192.168/16, 10/8) in testa. */
     public List<Inet4Address> trovaIndirizziLan() {
+        return trovaIndirizziLanConScheda().stream().map(IndirizzoLan::indirizzo).toList();
+    }
+
+    /**
+     * Gli stessi indirizzi di {@link #trovaIndirizziLan()}, nello stesso ordine, ciascuno col tipo
+     * e il nome della scheda: a parita' di classe privata il Wi-Fi viene prima del cavo, perche'
+     * i telefoni stanno sul Wi-Fi.
+     */
+    public List<IndirizzoLan> trovaIndirizziLanConScheda() {
         List<NetworkInterface> interfacce;
         try {
             interfacce = Collections.list(NetworkInterface.getNetworkInterfaces());
         } catch (SocketException e) {
             interfacce = List.of(); // nessuna interfaccia disponibile: risultato vuoto, chi chiama gestisce il caso
         }
-        return filtraEOrdina(interfacce);
+        return classificaEOrdina(interfacce);
     }
 
     /**
@@ -52,24 +94,64 @@ public class IndirizziRete {
      * finte (es. Mockito). Pacchetto-privato: solo per i test.
      */
     static List<Inet4Address> filtraEOrdina(List<NetworkInterface> interfacce) {
-        List<Inet4Address> risultato = new ArrayList<>();
+        return classificaEOrdina(interfacce).stream().map(IndirizzoLan::indirizzo).toList();
+    }
+
+    /** Come {@link #filtraEOrdina(List)}, con tipo e nome della scheda di ogni indirizzo. Pacchetto-privato: solo per i test. */
+    static List<IndirizzoLan> classificaEOrdina(List<NetworkInterface> interfacce) {
+        List<IndirizzoLan> risultato = new ArrayList<>();
         for (NetworkInterface ni : interfacce) {
             if (!utilizzabile(ni)) {
                 continue;
             }
+            TipoScheda tipo = tipoScheda(ni);
+            String scheda = nomeScheda(ni);
             Enumeration<InetAddress> indirizzi = ni.getInetAddresses();
             while (indirizzi.hasMoreElements()) {
                 InetAddress addr = indirizzi.nextElement();
                 if (addr instanceof Inet4Address ipv4 && indirizzoUtilizzabile(ipv4)) {
-                    risultato.add(ipv4);
+                    risultato.add(new IndirizzoLan(ipv4, tipo, scheda));
                 }
             }
         }
-        // Comparator.comparing su un booleano "e' privata preferita?" invertito: false (e' una
-        // preferita) ordina prima di true. Sort stabile: fra indirizzi della stessa classe resta
-        // l'ordine di enumerazione delle interfacce.
-        risultato.sort(Comparator.comparing(a -> !isPrivataPreferita(a)));
+        // Prima la classe: comparing su un booleano "e' privata preferita?" invertito, false (e'
+        // una preferita) ordina prima di true. Poi il tipo di scheda, nell'ordine dell'enum
+        // (Wi-Fi, cavo, altro). Sort stabile: a parita' di entrambi resta l'ordine di
+        // enumerazione delle interfacce.
+        risultato.sort(Comparator
+                .comparing((IndirizzoLan l) -> !isPrivataPreferita(l.indirizzo()))
+                .thenComparing(IndirizzoLan::tipo));
         return risultato;
+    }
+
+    /** Il Wi-Fi ha la precedenza: "Wireless LAN adapter" contiene "lan" ma e' Wi-Fi. */
+    static TipoScheda tipoScheda(NetworkInterface ni) {
+        for (String frammento : FRAMMENTI_WIFI) {
+            if (contiene(ni.getName(), frammento) || contiene(ni.getDisplayName(), frammento)) {
+                return TipoScheda.WIFI;
+            }
+        }
+        for (String frammento : FRAMMENTI_CAVO) {
+            if (contiene(ni.getName(), frammento) || contiene(ni.getDisplayName(), frammento)) {
+                return TipoScheda.CAVO;
+            }
+        }
+        if (iniziaPer(ni.getName(), "eth") || iniziaPer(ni.getDisplayName(), "eth")) {
+            return TipoScheda.CAVO;
+        }
+        return TipoScheda.ALTRO;
+    }
+
+    private static String nomeScheda(NetworkInterface ni) {
+        String visualizzato = ni.getDisplayName();
+        if (visualizzato != null && !visualizzato.isBlank()) {
+            return visualizzato.trim();
+        }
+        return ni.getName() == null ? "" : ni.getName().trim();
+    }
+
+    private static boolean iniziaPer(String testo, String prefisso) {
+        return testo != null && testo.toLowerCase(Locale.ROOT).startsWith(prefisso);
     }
 
     private static boolean utilizzabile(NetworkInterface ni) {
