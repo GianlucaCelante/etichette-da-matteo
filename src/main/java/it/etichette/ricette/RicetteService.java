@@ -411,6 +411,8 @@ public class RicetteService {
         record Pezzo(Componente comp, double grammi, Map<String, Valore> voci) {
         }
         List<Pezzo> pezzi = new ArrayList<>();
+        // Tutti i componenti, anche senza quantita' ancora: la scheda di un ingrediente appena aggiunto si giudica subito.
+        List<Componente> componenti = new ArrayList<>();
 
         for (int posizione = 0; posizione < righe.size(); posizione++) {
             RigaRicettaDto riga = righe.get(posizione);
@@ -419,6 +421,7 @@ public class RicetteService {
                 continue;
             }
             double grammi = riga.grammi();
+            componenti.add(comp);
             pesoIngredienti += grammi;
             allergeni.addAll(comp.allergeni());
             tracce.addAll(comp.tracce());
@@ -435,11 +438,11 @@ public class RicetteService {
 
         // Chi non ha una delle sette voci obbligatorie (o ce l'ha senza valore): come sempre, per nome.
         Set<String> senzaValori = new LinkedHashSet<>();
-        for (Pezzo p : pezzi) {
+        for (Componente c : componenti) {
             for (VociNutrizionali obbligatoria : VociNutrizionali.OBBLIGATORIE) {
-                Valore v = p.voci().get(obbligatoria.name());
+                Valore v = c.perChiave().get(obbligatoria.name());
                 if (v == null || !v.haValore()) {
-                    senzaValori.add(p.comp().nome());
+                    senzaValori.add(c.nome());
                 }
             }
         }

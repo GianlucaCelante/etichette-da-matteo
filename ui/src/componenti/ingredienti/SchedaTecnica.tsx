@@ -151,12 +151,14 @@ export default function SchedaTecnica({ ingrediente, inFinestra, onChiudi }: { i
           // Riparte da come l'ha salvata il servizio ("4,10" torna "4,1", allergeni in ordine di legge).
           setBozza(bozzaDa(dettaglio.scheda));
           avvisa(`Scheda di ${ingrediente.nome} salvata: le etichette che lo usano si ricalcolano da sole.`);
+          // Nella finestra (aperta dalla ricetta) la scheda salvata si chiude: si torna alla ricetta, gia' ricalcolata.
+          if (inFinestra) onChiudi?.();
         },
         // Il servizio dice cosa non va (voce doppia, valore fuori misura...) in italiano.
         onError: (errore) => avvisa(errore instanceof ErroreRichiesta ? errore.message : "Non sono riuscito a salvare la scheda."),
       },
     );
-  }, [bozza, salva, ingrediente.id, ingrediente.nome, avvisa]);
+  }, [bozza, salva, ingrediente.id, ingrediente.nome, avvisa, inFinestra, onChiudi]);
 
   const barraAzioni = (
     <>

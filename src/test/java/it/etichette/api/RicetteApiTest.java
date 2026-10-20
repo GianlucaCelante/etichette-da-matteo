@@ -371,6 +371,18 @@ class RicetteApiTest {
     }
 
     @Test
+    void unIngredienteSenzaValoriEInSenzaValoriAncheConLaQuantitaVuota() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        long vuoto = creaIngrediente("Scheda vuota di prova");
+        scheda(farina, SCHEDA_FARINA_VOCI);
+
+        // Appena aggiunto, senza grammi: la sua scheda e' gia' da completare; quella completa no.
+        JsonNode c = calcolaRicetta(rigaIngrediente(farina, 100) + "," + rigaIngrediente(vuoto, 0), "");
+
+        assertThat(c.get("senzaValori").toString()).isEqualTo("[\"Scheda vuota di prova\"]");
+    }
+
+    @Test
     void unaVoceChePossiedonoSoloAlcuniIngredientiNonSiCalcolaEDiceChiManca() throws Exception {
         long farina = creaIngrediente("Farina di prova");
         long acqua = creaIngrediente("Acqua di prova");
