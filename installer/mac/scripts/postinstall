@@ -13,6 +13,10 @@ AGENTE="/Library/LaunchAgents/it.etichette.avvio.plist"
 /usr/sbin/chown -R root:wheel "$DATI"
 /bin/chmod 755 "$DATI"
 
+# Il servizio gira come root ed esegue java e il jar da qui: nessun altro utente deve poterli modificare.
+/usr/sbin/chown -R root:wheel "$APP"
+/bin/chmod -R go-w "$APP"
+
 /usr/sbin/chown root:wheel "$DAEMON" "$AGENTE"
 /bin/chmod 644 "$DAEMON" "$AGENTE"
 /bin/chmod 755 "$APP/Contents/MacOS/Etichette" "$APP/Contents/Resources/uninstall.sh"
