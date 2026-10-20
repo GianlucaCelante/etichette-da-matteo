@@ -789,6 +789,10 @@ input.nomeSelettore { padding: 0 14px; outline: none; }
    riquadro ma senza, solo per far vedere dove sta la zona. */
 .zonaGruppo { display: flex; flex-direction: column; gap: 6px; background: var(--verdechiaro); border: 1px solid var(--verdebordo); border-radius: 12px; padding: 6px; }
 .zonaTesta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px 2px; }
+/* La maniglia dell'intestazione «Due colonne» (trascina l'intera sezione): come la maniglia delle righe,
+   touch-action: none perche' al tocco la pressione lunga parta senza far scorrere la pagina. */
+.zonaManiglia { display: inline-flex; align-items: center; gap: 6px; cursor: grab; touch-action: none; user-select: none; padding: 2px 4px 2px 0; color: var(--tenue); }
+.zonaGruppo.trascinata { position: relative; z-index: 5; opacity: .92; box-shadow: 0 8px 22px rgba(0, 0, 0, .18); cursor: grabbing; }
 .zonaDestra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
 .quote { display: flex; flex-wrap: wrap; max-width: 100%; gap: 3px; padding: 2px; border: 1px solid var(--bordo2); border-radius: 9px; background: var(--carta); }
 .quote button { height: 22px; padding: 0 7px; white-space: nowrap; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }

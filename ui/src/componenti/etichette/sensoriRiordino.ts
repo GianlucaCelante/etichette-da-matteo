@@ -1,5 +1,55 @@
-import { KeyboardSensor, MouseSensor, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  KeyboardSensor,
+  MouseSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type MouseSensorOptions,
+  type TouchSensorOptions,
+} from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import type { MouseEvent, TouchEvent } from "react";
+
+// Il trascinamento parte da qualunque punto libero della riga (BloccoRiga mette gli ascoltatori sulla
+// riga intera), ma NON da un controllo: premendo su una tendina, un campo di testo o un bottone il
+// sensore non parte nemmeno. Prima partiva comunque in attesa di muovere il puntatore di 6 px, e con
+// la tendina del corpo del carattere (un menu nativo del browser, che si prende il rilascio del
+// mouse) il rilascio non arrivava mai a dnd-kit: al primo movimento dopo la scelta il blocco risultava
+// «preso» e restava cosi' fino al clic successivo (20 ottobre 2026). La maniglia e' uno span, non un
+// bottone, quindi continua a trascinare.
+const CONTROLLI = "select, input, textarea, button, a[href], label, [contenteditable='true']";
+
+function eUnControllo(bersaglio: EventTarget | null): boolean {
+  return bersaglio instanceof Element && bersaglio.closest(CONTROLLI) !== null;
+}
+
+// Gli stessi sensori di dnd-kit, con in piu' il controllo qui sopra al posto di partenza.
+class SensoreMouse extends MouseSensor {
+  static override activators = [
+    {
+      eventName: "onMouseDown" as const,
+      handler: ({ nativeEvent: evento }: MouseEvent, { onActivation }: MouseSensorOptions) => {
+        if (evento.button === 2 || eUnControllo(evento.target)) return false;
+        onActivation?.({ event: evento });
+        return true;
+      },
+    },
+  ];
+}
+
+class SensoreTocco extends TouchSensor {
+  static override activators = [
+    {
+      eventName: "onTouchStart" as const,
+      handler: ({ nativeEvent: evento }: TouchEvent, { onActivation }: TouchSensorOptions) => {
+        if (evento.touches.length > 1 || eUnControllo(evento.target)) return false;
+        onActivation?.({ event: evento });
+        return true;
+      },
+    },
+  ];
+}
 
 // I sensori del riordino dei blocchi, gli stessi per PC e telefono.
 // Mouse: la riga parte dopo 6px di spostamento (come sempre: sotto la soglia
@@ -13,8 +63,8 @@ const TOLLERANZA_PX = 8;
 
 export function useSensoriRiordino() {
   return useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: RITARDO_PRESSIONE_MS, tolerance: TOLLERANZA_PX } }),
+    useSensor(SensoreMouse, { activationConstraint: { distance: 6 } }),
+    useSensor(SensoreTocco, { activationConstraint: { delay: RITARDO_PRESSIONE_MS, tolerance: TOLLERANZA_PX } }),
   );
 }
 

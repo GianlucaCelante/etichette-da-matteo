@@ -1,6 +1,7 @@
-import { useCallback, useState, type ReactNode } from "react";
-import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { DndContext, closestCenter, useDraggable, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   BLOCCHI_DATI,
   BLOCCHI_LIBERI,
@@ -12,27 +13,30 @@ import {
   type TipoBlocco,
 } from "../../api/tipi";
 import { useAvviso } from "../../hooks/useAvviso";
-import { IconaPiu } from "../Icone";
+import { IconaManiglia, IconaPiu } from "../Icone";
 import type { BloccoBozza } from "./bozza";
 import { bloccoNuovo, numeroDelTesto } from "./corpoBlocco";
-import { spostaBlocco } from "./riordino";
+import { intervalloSezione, spostaBlocco, spostaSezione } from "./riordino";
 import { useBloccoNuovo } from "./useBloccoNuovo";
 import BloccoRiga from "./BloccoRiga";
 import { ACCESSIBILITA_RIORDINO_BLOCCHI, AUTOSCROLL_RIORDINO, useSensoriRiordino } from "./sensoriRiordino";
 
-// Le quote della colonna di destra a parole (prove con utenti simulati, 2
-// ottobre 2026: «destra 1/4 1/3 1/2 2/3» non lo capiva nessuno). I valori
-// salvati restano quelli di sempre.
-const PAROLE_QUOTA: Record<LarghezzaDestra, string> = { "1/4": "un quarto", "1/3": "un terzo", "1/2": "metà", "2/3": "due terzi" };
-
+// Le quote della colonna di destra, scritte come frazioni (1/4, 1/3, 1/2, 2/3) come i valori
+// salvati: dal 20 ottobre 2026 non sono piu' a parole («un quarto», «due terzi»), su richiesta di
+// Gianluca.
 function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; attivo: boolean; onScegli: (v: LarghezzaDestra) => void }) {
   const clic = useCallback(() => onScegli(valore), [onScegli, valore]);
   return (
-    <button type="button" className={attivo ? "on" : ""} onClick={clic} aria-pressed={attivo} aria-label={`La colonna di destra occupa ${PAROLE_QUOTA[valore]}`}>
-      {PAROLE_QUOTA[valore]}
+    <button type="button" className={attivo ? "on" : ""} onClick={clic} aria-pressed={attivo} aria-label={`La colonna di destra occupa ${valore}`}>
+      {valore}
     </button>
   );
 }
+
+// Il trascinamento dell'INTERA sezione «due colonne»: la maniglia sta
+// nell'intestazione e porta con se' tutti i blocchi del gruppo (vedi
+// spostaSezione in riordino.ts). L'id e' quello del primo blocco del gruppo.
+const PREFISSO_SEZIONE = "sezione:";
 
 // L'intestazione del gruppo "due colonne" (deciso da Gianluca): niente piu'
 // bottoni sinistra/destra (confondevano, e non servivano: il bottone ◧/◨ di
@@ -42,13 +46,18 @@ function BottoneQuota({ valore, attivo, onScegli }: { valore: LarghezzaDestra; a
 function IntestazioneZona({
   larghezzaDestra,
   onCambiaLarghezzaDestra,
+  maniglia,
 }: {
   larghezzaDestra: LarghezzaDestra;
   onCambiaLarghezzaDestra: (v: LarghezzaDestra) => void;
+  maniglia: Record<string, unknown>;
 }) {
   return (
     <div className="zonaTesta">
-      <span className="etichettina">Due colonne</span>
+      <span className="zonaManiglia" {...maniglia} aria-label="Trascina per spostare tutta la sezione a due colonne">
+        <IconaManiglia larghezza={14} spessoreTratto={1.5} />
+        <span className="etichettina">Due colonne</span>
+      </span>
       <div className="zonaDestra">
         <span>La colonna di destra occupa:</span>
         <div className="quote" role="group" aria-label="Quanto spazio occupa la colonna di destra">
@@ -57,6 +66,30 @@ function IntestazioneZona({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Il riquadro verde della sezione «due colonne»: e' lui a muoversi quando si trascina dalla
+// maniglia dell'intestazione, con tutte le righe dentro. Le righe restano trascinabili una per una.
+function SezioneColonne({
+  chiavePrima,
+  larghezzaDestra,
+  onCambiaLarghezzaDestra,
+  children,
+}: {
+  chiavePrima: string;
+  larghezzaDestra: LarghezzaDestra;
+  onCambiaLarghezzaDestra: (v: LarghezzaDestra) => void;
+  children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: PREFISSO_SEZIONE + chiavePrima });
+  const stile = useMemo<CSSProperties>(() => ({ transform: CSS.Translate.toString(transform) }), [transform]);
+  const maniglia = useMemo(() => ({ ...attributes, ...listeners }), [attributes, listeners]);
+  return (
+    <div ref={setNodeRef} style={stile} className={"zonaGruppo" + (isDragging ? " trascinata" : "")}>
+      <IntestazioneZona larghezzaDestra={larghezzaDestra} onCambiaLarghezzaDestra={onCambiaLarghezzaDestra} maniglia={maniglia} />
+      {children}
     </div>
   );
 }
@@ -175,12 +208,39 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
     (evento: DragEndEvent) => {
       const { active, over } = evento;
       if (!over || active.id === over.id) return;
+      if (String(active.id).startsWith(PREFISSO_SEZIONE)) {
+        const prima = blocchi.findIndex((b) => b.chiave === String(active.id).slice(PREFISSO_SEZIONE.length));
+        const sezione = prima < 0 ? null : intervalloSezione(blocchi, prima);
+        const a = blocchi.findIndex((b) => b.chiave === over.id);
+        if (!sezione || a < 0) return;
+        const esito = spostaSezione(blocchi, sezione.inizio, sezione.fine, a);
+        if (esito.nuovi === blocchi) return;
+        onCambiaBlocchi(esito.nuovi);
+        if (esito.unita) {
+          avvisa("Le due sezioni a due colonne sono ora unite. Per tenerle separate metti fra loro un blocco a tutta larghezza.");
+        }
+        return;
+      }
       const da = blocchi.findIndex((b) => b.chiave === active.id);
       const a = blocchi.findIndex((b) => b.chiave === over.id);
       if (da < 0 || a < 0) return;
       sposta(da, a);
     },
-    [blocchi, sposta],
+    [blocchi, sposta, onCambiaBlocchi, avvisa],
+  );
+
+  // Trascinando una sezione intera i suoi stessi blocchi non sono una destinazione: il bersaglio e'
+  // sempre un blocco fuori dalla sezione.
+  const rilevaCollisioni = useCallback<CollisionDetection>(
+    (argomenti) => {
+      const id = String(argomenti.active.id);
+      if (!id.startsWith(PREFISSO_SEZIONE)) return closestCenter(argomenti);
+      const prima = blocchi.findIndex((b) => b.chiave === id.slice(PREFISSO_SEZIONE.length));
+      const sezione = prima < 0 ? null : intervalloSezione(blocchi, prima);
+      const propri = new Set(sezione ? blocchi.slice(sezione.inizio, sezione.fine).map((b) => b.chiave) : []);
+      return closestCenter({ ...argomenti, droppableContainers: argomenti.droppableContainers.filter((c) => !propri.has(String(c.id))) });
+    },
+    [blocchi],
   );
 
   const aggiungiBlocco = useCallback(
@@ -204,9 +264,14 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
   const chiudiGruppo = () => {
     if (!gruppo) return;
     nodi.push(
-      <div className="zonaGruppo" key={"zonaGruppo-" + gruppo.chiavePrima}>
+      <SezioneColonne
+        key={"zonaGruppo-" + gruppo.chiavePrima}
+        chiavePrima={gruppo.chiavePrima}
+        larghezzaDestra={larghezzaDestra}
+        onCambiaLarghezzaDestra={onCambiaLarghezzaDestra}
+      >
         {gruppo.righe}
-      </div>,
+      </SezioneColonne>,
     );
     gruppo = null;
   };
@@ -232,10 +297,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
       return;
     }
     if (!gruppo) {
-      gruppo = {
-        chiavePrima: b.chiave,
-        righe: [<IntestazioneZona key={"zona-" + b.chiave} larghezzaDestra={larghezzaDestra} onCambiaLarghezzaDestra={onCambiaLarghezzaDestra} />],
-      };
+      gruppo = { chiavePrima: b.chiave, righe: [] };
     }
     gruppo.righe.push(riga);
   });
@@ -243,7 +305,7 @@ export default function BlocchiEditor({ blocchi, onCambiaBlocchi, larghezzaDestr
 
   return (
     <div className="vassoio" ref={rifVassoio}>
-      <DndContext sensors={sensori} autoScroll={AUTOSCROLL_RIORDINO} collisionDetection={closestCenter} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_RIORDINO_BLOCCHI}>
+      <DndContext sensors={sensori} autoScroll={AUTOSCROLL_RIORDINO} collisionDetection={rilevaCollisioni} onDragEnd={fineTrascinamento} accessibility={ACCESSIBILITA_RIORDINO_BLOCCHI}>
         <SortableContext items={blocchi.map((b) => b.chiave)} strategy={verticalListSortingStrategy}>
           {nodi}
         </SortableContext>
