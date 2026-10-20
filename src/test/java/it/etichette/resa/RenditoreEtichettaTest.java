@@ -632,13 +632,26 @@ class RenditoreEtichettaTest {
         ProdottoDto prodotto = new ProdottoDto(1L, "Salsa di pomodoro", null, etichetta, null, List.of(), null, null,
                 null, null, valoriNutrizionaliCompleti(), null, 0, null, null, null);
 
-        RisultatoResa r102 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
-        RisultatoResa r62 = renderer.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
+        RenditoreEtichetta fontIncorporato = rendererConFontIncorporato();
+        RisultatoResa r102 = fontIncorporato.rendi(prodotto, ParametriStampa.VUOTI, 102, 1.0);
+        RisultatoResa r62 = fontIncorporato.rendi(prodotto, ParametriStampa.VUOTI, 62, 1.0);
 
         assertThat(sha256(pngBytes(r102.immagine())))
-                .isEqualTo("d1ce180925165ace10e911ee18afc3049133aeee6872be73c63ebf3ce1098c1e");
+                .isEqualTo("8dcfd421adebe6189acf814dd4a1c2fea4dafcdbf239a5030701e6d7f6c21572");
         assertThat(sha256(pngBytes(r62.immagine())))
-                .isEqualTo("c6e914c4285868ee4e2f48d6fdb1842b6e9bc4a7dd32b1686b19deb3bcd01e63");
+                .isEqualTo("4ed58805a8adb496d4039dbea35f27d2ae2c6505f2e8bb727814de2fa634b4eb");
+    }
+
+    /**
+     * Renderer con Liberation Sans incorporata invece di Arial di sistema: gli hash dei test "identico
+     * a prima" devono valere su qualunque PC, e Arial cambia (hinting, metriche) con la versione
+     * installata dal sistema operativo.
+     */
+    private static RenditoreEtichetta rendererConFontIncorporato() throws Exception {
+        Caratteri caratteri = new Caratteri();
+        caratteri.caricaSoloIncorporati();
+        return new RenditoreEtichetta(caratteri,
+                new LogoService(Files.createTempDirectory("etichette-test-senza-logo-").toString()));
     }
 
     private static String sha256(byte[] dati) throws Exception {
@@ -681,13 +694,13 @@ class RenditoreEtichettaTest {
                 null, 0, null, null, null);
         ParametriStampa parametri = new ParametriStampa(null, LocalDate.of(2026, 10, 1), "L 20260924-099", false);
 
-        RisultatoResa r = renderer.rendi(prodotto, parametri, 102, 1.0);
+        RisultatoResa r = rendererConFontIncorporato().rendi(prodotto, parametri, 102, 1.0);
 
         assertThat(sha256(pngBytes(r.immagine())))
                 // Ricalcolato il 25/09/2026: "quantita" non disegna piu' la riga "Quantità" sopra
                 // il valore (deciso da Gianluca) - unico cambiamento rispetto all'hash precedente
                 // (ece356d1...), verificato confrontando i due PNG a occhio prima di aggiornarlo.
-                .isEqualTo("9964726467f092a299d0811b41a4c1282fe97ff0ba32c57a9af1c3c9ee451e06");
+                .isEqualTo("fa3ccd8eec36812a716185d098f67da148aec0f98da8dd62bcb92eaeb6c369dd");
     }
 
     /**

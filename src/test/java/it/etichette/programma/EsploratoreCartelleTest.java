@@ -52,6 +52,36 @@ class EsploratoreCartelleTest {
     }
 
     @Test
+    void suMacOsLeChiavetteSonoLeSottocartelleDiVolumi() throws IOException {
+        Files.createDirectory(radice.resolve("USB Matteo"));
+        Files.createDirectory(radice.resolve("backup disco"));
+        Files.writeString(radice.resolve(".localized"), "non e' un volume");
+
+        List<CartelleDto.Radice> volumi = EsploratoreCartelle.radiciVolumi(radice);
+
+        assertEquals(List.of("backup disco", "USB Matteo"), volumi.stream().map(CartelleDto.Radice::nome).toList());
+        assertEquals(radice.resolve("USB Matteo").toString(), volumi.get(1).percorso());
+        assertTrue(volumi.stream().allMatch(CartelleDto.Radice::rimovibile));
+    }
+
+    @Test
+    void ilDiscoDiAvvioCheInVolumiEUnCollegamentoNonSiRipete() throws IOException {
+        Files.createDirectory(radice.resolve("USB"));
+        try {
+            Files.createSymbolicLink(radice.resolve("Macintosh HD"), radice.getRoot());
+        } catch (UnsupportedOperationException | IOException e) {
+            org.junit.jupiter.api.Assumptions.abort("collegamenti simbolici non permessi su questo sistema");
+        }
+
+        assertEquals(List.of("USB"), EsploratoreCartelle.radiciVolumi(radice).stream().map(CartelleDto.Radice::nome).toList());
+    }
+
+    @Test
+    void senzaCartellaVolumiNessunaRadiceInPiu() {
+        assertTrue(EsploratoreCartelle.radiciVolumi(radice.resolve("non-esiste")).isEmpty());
+    }
+
+    @Test
     void elencaSoloLeSottocartelleOrdinateSenzaBadareAlleMaiuscole() throws IOException {
         Files.createDirectory(radice.resolve("banana"));
         Files.createDirectory(radice.resolve("Zucca"));

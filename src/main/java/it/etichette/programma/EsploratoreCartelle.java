@@ -2,6 +2,7 @@ package it.etichette.programma;
 
 import it.etichette.api.CartelleDto;
 import it.etichette.api.ErroreApi;
+import it.etichette.sistema.Sistema;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -79,6 +80,30 @@ public class EsploratoreCartelle {
             }
             radici.add(new CartelleDto.Radice(u.getPath(), u.getPath(), rimovibile(u)));
         }
+        if (Sistema.isMacOs()) {
+            radici.addAll(radiciVolumi(Path.of("/Volumes")));
+        }
+        return radici;
+    }
+
+    /**
+     * Su macOS le chiavette e i dischi esterni compaiono come sottocartelle di {@code /Volumes}
+     * ({@code File.listRoots} dice solo "/"). Il disco di avvio vi compare come collegamento a "/",
+     * gia' presente fra le radici: non si ripete. Il nome mostrato e' quello del volume.
+     */
+    static List<CartelleDto.Radice> radiciVolumi(Path volumi) {
+        List<CartelleDto.Radice> radici = new ArrayList<>();
+        try (DirectoryStream<Path> figli = Files.newDirectoryStream(volumi)) {
+            for (Path volume : figli) {
+                if (Files.isSymbolicLink(volume) || !Files.isDirectory(volume)) {
+                    continue;
+                }
+                radici.add(new CartelleDto.Radice(volume.getFileName().toString(), volume.toString(), true));
+            }
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
+        radici.sort(Comparator.comparing(r -> r.nome().toLowerCase(Locale.ROOT)));
         return radici;
     }
 
