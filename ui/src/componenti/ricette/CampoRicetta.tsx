@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useIngredienti, useProdotti } from "../../api/hooks";
 import { UNITA_RICETTA, type CalcoloRicetta, type Ricetta, type RigaRicetta, type Tracciato, type UnitaRicetta } from "../../api/tipi";
 import { IconaAvviso, IconaCestino, IconaSpunta } from "../Icone";
@@ -304,6 +304,17 @@ export default function CampoRicetta({
   const apriScheda = useCallback((id: number, nome: string) => setSchedaAperta({ id, nome }), []);
   const chiudiScheda = useCallback(() => setSchedaAperta(null), []);
 
+  // Nessuna voce scelta dopo ogni disegno (selectedIndex -1): il segnaposto sta fuori dalla lista, e
+  // senza questo il browser mostrerebbe la prima voce come scelta e non darebbe "change" scegliendola.
+  const riferimentoTendina = useRef<HTMLSelectElement | null>(null);
+  const selezionaNessuna = useCallback((nodo: HTMLSelectElement | null) => {
+    riferimentoTendina.current = nodo;
+    if (nodo) nodo.selectedIndex = -1;
+  }, []);
+  useEffect(() => {
+    if (riferimentoTendina.current) riferimentoTendina.current.selectedIndex = -1;
+  });
+
   const presente = (tipo: string, id: number) => ricetta.righe.some((r) => r.tipo === tipo && r.id === id);
   const ingredientiLiberi = (ingredientiTutti ?? []).filter((i) => !presente("ingrediente", i.id));
   // Chi contiene gia' questa etichetta (anche attraverso altri semilavorati) non si offre: sarebbe un giro chiuso.
@@ -354,9 +365,14 @@ export default function CampoRicetta({
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="casella p-0 flex-1 min-w-[200px]">
-              <select value="" onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
-                <option value="" hidden>+ Aggiungi un ingrediente…</option>
+            <div className="casella p-0 flex-1 min-w-[200px] relative">
+              {/* Il segnaposto e' disegnato qui sopra e non e' un'opzione: su Mac il menu nativo
+                  mostra anche le opzioni "hidden", e «+ Aggiungi un ingrediente…» finiva dentro
+                  l'elenco. La tendina parte senza nessuna voce scelta (selezionaNessuna). */}
+              <span className="absolute inset-0 flex items-center px-3.5 pointer-events-none truncate" aria-hidden="true">
+                + Aggiungi un ingrediente…
+              </span>
+              <select ref={selezionaNessuna} onChange={aggiungi} aria-label="Aggiungi un ingrediente alla ricetta" className="w-full h-[calc(var(--d-campo)-2px)] px-3.5 bg-transparent cursor-pointer">
                 <option value="nuovo:0">+ Nuovo ingrediente…</option>
                 {ingredientiLiberi.length > 0 && (
                   <optgroup label="Ingredienti">
