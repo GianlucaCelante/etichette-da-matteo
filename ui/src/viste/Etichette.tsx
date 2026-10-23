@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { Link, useBlocker, useNavigate, useSearchParams, type BlockerFunction } from "react-router-dom";
 import {
   useAggiornaProdotto,
@@ -252,6 +252,7 @@ function VoceProdotto({
   selezionato,
   nomeInModifica,
   onScegli,
+  onRicetta,
 }: {
   prodotto: Prodotto;
   selezionato: boolean;
@@ -259,8 +260,10 @@ function VoceProdotto({
   // dell'elenco lo segue mentre si digita, invece di restare quello salvato fino al «Salva».
   nomeInModifica?: string;
   onScegli: (id: number) => void;
+  onRicetta: (evento: MouseEvent<HTMLAnchorElement>, id: number) => void;
 }) {
   const clic = useCallback(() => onScegli(prodotto.id), [onScegli, prodotto.id]);
+  const clicRicetta = useCallback((e: MouseEvent<HTMLAnchorElement>) => onRicetta(e, prodotto.id), [onRicetta, prodotto.id]);
   const nome = nomeInModifica ?? prodotto.nome;
   const conPeso = !!prodotto.etichetta?.blocchi?.some((b) => b.tipo === "quantita" && b.acceso);
   const ingredienti = ricettaDi(prodotto).righe.length;
@@ -278,6 +281,7 @@ function VoceProdotto({
       <Link
         className={"linkRicetta" + (ingredienti > 0 ? "" : " crea")}
         to={`/ingredienti?vista=ricette&prodotto=${prodotto.id}`}
+        onClick={clicRicetta}
         aria-label={`${testoRicetta}: ${nome}`}
         title={testoRicetta}
       >
@@ -1040,7 +1044,6 @@ export default function Etichette() {
   const aggiornaLarghezzaDestra = useCallback((v: ProdottoBozza["zona"]["larghezzaDestra"]) => {
     setBozzaProdotto((p) => (p ? { ...p, zona: { larghezzaDestra: v } } : p));
   }, []);
-  const aggiornaTracciati = useCallback((nuovi: Tracciato[]) => setBozzaProdotto((p) => (p ? { ...p, tracciati: nuovi } : p)), []);
   // Gli ingredienti sono sempre testo libero; l'elenco della ricetta si importa
   // con un tasto (9 ottobre 2026) e poi e' testo come un altro. Il «può
   // contenere» invece puo' essere calcolato o scritto a mano: passando a mano
@@ -1051,9 +1054,6 @@ export default function Etichette() {
       setBozzaProdotto((p) => (p ? { ...p, allergeni: attivo ? p.allergeni : calcolati, ricetta: { ...p.ricetta, allergeniAuto: attivo } } : p)),
     [],
   );
-  const apriRicetta = useCallback(() => {
-    if (prodottoSalvato) navigate(`/ingredienti?vista=ricette&prodotto=${prodottoSalvato.id}`);
-  }, [prodottoSalvato, navigate]);
   const scegliAllergeniAMano = useCallback((tracce: string[]) => usaAllergeniDellaRicetta(false, tracce), [usaAllergeniDellaRicetta]);
   const allergeniDallaRicetta = useCallback(() => usaAllergeniDellaRicetta(true, []), [usaAllergeniDellaRicetta]);
   const aggiornaSchemaLotto = useCallback((v: SchemaLotto) => setBozzaProdotto((p) => (p ? { ...p, schemaLotto: v } : p)), []);
@@ -1160,7 +1160,7 @@ export default function Etichette() {
   // ingredienti da tracciare, che la POST non porta). In entrambi i casi dopo si va su Stampa
   // gia' su questa etichetta (deciso da Gianluca, dal mockup: non si cambia).
   const terminaSalvataggio = useCallback(
-    (id: number, eraBozza: boolean) => {
+    (id: number, eraBozza: boolean, destinazione?: (id: number) => string) => {
       // Salvato: la cronologia riparte da qui, e la navigazione che segue non va fermata dall'avviso
       // delle modifiche non salvate (non ce ne sono piu').
       storiaRef.current = { passi: [], indice: 0 };
@@ -1169,11 +1169,12 @@ export default function Etichette() {
       setVersioneStoria((v) => v + 1);
       avvisa("Etichetta salvata");
       // Da una bozza si va con replace: «indietro» da Stampa non deve riaprire una bozza vuota.
-      navigate(`/stampa?prodotto=${id}`, { replace: eraBozza });
+      navigate(destinazione ? destinazione(id) : `/stampa?prodotto=${id}`, { replace: eraBozza });
     },
     [avvisa, navigate],
   );
-  const salvaAsync = useCallback(async () => {
+  // «destinazione»: dove andare dopo il salvataggio (di serie Stampa); la usa il link alla ricetta.
+  const salvaAsync = useCallback(async (destinazione?: (id: number) => string) => {
     if (!prodotto || !prodottoInModifica || !prodottoPerServizio) return;
     // Il nome vuoto lo dice qui, vicino al campo (prima: «Non sono riuscito a salvare l'etichetta» e basta).
     if (!prodottoInModifica.nome.trim()) {
@@ -1186,7 +1187,7 @@ export default function Etichette() {
       salvaProdottoMut.mutate(
         { id: prodotto.id, dati: prodottoInModifica },
         {
-          onSuccess: () => terminaSalvataggio(prodotto.id, false),
+          onSuccess: () => terminaSalvataggio(prodotto.id, false, destinazione),
           onError: () => avvisa("Non sono riuscito a salvare l'etichetta."),
         },
       );
@@ -1199,7 +1200,7 @@ export default function Etichette() {
       if (prodottoInModifica.tracciati.length > 0) {
         await salvaProdottoMut.mutateAsync({ id: creato.id, dati: { ...prodottoInModifica, id: creato.id } });
       }
-      terminaSalvataggio(creato.id, true);
+      terminaSalvataggio(creato.id, true, destinazione);
     } catch {
       if (creatoId === null) {
         avvisa("Non sono riuscito a salvare l'etichetta.");
@@ -1215,6 +1216,24 @@ export default function Etichette() {
     void salvaAsync();
   }, [salvaAsync]);
   const salvando = salvaProdottoMut.isPending || creaProdottoMut.isPending;
+  // Il link alla ricetta non si ferma sulla domanda «hai modifiche non salvate»: se ce ne sono (o se
+  // l'etichetta e' ancora una bozza) le salva da solo e va dritto alla ricetta (23/10/2026).
+  const versoRicetta = useCallback((id: number) => `/ingredienti?vista=ricette&prodotto=${id}`, []);
+  const apriRicetta = useCallback(() => {
+    if (bozza || modificheNonSalvate) void salvaAsync(versoRicetta);
+    else if (prodottoSalvato) navigate(versoRicetta(prodottoSalvato.id));
+  }, [bozza, modificheNonSalvate, salvaAsync, versoRicetta, prodottoSalvato, navigate]);
+  // Lo stesso per il link «Crea la ricetta» dell'elenco, quando l'etichetta aperta ha modifiche:
+  // si salva quella e si apre la ricetta cliccata. Con una bozza aperta resta la domanda di sempre
+  // (salvarla creerebbe un'etichetta che nessuno ha chiesto).
+  const apriRicettaDallElenco = useCallback(
+    (evento: MouseEvent<HTMLAnchorElement>, id: number) => {
+      if (bozza || !modificheNonSalvate) return;
+      evento.preventDefault();
+      void salvaAsync(() => versoRicetta(id));
+    },
+    [bozza, modificheNonSalvate, salvaAsync, versoRicetta],
+  );
 
   // "prodotto" (revisione di questo giro): niente piu' un'etichetta a parte
   // ne' un prodottoId facoltativo, e' tutto dentro l'oggetto in modifica.
@@ -1428,18 +1447,14 @@ export default function Etichette() {
                   porzioniRicetta={bozzaProdotto.ricetta.porzioni}
                   tracceDallaRicetta={tracceDallaRicetta}
                   calcolo={calcolo}
-                  bozza={!!bozza}
                   testoIngredienti={bozzaProdotto.ingredienti}
                   allergeni={bozzaProdotto.allergeni}
-                  tracciati={bozzaProdotto.tracciati}
-                  prodottoId={prodottoSalvato?.id}
                   onCambiaTesto={aggiornaCampoProdotto}
                   onImporta={importaIngredientiDallaRicetta}
                   onApriRicetta={apriRicetta}
                   onScegliAMano={scegliAllergeniAMano}
                   onAllergeniDallaRicetta={allergeniDallaRicetta}
                   onCambiaAllergeni={aggiornaAllergeni}
-                  onCambiaTracciati={aggiornaTracciati}
                 />
               ),
             ],
@@ -1738,6 +1753,7 @@ export default function Etichette() {
                   selezionato={!bozza && p.id === prodottoId}
                   nomeInModifica={!bozza && p.id === prodottoId ? bozzaProdotto?.nome : undefined}
                   onScegli={scegliProdotto}
+                  onRicetta={apriRicettaDallElenco}
                 />
               ))}
               {prodottiTrovati.length === 0 && <div className="text-[var(--tenue)] px-1 py-2 text-[14px]">Nessuna etichetta con questo nome.</div>}

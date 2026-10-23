@@ -138,13 +138,14 @@ public class ProdottiConversioni {
                 dto.creatoIl(), dto.modificatoIl(), List.of(), dto.porzioni(), dto.ricetta(), null);
     }
 
-    /** Titolo 14, scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2, schema del lotto "data". */
+    /** Titolo 14, ingredienti 7 (sempre presente, 23/10/2026), scadenza 8, lotto 7 tutti a piena larghezza; dicitura "Scade il", formato "GG/MM/AAAA", zona 1/2, schema del lotto "data". */
     private EtichettaProdottoDto etichettaMinima() {
         ProduttoreDto produttoreDiPartenza = prodotti.findTopByOrderByIdDesc()
                 .map(this::aDto).map(ProdottoDto::etichetta).map(EtichettaProdottoDto::produttore)
                 .orElse(null);
         List<BloccoDto> blocchi = List.of(
                 new BloccoDto("titolo", true, 14, "piena", null),
+                new BloccoDto("ingredienti", true, 7, "piena", null),
                 new BloccoDto("scadenza", true, 8, "piena", null),
                 new BloccoDto("lotto", true, 7, "piena", null));
         return new EtichettaProdottoDto("Scade il", "GG/MM/AAAA", Contratto.SCHEMA_LOTTO_DEFAULT, produttoreDiPartenza,

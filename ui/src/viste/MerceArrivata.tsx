@@ -257,15 +257,28 @@ export default function MerceArrivata() {
   const cambiaData = useCallback((e: ChangeEvent<HTMLInputElement>) => setData(e.target.value), []);
   const cambiaDocumento = useCallback((e: ChangeEvent<HTMLInputElement>) => setDocumento(e.target.value), []);
 
+  // Il fornitore scelto prima che l'elenco degli ingredienti sia arrivato: le righe che porta di solito si
+  // propongono appena l'elenco c'e', una volta sola (23 ottobre 2026: prima non comparivano mai).
+  const fornitoreInAttesaRef = useRef<number | null>(null);
   const scegliFornitore = useCallback(
     (id: number | null) => {
       setFornitoreAltro(false);
       setFornitoreId(id);
-      if (id !== null && tutti) setRighe((precedenti) => righeDelFornitore(precedenti, id, tutti));
+      fornitoreInAttesaRef.current = null;
+      if (id === null) return;
+      if (tutti) setRighe((precedenti) => righeDelFornitore(precedenti, id, tutti));
+      else fornitoreInAttesaRef.current = id;
     },
     [tutti],
   );
+  useEffect(() => {
+    const id = fornitoreInAttesaRef.current;
+    if (id === null || !tutti) return;
+    fornitoreInAttesaRef.current = null;
+    setRighe((precedenti) => righeDelFornitore(precedenti, id, tutti));
+  }, [tutti]);
   const entraFornitoreAltro = useCallback(() => {
+    fornitoreInAttesaRef.current = null;
     setFornitoreAltro(true);
     setFornitoreId(null);
     setFornitoreNomeAltro("");
@@ -513,7 +526,13 @@ export default function MerceArrivata() {
 
   // Perche' «Registra» e' spento, detto vicino al bottone e non solo col colore
   // (2 ottobre 2026): l'unica cosa che manca e' almeno un ingrediente arrivato.
-  const motivoNonRegistra = daRegistrare.length ? null : "Manca l'ingrediente: aggiungi cosa è arrivato.";
+  // Con le righe proposte dal fornitore sullo schermo non e' vero che «manca l'ingrediente»: manca di dire
+  // quali sono arrivati (23 ottobre 2026).
+  const motivoNonRegistra = daRegistrare.length
+    ? null
+    : righe.length
+      ? "Scrivi lotto, scadenza o quantità di ciò che è arrivato: le righe tratteggiate non si registrano."
+      : "Manca l'ingrediente: aggiungi cosa è arrivato.";
 
   const portaleAzioni = usePortaleAzioni(
     <>

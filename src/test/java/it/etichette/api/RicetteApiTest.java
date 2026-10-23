@@ -383,6 +383,62 @@ class RicetteApiTest {
     }
 
     @Test
+    void gliIngredientiDaTracciareSeguonoLaRicetta() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        long acqua = creaIngrediente("Acqua di prova");
+        long id = richiesta(post("/api/prodotti").contentType("application/json").content("{\"nome\":\"Con tracciati di prova\"}"),
+                status().isOk()).get("id").asLong();
+
+        JsonNode p = richiesta(put("/api/prodotti/" + id + "/ricetta").contentType("application/json")
+                .content("{\"righe\":[" + rigaIngrediente(farina, 600) + "," + rigaSenzaQuantita(acqua) + "]}"), status().isOk());
+        assertThat(p.get("tracciati").size()).isEqualTo(2);
+        assertThat(p.get("tracciati").get(0).get("id").asLong()).isEqualTo(farina);
+        assertThat(p.get("tracciati").get(1).get("id").asLong()).isEqualTo(acqua);
+
+        // Cambiata la ricetta, cambiano anche loro; svuotata, spariscono.
+        p = richiesta(put("/api/prodotti/" + id + "/ricetta").contentType("application/json")
+                .content("{\"righe\":[" + rigaSenzaQuantita(acqua) + "]}"), status().isOk());
+        assertThat(p.get("tracciati").size()).isEqualTo(1);
+        assertThat(p.get("tracciati").get(0).get("id").asLong()).isEqualTo(acqua);
+        p = richiesta(put("/api/prodotti/" + id + "/ricetta").contentType("application/json").content("{\"righe\":[]}"), status().isOk());
+        assertThat(p.get("tracciati").size()).isZero();
+    }
+
+    private static String rigaSenzaQuantita(long id) {
+        return "{\"tipo\":\"ingrediente\",\"id\":" + id + ",\"unita\":\"g\"}";
+    }
+
+    @Test
+    void unIngredienteSoloSenzaQuantitaHaIValoriDellaSuaScheda() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        scheda(farina, SCHEDA_FARINA);
+
+        JsonNode c = calcolaRicetta(rigaSenzaQuantita(farina), "");
+
+        assertThat(c.get("pesoIngredienti").asDouble()).isZero();
+        assertThat(voceCalcolata(c, "Energia").get("per100").asText()).startsWith("1450 kJ");
+        assertThat(voceCalcolata(c, "Proteine").get("per100").asText()).isEqualTo("12 g");
+        assertThat(c.get("ingredienti").asText()).isEqualTo("FARINA DI PROVA");
+        assertThat(c.get("avvisi").size()).isZero();
+    }
+
+    @Test
+    void conPiuIngredientiChiNonHaLaQuantitaNonContaESiDice() throws Exception {
+        long farina = creaIngrediente("Farina di prova");
+        long acqua = creaIngrediente("Acqua di prova");
+        scheda(farina, SCHEDA_FARINA);
+        scheda(acqua, SCHEDA_ACQUA);
+
+        JsonNode alcuni = calcolaRicetta(rigaIngrediente(farina, 100) + "," + rigaSenzaQuantita(acqua), "");
+        assertThat(alcuni.get("avvisi").toString()).contains("Acqua di prova");
+        assertThat(voceCalcolata(alcuni, "Proteine").get("per100").asText()).isEqualTo("12 g");
+
+        JsonNode nessuna = calcolaRicetta(rigaSenzaQuantita(farina) + "," + rigaSenzaQuantita(acqua), "");
+        assertThat(nessuna.get("avvisi").toString()).contains("Senza le quantità");
+        assertThat(nessuna.get("voci").size()).isZero();
+    }
+
+    @Test
     void unaVoceChePossiedonoSoloAlcuniIngredientiNonSiCalcolaEDiceChiManca() throws Exception {
         long farina = creaIngrediente("Farina di prova");
         long acqua = creaIngrediente("Acqua di prova");

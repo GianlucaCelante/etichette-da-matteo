@@ -44,6 +44,9 @@ const FORNITORI_VUOTI: Fornitore[] = [];
 // gia' scritto e selezionato, cosi' il primo tasto lo sostituisce.
 const NOME_BOZZA_INIZIALE = "Ingrediente nuovo";
 
+// Quanti lotti chiusi si vedono prima di toccare «Mostra tutti».
+const SOGLIA_CHIUSI = 3;
+
 interface BozzaIngrediente {
   nome: string;
   fornitoreId: number | null;
@@ -245,6 +248,9 @@ function ElencoIngredienti() {
   const [fornitoreAltro, setFornitoreAltro] = useState(false);
   const [fornitoreNomeAltro, setFornitoreNomeAltro] = useState("");
   const [lottoApertoId, setLottoApertoId] = useState<number | null>(null);
+  // I lotti chiusi si ripiegano agli ultimi SOGLIA_CHIUSI (23 ottobre 2026): dopo un anno un ingrediente
+  // ne ha decine e coprirebbero la scheda tecnica; il tasto li mostra tutti. Si richiude cambiando ingrediente.
+  const [chiusiTutti, setChiusiTutti] = useState(false);
   // La conferma "Elimina" e' in linea, sotto il nome (niente confirm() nativo).
   const [eliminaChiesto, setEliminaChiesto] = useState(false);
 
@@ -712,8 +718,13 @@ function ElencoIngredienti() {
   // "In uso" e "Chiusi": si separano solo se ci sono entrambi (i lotti sono
   // gia' aperti prima, chiusi dopo nella risposta).
   const lottiInUso = ingrediente?.lotti.filter((l) => l.stato !== "chiuso") ?? [];
-  const lottiChiusi = ingrediente?.lotti.filter((l) => l.stato === "chiuso") ?? [];
+  // Dal piu' recente (la risposta li da' dal piu' vecchio).
+  const lottiChiusi = (ingrediente?.lotti.filter((l) => l.stato === "chiuso") ?? []).sort((a, b) => b.apertoDal.localeCompare(a.apertoDal) || b.id - a.id);
   const dividiLotti = lottiInUso.length > 0 && lottiChiusi.length > 0;
+  const chiusiNascosti = chiusiTutti ? 0 : Math.max(0, lottiChiusi.length - SOGLIA_CHIUSI);
+  const lottiChiusiVisibili = chiusiNascosti > 0 ? lottiChiusi.slice(0, SOGLIA_CHIUSI) : lottiChiusi;
+  const alternaChiusi = useCallback(() => setChiusiTutti((v) => !v), []);
+  useEffect(() => setChiusiTutti(false), [selezionatoId]);
 
   const righeLotti = (elenco: LottoIngrediente[], nomeIngrediente: string) =>
     elenco.map((l) => (
@@ -943,7 +954,12 @@ function ElencoIngredienti() {
                   {dividiLotti && <SottoTitolo testo="In uso" conta={lottiInUso.length} />}
                   {lottiInUso.length > 0 && <div className="flex flex-col gap-2">{righeLotti(lottiInUso, ingrediente.nome)}</div>}
                   {dividiLotti && <SottoTitolo testo="Chiusi" conta={lottiChiusi.length} />}
-                  {lottiChiusi.length > 0 && <div className="flex flex-col gap-2">{righeLotti(lottiChiusi, ingrediente.nome)}</div>}
+                  {lottiChiusi.length > 0 && <div className="flex flex-col gap-2">{righeLotti(lottiChiusiVisibili, ingrediente.nome)}</div>}
+                  {lottiChiusi.length > SOGLIA_CHIUSI && (
+                    <button type="button" className="btn piccoloTel w-full justify-center" onClick={alternaChiusi} aria-expanded={chiusiTutti}>
+                      {chiusiTutti ? `Mostra solo gli ultimi ${SOGLIA_CHIUSI} lotti chiusi` : `Mostra tutti i ${lottiChiusi.length} lotti chiusi`}
+                    </button>
+                  )}
                 </>
               )}
             </section>

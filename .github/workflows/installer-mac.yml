@@ -1,0 +1,35 @@
+# Costruisce il pacchetto macOS (.pkg) di Etichette: lo script installer/mac/Build-Setup.sh va lanciato
+# su un Mac (jlink, libusb, pkgbuild), quindi qui gira su runner macOS: Apple Silicon (arm64) e Intel (x86_64).
+# Si avvia a mano: Actions > Installer macOS > Run workflow. I .pkg escono come artefatti (non firmati).
+name: Installer macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pkg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: libusb
+        run: brew install libusb
+      - name: Build .pkg
+        run: installer/mac/Build-Setup.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Etichette-macOS-${{ matrix.arch }}
+          path: target/installer-mac/*.pkg
+          if-no-files-found: error

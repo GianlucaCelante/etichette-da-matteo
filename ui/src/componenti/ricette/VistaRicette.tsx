@@ -150,10 +150,6 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
       avvisa("Aggiungi almeno un ingrediente alla ricetta.");
       return;
     }
-    if (bozza.righe.some((r) => !r.quantita || r.quantita <= 0)) {
-      avvisa("Scrivi la quantità di ogni ingrediente (o toglilo dalla ricetta).");
-      return;
-    }
     salva.mutate(
       { id, ricetta: { righe: bozza.righe, porzioni: bozza.porzioni } },
       {
@@ -297,7 +293,8 @@ export default function VistaRicette({ prodottoIniziale }: { prodottoIniziale: n
             <div className="flex items-center gap-2 min-w-0">
               {frecciaIndietro}
               <div className="min-w-0 flex-1">
-                <div className="h text-[19px] font-semibold min-w-0 truncate">{prodotto.nome}</div>
+                {/* Il nome intero, anche lungo: va a capo (non «…»). */}
+                <div className="h text-[19px] font-semibold min-w-0 leading-snug [overflow-wrap:anywhere]">{prodotto.nome}</div>
               </div>
               <button type="button" className="btn piccoloTel" onClick={apriEtichetta}>
                 Apri l&apos;etichetta

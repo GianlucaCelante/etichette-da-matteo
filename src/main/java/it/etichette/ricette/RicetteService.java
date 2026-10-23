@@ -413,6 +413,7 @@ public class RicetteService {
         List<Pezzo> pezzi = new ArrayList<>();
         // Tutti i componenti, anche senza quantita' ancora: la scheda di un ingrediente appena aggiunto si giudica subito.
         List<Componente> componenti = new ArrayList<>();
+        List<String> senzaQuantita = new ArrayList<>();
 
         for (int posizione = 0; posizione < righe.size(); posizione++) {
             RigaRicettaDto riga = righe.get(posizione);
@@ -428,11 +429,27 @@ public class RicetteService {
             elenco.add(new VoceElenco(comp.inElenco(), grammi, posizione));
             if (grammi > 0) {
                 pezzi.add(new Pezzo(comp, grammi, comp.perChiave()));
+            } else {
+                senzaQuantita.add(comp.nome());
             }
         }
 
+        // La quantita' e' facoltativa (23/10/2026): un'etichetta puo' essere un ingrediente solo, senza ricetta vera.
+        // Un ingrediente solo e senza quantita' vale tutto il prodotto, quindi i suoi valori sono quelli del prodotto
+        // (come se pesasse 100 g: il peso mostrato resta 0). Con piu' ingredienti, chi non ha la quantita' non conta
+        // nei valori e lo si dice; senza nessuna quantita' i valori non si calcolano.
+        double pesoPerValori = pesoIngredienti;
+        if (pezzi.isEmpty() && componenti.size() == 1) {
+            pezzi.add(new Pezzo(componenti.get(0), 100, componenti.get(0).perChiave()));
+            pesoPerValori = 100;
+        } else if (!senzaQuantita.isEmpty()) {
+            avvisi.add(pezzi.isEmpty()
+                    ? "Senza le quantità non posso calcolare i valori nutrizionali: scrivile nella ricetta."
+                    : "Senza quantità non contano nei valori: " + String.join(", ", senzaQuantita) + ".");
+        }
+
         // Il peso e' quello degli ingredienti: le porzioni dicono solo in quante parti si divide.
-        double pesoFinale = pesoIngredienti;
+        double pesoFinale = pesoPerValori;
         Integer porzioni = r.porzioni();
         Double pesoPorzione = porzioni != null && porzioni > 0 && pesoIngredienti > 0 ? pesoIngredienti / porzioni : null;
 

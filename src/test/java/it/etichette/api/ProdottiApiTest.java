@@ -114,11 +114,13 @@ class ProdottiApiTest {
                 .andExpect(jsonPath("$.etichetta.dicituraScadenza").value("Scade il"))
                 .andExpect(jsonPath("$.etichetta.formatoData").value("GG/MM/AAAA"))
                 .andExpect(jsonPath("$.etichetta.zona.larghezzaDestra").value("1/2"))
-                .andExpect(jsonPath("$.etichetta.blocchi.length()").value(4))
+                .andExpect(jsonPath("$.etichetta.blocchi.length()").value(5))
                 .andExpect(jsonPath("$.etichetta.blocchi[0].tipo").value("titolo"))
-                .andExpect(jsonPath("$.etichetta.blocchi[1].tipo").value("scadenza"))
-                .andExpect(jsonPath("$.etichetta.blocchi[2].tipo").value("conservazione"))
-                .andExpect(jsonPath("$.etichetta.blocchi[3].tipo").value("lotto"));
+                .andExpect(jsonPath("$.etichetta.blocchi[1].tipo").value("ingredienti"))
+                .andExpect(jsonPath("$.etichetta.blocchi[1].acceso").value(true))
+                .andExpect(jsonPath("$.etichetta.blocchi[2].tipo").value("scadenza"))
+                .andExpect(jsonPath("$.etichetta.blocchi[3].tipo").value("conservazione"))
+                .andExpect(jsonPath("$.etichetta.blocchi[4].tipo").value("lotto"));
     }
 
     /**

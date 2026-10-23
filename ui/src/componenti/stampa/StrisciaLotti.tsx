@@ -352,13 +352,6 @@ function RigaIngrediente({
           </Link>
         </div>
       )}
-      {inGioco.length > 1 && (
-        <div className="piu">
-          {inGioco.length === 2
-            ? "Di serie si registra il sacco aperto per primo: spunta anche l'altro se hai usato tutti e due."
-            : "Di serie si registra il sacco aperto per primo: spunta anche gli altri se li hai usati tutti."}
-        </div>
-      )}
       {chiusi.length > 0 && (
         <>
           <button type="button" className="apriChiusi" onClick={toggleChiusi}>
@@ -513,8 +506,11 @@ const StrisciaLotti = forwardRef<HTMLDivElement, ProprietaStrisciaLotti>(functio
         <div className="capo">
           <div className="etichettina">Lotti degli ingredienti</div>
         </div>
-        <div className="text-[13.5px] leading-relaxed text-[var(--tenue)] p-3.5">
-          Nessun ingrediente collegato: collegali in Etichette, gruppo Ingredienti.
+        <div className="flex flex-col items-start gap-2.5 text-[13.5px] leading-relaxed text-[var(--tenue)] p-3.5">
+          <span>Nessun ingrediente collegato: i lotti si registrano da soli quando scrivi la ricetta.</span>
+          <Link to={`/ingredienti?vista=ricette&prodotto=${prodottoId}`} className="btn piccoloTel">
+            Scrivi la ricetta
+          </Link>
         </div>
       </div>
     );

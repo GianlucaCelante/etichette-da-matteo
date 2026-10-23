@@ -88,7 +88,7 @@ function BottoneScheda({ id, nome, incompleta, onApri }: { id: number; nome: str
       className={"chipScheda" + (incompleta ? " manca" : "")}
     >
       {incompleta ? <IconaAvviso larghezza={14} spessoreTratto={2.2} /> : <IconaSpunta larghezza={13} spessoreTratto={2.6} />}
-      <span>{incompleta ? "Scheda da completare" : "Scheda ok"}</span>
+      <span>{incompleta ? "Da completare" : "Scheda ok"}</span>
     </button>
   );
 }
@@ -159,7 +159,7 @@ function RigaIngrediente({
 // Il riepilogo mostra le voci come arrivano dal servizio (calcolo.voci): gia'
 // scritte per l'etichetta, con virgola italiana e unita'. Gli avvisi stanno in
 // riquadri ambra (rossi quelli del servizio) sopra la tabella; allergeni e
-// tracce sono chip, l'elenco ingredienti un riquadro a parte.
+// tracce sono chip (l'elenco ingredienti non si ripete: e' gia' la ricetta sopra).
 function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
   const conPorzione = calcolo.voci.some((v) => v.perPorzione !== null);
   const parziali = calcolo.voci.filter((v) => v.mancaIn.length > 0);
@@ -228,10 +228,6 @@ function Riepilogo({ calcolo }: { calcolo: CalcoloRicetta }) {
             )}
           </span>
         </div>
-      </div>
-      <div className="elencoIngr">
-        <div className="etLabel">Elenco ingredienti</div>
-        <div className="font-semibold">{calcolo.ingredienti || "—"}</div>
       </div>
     </div>
   );

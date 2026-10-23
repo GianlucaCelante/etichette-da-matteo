@@ -298,7 +298,7 @@ Il prodotto porta con sé chi tracciare, come già fa con l'etichetta: nel corpo
 
 `tipo: "prodotto"` è una produzione propria (un semilavorato: il suo «lotto» è l'ultima stampa non scaduta di quel prodotto). L'ordine è quello scelto; in lettura il servizio aggiunge `nome` a ogni voce.
 
-Su `PUT`, `tracciati` **assente o `null`** lascia i collegamenti com'erano (non li tocca); un `[]` esplicito li cancella comunque (corretto il 23/09/2026: prima un `PUT` che semplicemente non toccava quel campo li cancellava tutti). Cancellare un prodotto ripulisce anche i collegamenti che lo tracciavano come semilavorato in altri prodotti (altrimenti restavano orfani): `GET`/`PUT`/`duplica` di quei prodotti non ne risentono, il collegamento sparisce senza errore.
+**Con una ricetta, i `tracciati` sono quelli della ricetta (23 ottobre 2026):** `PUT /api/prodotti/{id}/ricetta` li riscrive uguali alle righe (stesso ordine, ingredienti e preparazioni; ricetta svuotata = nessuno) e `PUT /api/prodotti/{id}` ignora quelli ricevuti se il prodotto ha una ricetta con righe. Senza ricetta restano quelli scritti a mano, se ci sono. L'editor delle etichette non li mostra più. Su `PUT`, `tracciati` **assente o `null`** lascia i collegamenti com'erano (non li tocca); un `[]` esplicito li cancella comunque (corretto il 23/09/2026: prima un `PUT` che semplicemente non toccava quel campo li cancellava tutti). Cancellare un prodotto ripulisce anche i collegamenti che lo tracciavano come semilavorato in altri prodotti (altrimenti restavano orfani): `GET`/`PUT`/`duplica` di quei prodotti non ne risentono, il collegamento sparisce senza errore.
 
 ### Stampa: quali lotti si registrano
 `POST /api/stampe` accetta in più il campo facoltativo

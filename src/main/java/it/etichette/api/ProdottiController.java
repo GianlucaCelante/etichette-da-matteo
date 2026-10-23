@@ -116,10 +116,33 @@ public class ProdottiController {
         conversioni.applicaCampi(entita, dto, schemaLottoAttuale);
         entita.setModificatoIl(LocalDateTime.now());
         Prodotto salvato = prodotti.save(entita);
-        if (tracciatiValidati != null) {
+        // Con una ricetta, gli ingredienti da tracciare sono quelli della ricetta (23/10/2026): quello che
+        // arriva in "tracciati" non conta.
+        List<ProdottoTracciato> dallaRicetta = tracciatiDallaRicetta(salvato);
+        if (dallaRicetta != null) {
+            tracciatiService.sostituisci(id, dallaRicetta);
+        } else if (tracciatiValidati != null) {
             tracciatiService.sostituisci(id, tracciatiValidati);
         }
         return conversioni.aDto(salvato).conTracciati(tracciatiService.leggi(id));
+    }
+
+    /**
+     * I collegamenti per i lotti che la ricetta del prodotto implica: una riga per ogni riga della ricetta,
+     * nello stesso ordine (ingredienti e preparazioni). {@code null} se il prodotto non ha una ricetta con
+     * righe: in quel caso i collegamenti restano quelli scritti a mano, se ce ne sono.
+     */
+    private List<ProdottoTracciato> tracciatiDallaRicetta(Prodotto p) {
+        List<RigaRicettaDto> righe = ricette.ricettaSalvata(p).righe();
+        if (righe.isEmpty()) {
+            return null;
+        }
+        List<ProdottoTracciato> risultato = new java.util.ArrayList<>();
+        for (RigaRicettaDto riga : righe) {
+            boolean ingrediente = TracciatoDto.INGREDIENTE.equals(riga.tipo());
+            risultato.add(new ProdottoTracciato(p.getId(), risultato.size(), ingrediente ? riga.id() : null, ingrediente ? null : riga.id()));
+        }
+        return risultato;
     }
 
     /**
@@ -135,7 +158,12 @@ public class ProdottiController {
         ricette.valida(id, ricetta);
         ricette.sostituisciRicetta(entita, ricetta);
         entita.setModificatoIl(LocalDateTime.now());
-        return conversioni.aDto(prodotti.save(entita)).conTracciati(tracciatiService.leggi(id));
+        Prodotto salvato = prodotti.save(entita);
+        // Gli ingredienti da tracciare seguono la ricetta: aggiornati qui, senza che nessuno li tocchi. Una
+        // ricetta svuotata li toglie (senza ingredienti non c'e' niente da tracciare).
+        List<ProdottoTracciato> dallaRicetta = tracciatiDallaRicetta(salvato);
+        tracciatiService.sostituisci(id, dallaRicetta != null ? dallaRicetta : List.of());
+        return conversioni.aDto(salvato).conTracciati(tracciatiService.leggi(id));
     }
 
     /** "Duplica prodotto" (mandato del 2026-09-08): copia tutto, etichetta compresa; nome + " (copia)"; usi=0, ultimoUso=null. */
