@@ -35,6 +35,11 @@ Produce `target/installer-mac/Etichette-<versione>-<arch>.pkg`. Non è firmato n
 al primo apertura dal Finder serve clic destro → Apri; da terminale
 `sudo installer -pkg Etichette-<versione>-arm64.pkg -target /`.
 
+**Senza un Mac:** il workflow GitHub Actions «Installer macOS» (`.github/workflows/installer-mac.yml`,
+da avviare a mano da Actions o con `gh workflow run "Installer macOS" --ref master`) costruisce i due
+pacchetti, `arm64` (runner `macos-14`) e `x86_64` (runner `macos-15-intel`), e li pubblica come
+artefatti (`gh run download <id>`).
+
 ## Installare, aggiornare, disinstallare
 
 - **Installa / aggiorna**: stesso `.pkg`, installato sopra. `preinstall` ferma il servizio e copia il
@@ -47,8 +52,10 @@ al primo apertura dal Finder serve clic destro → Apri; da terminale
 ## Stato della verifica
 
 Scritto e controllato su Windows (sintassi degli script e dei plist, test Java del parser dei
-descrittori USB). **Mai eseguito su un Mac**: la build, l'installazione e soprattutto l'accesso alla
-stampante vanno provati su un Mac vero. Punti da guardare alla prima prova:
+descrittori USB). Un pacchetto costruito con questo script è **installato e in uso su un Mac vero**
+(Gianluca, 23 ottobre 2026: «funzionava sul Mac su cui è attualmente installata l'app»). Le voci qui
+sotto non sono però state spuntate una per una: su un Mac nuovo, o con un'altra architettura, vale la
+pena riguardarle alla prima prova:
 
 - [ ] la build produce il `.pkg` e l'installazione parte il servizio (`launchctl print`);
 - [ ] libusb vede la QL-1100c (nel log: «Stampante connessa»), apre l'interfaccia stampante e la
