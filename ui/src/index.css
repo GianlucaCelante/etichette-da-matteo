@@ -996,6 +996,8 @@ input.nomeSelettore { padding: 0 14px; outline: none; }
 .rigaArrivo .campi { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; }
 .rigaArrivo .campi .casella { min-height: 46px; font-size: 15px; }
 .rigaArrivo .piede { display: flex; align-items: center; gap: 10px; }
+.rigaArrivo .altroLotto { align-self: flex-start; background: transparent; border-style: dashed; border-color: var(--tratteggio); max-width: 100%; }
+.rigaArrivo .altroLotto span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Il bottone della foto dell'etichetta nell'intestazione della riga, dopo il
    nome (FotoVuota compatto): quadrato alto --d-tap, bordo e raggio degli
    altri bottoni-icona piccoli (.grassetto.autonomo). Sopra l'input file
@@ -2230,6 +2232,9 @@ div.cornice.compatta { min-height: 80px; }
 @media (max-width: 860px) {
   /* A. Su telefono la riga e' su due livelli: nome e stato scheda, poi quantita', unita', cestino. */
   .testaIngredienti, .testaVoci { display: none; }
+  .rigaIngr .sotto { font-size: 13px; font-weight: 700; color: var(--verdescuro); }
+  .rigaIngr .cScheda { max-width: 150px; }
+  .chipScheda { white-space: normal; text-align: left; line-height: 1.15; height: auto; min-height: var(--d-tap); padding-top: 4px; padding-bottom: 4px; }
   .rigaIngr { grid-template-columns: minmax(0, 1fr) 88px 40px; grid-template-areas: "nome scheda scheda" "qta unita cest"; row-gap: 8px; padding: 10px 12px; min-height: 0; }
   .rigaIngr .cNome { grid-area: nome; }
   .rigaIngr .cScheda { grid-area: scheda; justify-self: end; }
@@ -2237,8 +2242,8 @@ div.cornice.compatta { min-height: 80px; }
   .rigaIngr .cUnita { grid-area: unita; }
   .rigaIngr .cCest { grid-area: cest; justify-self: end; width: var(--d-tap); height: var(--d-tap); }
   .rigaVoce .cestino { width: var(--d-tap); height: var(--d-tap); }
-  .chipScheda { height: var(--d-tap); padding: 0 11px 0 9px; font-size: 12.5px; border-radius: 18px; }
-  .tabValori { font-size: 12px; grid-template-columns: minmax(0, 1fr) 84px 84px; }
+  .chipScheda { padding: 4px 11px 4px 9px; font-size: 12.5px; border-radius: 18px; }
+  .tabValori { font-size: 12px; grid-template-columns: minmax(0, 1fr) 96px 96px; }
   .tabValori.senzaPorzione { grid-template-columns: minmax(0, 1fr) 96px; }
   .tabValori .rv { column-gap: 8px; padding: 6px 10px; }
   .tabValori .rv.testa { font-size: 11px; }

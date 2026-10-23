@@ -88,7 +88,7 @@ function BottoneScheda({ id, nome, incompleta, onApri }: { id: number; nome: str
       className={"chipScheda" + (incompleta ? " manca" : "")}
     >
       {incompleta ? <IconaAvviso larghezza={14} spessoreTratto={2.2} /> : <IconaSpunta larghezza={13} spessoreTratto={2.6} />}
-      <span>{incompleta ? "Da completare" : "Scheda"}</span>
+      <span>{incompleta ? "Scheda da completare" : "Scheda ok"}</span>
     </button>
   );
 }

@@ -948,9 +948,10 @@ function ElencoIngredienti() {
               )}
             </section>
 
-            <SchedaTecnica key={ingrediente.id} ingrediente={ingrediente} />
-
+            {/* La scheda tecnica (voci, allergeni, salvataggio) e' la parte lunga: sta in fondo (23/10/2026). */}
             <UsatoNelleEtichette etichette={ingrediente.etichette} nomeIngrediente={ingrediente.nome} onApri={apriEtichetta} />
+
+            <SchedaTecnica key={ingrediente.id} ingrediente={ingrediente} />
           </>
         ) : (
           <div className="text-[var(--tenue)] p-2">Scegli un ingrediente dall&apos;elenco.</div>

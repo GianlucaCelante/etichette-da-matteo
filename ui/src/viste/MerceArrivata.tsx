@@ -53,6 +53,9 @@ function PaginaDocumento({ url, numero, onTogli }: { url: string; numero: number
 }
 
 interface RigaArrivoBozza {
+  // identifica la riga: lo stesso ingrediente puo' avere piu' righe (piu' lotti
+  // nello stesso DDT o fattura), quindi l'ingrediente da solo non basta.
+  chiave: number;
   ingredienteId: number;
   nome: string;
   lotto: string;
@@ -68,8 +71,9 @@ interface RigaArrivoBozza {
   foto: FotoBozza | null;
 }
 
+let prossimaChiave = 0;
 function nuovaRiga(ingrediente: { id: number; nome: string }, proposta = false): RigaArrivoBozza {
-  return { ingredienteId: ingrediente.id, nome: ingrediente.nome, lotto: "", scadenza: "", quantita: "", proposta, tocca: false, foto: null };
+  return { chiave: ++prossimaChiave, ingredienteId: ingrediente.id, nome: ingrediente.nome, lotto: "", scadenza: "", quantita: "", proposta, tocca: false, foto: null };
 }
 const rigaVuota = (r: RigaArrivoBozza) => !r.lotto.trim() && !r.quantita.trim() && !r.foto && !r.tocca;
 const rigaDaRegistrare = (r: RigaArrivoBozza) => !r.proposta || r.tocca;
@@ -90,26 +94,29 @@ function RigaArrivo({
   onCambiaFoto,
   onTogliFoto,
   onRimuovi,
+  onAltroLotto,
 }: {
   riga: RigaArrivoBozza;
-  onCambia: (ingredienteId: number, campo: "lotto" | "scadenza" | "quantita", valore: string) => void;
-  onCambiaFoto: (ingredienteId: number, file: File) => void;
-  onTogliFoto: (ingredienteId: number) => void;
-  onRimuovi: (ingredienteId: number) => void;
+  onCambia: (chiave: number, campo: "lotto" | "scadenza" | "quantita", valore: string) => void;
+  onCambiaFoto: (chiave: number, file: File) => void;
+  onTogliFoto: (chiave: number) => void;
+  onRimuovi: (chiave: number) => void;
+  onAltroLotto: (chiave: number) => void;
 }) {
   const inAttesa = riga.proposta && !riga.tocca;
-  const togliFoto = useCallback(() => onTogliFoto(riga.ingredienteId), [onTogliFoto, riga.ingredienteId]);
-  const cambiaLotto = useCallback((e: ChangeEvent<HTMLInputElement>) => onCambia(riga.ingredienteId, "lotto", e.target.value), [onCambia, riga.ingredienteId]);
+  const togliFoto = useCallback(() => onTogliFoto(riga.chiave), [onTogliFoto, riga.chiave]);
+  const cambiaLotto = useCallback((e: ChangeEvent<HTMLInputElement>) => onCambia(riga.chiave, "lotto", e.target.value), [onCambia, riga.chiave]);
   const cambiaScadenza = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => onCambia(riga.ingredienteId, "scadenza", e.target.value),
-    [onCambia, riga.ingredienteId],
+    (e: ChangeEvent<HTMLInputElement>) => onCambia(riga.chiave, "scadenza", e.target.value),
+    [onCambia, riga.chiave],
   );
   const cambiaQuantita = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => onCambia(riga.ingredienteId, "quantita", e.target.value),
-    [onCambia, riga.ingredienteId],
+    (e: ChangeEvent<HTMLInputElement>) => onCambia(riga.chiave, "quantita", e.target.value),
+    [onCambia, riga.chiave],
   );
-  const cambiaFoto = useCallback((file: File) => onCambiaFoto(riga.ingredienteId, file), [onCambiaFoto, riga.ingredienteId]);
-  const rimuovi = useCallback(() => onRimuovi(riga.ingredienteId), [onRimuovi, riga.ingredienteId]);
+  const cambiaFoto = useCallback((file: File) => onCambiaFoto(riga.chiave, file), [onCambiaFoto, riga.chiave]);
+  const rimuovi = useCallback(() => onRimuovi(riga.chiave), [onRimuovi, riga.chiave]);
+  const altroLotto = useCallback(() => onAltroLotto(riga.chiave), [onAltroLotto, riga.chiave]);
 
   return (
     <div className={"rigaArrivo" + (inAttesa ? " attesa" : "")}>
@@ -150,6 +157,10 @@ function RigaArrivo({
           <AnteprimaBozza url={riga.foto.url} didascalia="Etichetta" onTogli={togliFoto} />
         </div>
       )}
+      <button type="button" className="btn piccoloTel altroLotto" onClick={altroLotto}>
+        <IconaPiu larghezza={16} spessoreTratto={2.2} />
+        <span>Altro lotto di {riga.nome}</span>
+      </button>
     </div>
   );
 }
@@ -260,38 +271,49 @@ export default function MerceArrivata() {
     setFornitoreNomeAltro("");
   }, []);
 
-  const cambiaRiga = useCallback((ingredienteId: number, campo: "lotto" | "scadenza" | "quantita", valore: string) => {
-    setRighe((precedenti) => precedenti.map((r) => (r.ingredienteId === ingredienteId ? { ...r, [campo]: valore, tocca: true } : r)));
+  const cambiaRiga = useCallback((chiave: number, campo: "lotto" | "scadenza" | "quantita", valore: string) => {
+    setRighe((precedenti) => precedenti.map((r) => (r.chiave === chiave ? { ...r, [campo]: valore, tocca: true } : r)));
   }, []);
   // La foto dell'etichetta del sacco, scelta ma non ancora caricata (si
   // carica per davvero solo dopo che l'arrivo esiste, in registra() qui sotto).
   // Se la riga aveva gia' una foto, questa la sostituisce: l'anteprima
   // vecchia si revoca.
-  const cambiaFotoRiga = useCallback((ingredienteId: number, file: File) => {
+  const cambiaFotoRiga = useCallback((chiave: number, file: File) => {
     const nuova = creaAnteprima(file);
     setRighe((precedenti) =>
       precedenti.map((r) => {
-        if (r.ingredienteId !== ingredienteId) return r;
+        if (r.chiave !== chiave) return r;
         if (r.foto) URL.revokeObjectURL(r.foto.url);
         return { ...r, foto: nuova, tocca: true };
       }),
     );
   }, []);
   // Scarta la foto scelta di una riga (prima di registrare): revoca l'anteprima.
-  const togliFotoRiga = useCallback((ingredienteId: number) => {
+  const togliFotoRiga = useCallback((chiave: number) => {
     setRighe((precedenti) =>
       precedenti.map((r) => {
-        if (r.ingredienteId !== ingredienteId || !r.foto) return r;
+        if (r.chiave !== chiave || !r.foto) return r;
         URL.revokeObjectURL(r.foto.url);
         return { ...r, foto: null };
       }),
     );
   }, []);
-  const rimuoviRiga = useCallback((ingredienteId: number) => {
+  const rimuoviRiga = useCallback((chiave: number) => {
     setRighe((precedenti) => {
-      const tolta = precedenti.find((r) => r.ingredienteId === ingredienteId);
+      const tolta = precedenti.find((r) => r.chiave === chiave);
       if (tolta?.foto) URL.revokeObjectURL(tolta.foto.url);
-      return precedenti.filter((r) => r.ingredienteId !== ingredienteId);
+      return precedenti.filter((r) => r.chiave !== chiave);
+    });
+  }, []);
+  // Un secondo lotto dello stesso ingrediente (stesso DDT o fattura): una riga
+  // nuova subito sotto quella da cui si parte.
+  const altroLottoRiga = useCallback((chiave: number) => {
+    setRighe((precedenti) => {
+      const i = precedenti.findIndex((r) => r.chiave === chiave);
+      const origine = precedenti[i];
+      if (!origine) return precedenti;
+      const nuova = nuovaRiga({ id: origine.ingredienteId, nome: origine.nome });
+      return [...precedenti.slice(0, i + 1), nuova, ...precedenti.slice(i + 1)];
     });
   }, []);
   const aggiungiFotoDocumento = useCallback((file: File) => {
@@ -431,9 +453,10 @@ export default function MerceArrivata() {
                 URL.revokeObjectURL(pagina.url);
               }
             }
-            for (const r of daRegistrare) {
+            // I lotti tornano nell'ordine delle righe inviate.
+            for (const [indice, r] of daRegistrare.entries()) {
               if (!r.foto) continue;
-              const lottoCreato = risposta.lotti.find((l) => l.ingredienteId === r.ingredienteId);
+              const lottoCreato = risposta.lotti[indice];
               if (lottoCreato) {
                 try {
                   await caricaFotoLotto.mutateAsync({ id: lottoCreato.id, file: r.foto.file });
@@ -579,7 +602,7 @@ export default function MerceArrivata() {
           )}
         </div>
         {righe.map((r) => (
-          <RigaArrivo key={r.ingredienteId} riga={r} onCambia={cambiaRiga} onCambiaFoto={cambiaFotoRiga} onTogliFoto={togliFotoRiga} onRimuovi={rimuoviRiga} />
+          <RigaArrivo key={r.chiave} riga={r} onCambia={cambiaRiga} onCambiaFoto={cambiaFotoRiga} onTogliFoto={togliFotoRiga} onRimuovi={rimuoviRiga} onAltroLotto={altroLottoRiga} />
         ))}
 
         <button
